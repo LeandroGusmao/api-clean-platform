@@ -1,0 +1,12 @@
+# This repository is a SINGLE PACKAGE. Without the `packages:` key, this is not a
+# workspace — the file exists because pnpm 11 no longer reads the `pnpm`
+# field from package.json.
+
+allowBuilds:
+  esbuild: true
+
+# `engines` from package.json becomes a hard gate: install fails instead of just warning.
+engineStrict: true
+
+# Every `pnpm add` writes an exact version, no caret.
+savePrefix: ''
