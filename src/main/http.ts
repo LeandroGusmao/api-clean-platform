@@ -1,9 +1,11 @@
 import { env } from '#infra/config/env'
 import { buildServer } from '#infra/http/server'
 
+const SHUTDOWN_SIGNALS = ['SIGINT', 'SIGTERM'] as const
+
 const app = buildServer(env)
 
-for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+for (const signal of SHUTDOWN_SIGNALS) {
   process.once(signal, () => {
     app.log.info({ signal }, 'shutting down')
     app.close().then(
