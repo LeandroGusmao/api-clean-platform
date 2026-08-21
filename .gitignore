@@ -143,4 +143,6 @@ vite.config.ts.timestamp-*
 .vite/
 
 #Local docs for reference
-docs/
+docs/DECISIONS.md
+docs/ARCHITECTURE.md
+docs/STRUCTURE.md
