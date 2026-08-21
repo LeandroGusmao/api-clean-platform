@@ -5,6 +5,12 @@ import type { Database } from '#infra/database/client'
 import { checkDatabase } from '#infra/health/checks/database-check'
 
 const HEALTH_CHECK_PATH = '/health'
+const HEALTH_TAG = 'Health'
+const HEALTH_SUMMARY = 'Liveness and dependency check'
+const HEALTH_DESCRIPTION =
+  'Reports whether the service is up and its dependencies are reachable. ' +
+  'Returns 503 when any dependency is down, so an orchestrator can pull the ' +
+  'instance out of rotation.'
 const OK_STATUS = 'ok' as const
 const ERROR_STATUS = 'error' as const
 const DATABASE_UP = 'up' as const
@@ -24,7 +30,12 @@ export const healthRoute: FastifyPluginAsync<{ db: Database }> = async (app, { d
   app.withTypeProvider<ZodTypeProvider>().get(
     HEALTH_CHECK_PATH,
     {
-      schema: { response: { 200: okSchema, [SERVICE_UNAVAILABLE_STATUS]: downSchema } },
+      schema: {
+        tags: [HEALTH_TAG],
+        summary: HEALTH_SUMMARY,
+        description: HEALTH_DESCRIPTION,
+        response: { 200: okSchema, [SERVICE_UNAVAILABLE_STATUS]: downSchema },
+      },
     },
     async (request, reply) => {
       const database = await checkDatabase(db)

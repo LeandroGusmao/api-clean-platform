@@ -1,12 +1,12 @@
 # Arquitetura
 
 Documentação do que **existe neste repositório**. Nada aqui é plano ou intenção —
-se está escrito, está construído e verificável rodando os comandos da §7.
+se está escrito, está construído e verificável rodando os comandos da §8.
 
 Este é o único documento de arquitetura versionado. O material de referência em
 `docs/` é rascunho local, fora do git — nada depende dele.
 
-**Stack hoje:** Node 24 LTS (Krypton) · TypeScript 7 ESM · Fastify 5 · Zod 4 · PostgreSQL · Drizzle · Biome · pnpm
+**Stack hoje:** Node 24 LTS (Krypton) · TypeScript 7 ESM · Fastify 5 · Zod 4 · PostgreSQL · Drizzle · OpenAPI · Biome · pnpm
 
 ---
 
@@ -26,15 +26,21 @@ princípio está aqui porque é ele que decide onde cada arquivo novo vai cair.
 
 ```text
 src/
-├── infra/                  # infra GLOBAL, sem dono de módulo
-│   ├── config/env.ts       # ÚNICO lugar que lê process.env
-│   ├── database/client.ts  # pool pg + instância Drizzle
-│   └── http/
-│       ├── server.ts       # instância Fastify, SEM rotas
-│       └── endpoints/
-│           └── health.ts   # GET /health — liveness + conexão com o banco
+├── infra/                          # infra GLOBAL, sem dono de módulo
+│   ├── config/env.ts               # ÚNICO lugar que lê process.env
+│   ├── database/client.ts          # pool pg + instância Drizzle
+│   ├── health/
+│   │   └── checks/
+│   │       └── database-check.ts   # um arquivo por dependência checada
+│   ├── http/
+│   │   ├── server.ts               # instância Fastify, SEM rotas
+│   │   ├── openapi.ts              # OpenAPI + UI dos docs (só em development)
+│   │   └── endpoints/
+│   │       └── health.ts           # GET /health — agrega os checks
+│   └── observability/
+│       └── redact-paths.ts         # paths redigidos pelo logger
 └── main/
-    └── http.ts             # entrypoint: valida env, abre o banco, sobe o servidor
+    └── http.ts                     # entrypoint: valida env, abre o banco, sobe o servidor
 ```
 
 `src/infra/` é infra **sem dono** — o servidor, a config e a conexão do banco.
@@ -194,7 +200,38 @@ vez do processo crash-loopar.
 
 ---
 
-## 7. Comandos
+## 7. HTTP e documentação da API
+
+Um endpoint é **um arquivo** com schemas Zod, handler e rota juntos —
+`infra/http/endpoints/health.ts` é o exemplo vivo. Os schemas Zod não são só
+validação: são também a fonte da documentação, sem nenhuma duplicação.
+
+**O que faz isso funcionar:** `server.ts` registra os compilers do
+`fastify-type-provider-zod` (`setValidatorCompiler` / `setSerializerCompiler`).
+Sem eles o Fastify recebe schema Zod onde espera JSON Schema e **falha em
+runtime**.
+
+`infra/http/openapi.ts` gera o documento OpenAPI 3.1 e serve a UI em `/docs`
+(spec crua em `/docs/json`).
+
+> **Só em `NODE_ENV=development`.** Nenhum ambiente deployado publica a
+> superfície da API: fora de development as rotas nem existem, respondem 404.
+
+Duas armadilhas de ordem, ambas silenciosas:
+
+- **`registerOpenApi` tem que rodar antes das rotas.** O `@fastify/swagger`
+  engancha no hook `onRoute`; rota registrada antes dele simplesmente não
+  aparece na spec — sem erro, sem aviso.
+- **`transform: jsonSchemaTransform` é obrigatório.** É ele que converte o Zod
+  em JSON Schema. Sem ele a spec sai vazia.
+
+Os endpoints checados por `/health` vivem em `infra/health/checks/`, um arquivo
+por dependência. O endpoint só agrega e traduz para HTTP — quando entrar Redis
+ou uma API externa, cria-se o arquivo irmão em vez de crescer o handler.
+
+---
+
+## 8. Comandos
 
 ```bash
 pnpm dev          # tsx + watch, resolve # para src/
@@ -207,12 +244,13 @@ pnpm db:generate  # drizzle-kit generate — gera migration a partir do schema d
 pnpm db:migrate   # drizzle-kit migrate — aplica migrations pendentes
 ```
 
-O servidor sobe com uma única rota, `GET /health` (§6). Qualquer outro caminho
+O servidor sobe com uma única rota de aplicação, `GET /health` (§7) — mais
+`/docs` e `/docs/json`, que só existem em development. Qualquer outro caminho
 responde **404**, e isso é o esperado.
 
 ---
 
-## 8. Versões
+## 9. Versões
 
 **Toda dependência é pinada em versão exata. Nenhum `^`, nenhum `~`** — nem em
 `dependencies`, nem em `devDependencies`. Num boilerplate copiado N vezes, caret
@@ -250,7 +288,7 @@ Sozinho, `engines` só **avisa** e sai com exit 0. É o `engineStrict` no
 
 ---
 
-## 9. Decisões travadas
+## 10. Decisões travadas
 
 **TypeScript pinado em `7.0.2` exato, sem caret.** O TS 7 é o port em Go e mudou o
 `exports` do pacote: a raiz passou a exportar só a versão, e a API do compilador
@@ -282,10 +320,9 @@ do mesmo pacote.
 
 ---
 
-## 10. O que ainda não existe
+## 11. O que ainda não existe
 
 Listado para não ser confundido com omissão, sem detalhar o que não foi construído:
 
 módulos e camada pura · regra de fronteira no lint · error handler e taxonomia de
-erro · `traceId` por `AsyncLocalStorage` · testes · migrations · rotas,
-validação de schema e OpenAPI · Docker · CI
+erro · `traceId` por `AsyncLocalStorage` · testes · migrations · Docker · CI

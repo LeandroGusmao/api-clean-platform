@@ -1,12 +1,17 @@
 import { env } from '#infra/config/env'
 import { createDatabase } from '#infra/database/client'
 import { healthRoute } from '#infra/http/endpoints/health'
+import { registerOpenApi } from '#infra/http/openapi'
 import { buildServer } from '#infra/http/server'
 
 const SHUTDOWN_SIGNALS = ['SIGINT', 'SIGTERM'] as const
 
 const app = buildServer(env)
 const { db, pool } = createDatabase(env)
+
+// Must come before any route: `@fastify/swagger` only documents what is
+// registered after it.
+await registerOpenApi(app, env)
 
 await app.register(healthRoute, { db })
 
