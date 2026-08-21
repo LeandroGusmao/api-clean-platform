@@ -28,14 +28,16 @@ até aqui.
 - SSL na conexão do pool — sem alvo de deploy definido ainda; adicionar
   quando houver um.
 
-## 2. Versão do Postgres — divergência resolvida
+## 2. Versão do Postgres
 
-Os docs existentes citam `postgres:17` no exemplo de pipeline de CI
-(`ARCHITECTURE.md` §15, `DECISIONS.md` decisão 17). Definido nesta spec: a
-versão real a usar em todo lugar (compose local e exemplo de CI) é
-**`postgres:18.4-alpine3.24`**. Os dois documentos serão atualizados para não
-ficar com uma versão descrita e outra construída — regra do próprio
-`ARCHITECTURE.md`: "se está escrito, está construído e verificável".
+`docs/ARCHITECTURE.md` e `docs/DECISIONS.md` (rascunho local, fora do git —
+ver §9) citam `postgres:17` num exemplo de pipeline de CI que ainda não foi
+construído. Isso **não é uma divergência no doc versionado**: o
+`ARCHITECTURE.md` da raiz — o único que conta, por convenção do próprio
+projeto — ainda não menciona banco nem Postgres. A versão definida nesta spec,
+usada no `docker-compose.yml` e na nova seção do `ARCHITECTURE.md` da raiz, é
+**`postgres:18.4-alpine3.24`**. Os arquivos locais em `docs/` não são
+tocados por este trabalho.
 
 ## 3. Configuração — `DATABASE_URL`
 
@@ -194,14 +196,18 @@ do `ARCHITECTURE.md` §15/§6.)
 
 ## 9. Atualização dos docs
 
-`ARCHITECTURE.md` e `DECISIONS.md`:
-- Troca `postgres:17` → `postgres:18.4-alpine3.24` no exemplo de pipeline de
-  CI (mantendo dev e CI na mesma versão, conforme o racional já escrito na
-  decisão 17).
-- `ARCHITECTURE.md` §9 ("o que ainda não existe"): remove "banco" da lista —
-  a conexão existe. Mantém "migrations" e "módulos e camada pura", que
-  continuam não existindo (nenhuma tabela real ainda).
-- Stack declarada no topo do `ARCHITECTURE.md` ganha `PostgreSQL · Drizzle`.
+Só o `ARCHITECTURE.md` da raiz — o único documento versionado — é atualizado.
+`docs/ARCHITECTURE.md`, `docs/DECISIONS.md` e `docs/STRUCTURE.md` continuam
+como rascunho local, fora do git, e não são tocados por este trabalho:
+
+- Nova seção descrevendo a conexão com o banco: `docker compose up -d`,
+  `DATABASE_URL`, `infra/database/client.ts`, `postgres:18.4-alpine3.24`,
+  scripts `db:generate`/`db:migrate` — mesmo nível de detalhe verificável das
+  seções existentes (comandos que realmente rodam).
+- §9 ("o que ainda não existe"): remove "banco" da lista — a conexão existe e
+  é verificável. Mantém "migrations" (nenhuma migration real ainda, porque
+  não há schema/tabela) e "módulos e camada pura".
+- Stack declarada no topo ganha `PostgreSQL · Drizzle`.
 
 ## 10. Testes
 
