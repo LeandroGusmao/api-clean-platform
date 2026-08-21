@@ -1,18 +1,24 @@
 import { env } from '#infra/config/env'
+import { createDatabase } from '#infra/database/client'
 import { healthRoute } from '#infra/http/endpoints/health'
 import { buildServer } from '#infra/http/server'
 
 const SHUTDOWN_SIGNALS = ['SIGINT', 'SIGTERM'] as const
 
 const app = buildServer(env)
+const { db, pool } = createDatabase(env)
 
-await app.register(healthRoute)
+await app.register(healthRoute, { db })
 
 for (const signal of SHUTDOWN_SIGNALS) {
   process.once(signal, () => {
     app.log.info({ signal }, 'shutting down')
     app.close().then(
-      () => process.exit(0),
+      () =>
+        pool.end().then(
+          () => process.exit(0),
+          () => process.exit(1),
+        ),
       () => process.exit(1),
     )
   })

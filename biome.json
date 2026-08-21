@@ -41,6 +41,16 @@
           }
         }
       }
+    },
+    {
+      "includes": ["drizzle.config.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noProcessEnv": "off"
+          }
+        }
+      }
     }
   ]
 }

@@ -1,12 +1,12 @@
 # Arquitetura
 
 Documentação do que **existe neste repositório**. Nada aqui é plano ou intenção —
-se está escrito, está construído e verificável rodando os comandos da §6.
+se está escrito, está construído e verificável rodando os comandos da §7.
 
 Este é o único documento de arquitetura versionado. O material de referência em
 `docs/` é rascunho local, fora do git — nada depende dele.
 
-**Stack hoje:** Node 24 LTS (Krypton) · TypeScript 7 ESM · Fastify 5 · Zod 4 · Biome · pnpm
+**Stack hoje:** Node 24 LTS (Krypton) · TypeScript 7 ESM · Fastify 5 · Zod 4 · PostgreSQL · Drizzle · Biome · pnpm
 
 ---
 
@@ -28,15 +28,19 @@ princípio está aqui porque é ele que decide onde cada arquivo novo vai cair.
 src/
 ├── infra/                  # infra GLOBAL, sem dono de módulo
 │   ├── config/env.ts       # ÚNICO lugar que lê process.env
-│   └── http/server.ts      # instância Fastify, SEM rotas
+│   ├── database/client.ts  # pool pg + instância Drizzle
+│   └── http/
+│       ├── server.ts       # instância Fastify, SEM rotas
+│       └── endpoints/
+│           └── health.ts   # GET /health — liveness + conexão com o banco
 └── main/
-    └── http.ts             # entrypoint: valida env, sobe o servidor
+    └── http.ts             # entrypoint: valida env, abre o banco, sobe o servidor
 ```
 
-`src/infra/` é infra **sem dono** — o servidor, a config, futuramente o logger e a
-conexão do banco. Quando existirem módulos, `src/modules/<m>/infra/` será a infra
-**daquele domínio**. Se você não consegue dizer de qual módulo uma peça é, ela é
-global.
+`src/infra/` é infra **sem dono** — o servidor, a config e a conexão do banco.
+Futuramente, o logger. Quando existirem módulos, `src/modules/<m>/infra/` será a
+infra **daquele domínio**. Se você não consegue dizer de qual módulo uma peça é,
+ela é global.
 
 **Divisão de responsabilidade que já vale:** `infra/http/server.ts` constrói e
 configura a instância Fastify e a devolve **sem nenhuma rota**. Quem registra
@@ -157,22 +161,58 @@ Em `NODE_ENV=development` o log sai por `pino-pretty`; em produção é JSON pur
 
 ---
 
-## 6. Comandos
+## 6. Banco de dados
 
-```bash
-pnpm dev        # tsx + watch, resolve # para src/
-pnpm build      # tsc -> dist/
-pnpm start      # node dist/main/http.js, resolve # para dist/
-pnpm typecheck  # tsc --noEmit
-pnpm lint       # biome check  (formatação + lint + ordem de imports)
-pnpm lint:fix   # biome check --write
+**PostgreSQL**, acessado via `pg` (driver `node-postgres`) e Drizzle. A conexão
+mora em `src/infra/database/client.ts`, infra global — ainda não há módulo
+dono de tabela nenhuma.
+
+```ts
+// src/infra/database/client.ts
+export type Database = NodePgDatabase | NodePgTransaction<EmptyRelations>
 ```
 
-O servidor sobe sem nenhuma rota: `GET /` responde **404**, e isso é o esperado.
+`DATABASE_URL` é validada em `env.ts` (§5), sem valor default — o boot falha
+se faltar, mesma regra das demais variáveis.
+
+Localmente, o Postgres sobe via `docker-compose.yml` (`postgres:18.4-alpine3.24`),
+infra apenas — a aplicação roda no host:
+
+```bash
+docker compose up -d    # sobe só o Postgres
+pnpm dev                # aplicação, no host
+```
+
+`drizzle.config.ts` (raiz) já está pronto para gerar e aplicar migrations, mas
+seu glob de schema (`src/modules/*/infra/drizzle/schema.ts`) não casa com nada
+até o primeiro módulo existir — não há migration real neste repositório ainda.
+
+`GET /health` consulta o banco (`select 1`) a cada chamada: responde `200` com
+o banco no ar, `503` com o banco fora. Sem preflight no boot — o processo sobe
+mesmo com o banco inatingível, para que `/health` consiga reportar a falha em
+vez do processo crash-loopar.
 
 ---
 
-## 7. Versões
+## 7. Comandos
+
+```bash
+pnpm dev          # tsx + watch, resolve # para src/
+pnpm build        # tsc -> dist/
+pnpm start        # node dist/main/http.js, resolve # para dist/
+pnpm typecheck    # tsc --noEmit
+pnpm lint         # biome check  (formatação + lint + ordem de imports)
+pnpm lint:fix     # biome check --write
+pnpm db:generate  # drizzle-kit generate — gera migration a partir do schema dos módulos
+pnpm db:migrate   # drizzle-kit migrate — aplica migrations pendentes
+```
+
+O servidor sobe com uma única rota, `GET /health` (§6). Qualquer outro caminho
+responde **404**, e isso é o esperado.
+
+---
+
+## 8. Versões
 
 **Toda dependência é pinada em versão exata. Nenhum `^`, nenhum `~`** — nem em
 `dependencies`, nem em `devDependencies`. Num boilerplate copiado N vezes, caret
@@ -210,7 +250,7 @@ Sozinho, `engines` só **avisa** e sai com exit 0. É o `engineStrict` no
 
 ---
 
-## 8. Decisões travadas
+## 9. Decisões travadas
 
 **TypeScript pinado em `7.0.2` exato, sem caret.** O TS 7 é o port em Go e mudou o
 `exports` do pacote: a raiz passou a exportar só a versão, e a API do compilador
@@ -242,10 +282,10 @@ do mesmo pacote.
 
 ---
 
-## 9. O que ainda não existe
+## 10. O que ainda não existe
 
 Listado para não ser confundido com omissão, sem detalhar o que não foi construído:
 
 módulos e camada pura · regra de fronteira no lint · error handler e taxonomia de
-erro · `traceId` por `AsyncLocalStorage` · testes · banco e migrations · rotas,
+erro · `traceId` por `AsyncLocalStorage` · testes · migrations · rotas,
 validação de schema e OpenAPI · Docker · CI

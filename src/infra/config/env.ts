@@ -20,6 +20,7 @@ const envSchema = z.object({
   HOST: z.string().min(1).default(DEFAULT_HOST),
   PORT: z.coerce.number().int().positive().default(DEFAULT_PORT),
   LOG_LEVEL: z.enum(LOG_LEVELS).default(DEFAULT_LOG_LEVEL),
+  DATABASE_URL: z.url(),
 })
 
 export type Env = z.infer<typeof envSchema>

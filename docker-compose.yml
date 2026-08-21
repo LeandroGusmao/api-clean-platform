@@ -1,0 +1,28 @@
+services:
+  postgres:
+    # Pinned exact — bump deliberately, same convention as our npm deps.
+    image: postgres:18.4-alpine3.24
+    container_name: api-clean-platform-postgres
+    restart: unless-stopped
+    # Bind to localhost only — never expose the dev DB to the LAN.
+    ports:
+      - '127.0.0.1:5432:5432'
+    environment:
+      POSTGRES_USER: api_clean_platform
+      POSTGRES_PASSWORD: api_clean_platform_local_dev
+      POSTGRES_DB: api_clean_platform
+    # Avoids "could not resize shared memory" on larger queries.
+    shm_size: 256mb
+    # PG18+ expects a single mount at /var/lib/postgresql (data goes in a
+    # versioned subdirectory), keeping future `pg_upgrade --link` clean.
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U api_clean_platform -d api_clean_platform']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  postgres_data:
