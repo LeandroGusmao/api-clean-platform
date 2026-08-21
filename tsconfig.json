@@ -12,9 +12,14 @@
     ],
     "types": ["node"],
 
-    "rootDir": "src",
-    "outDir": "dist",
     "customConditions": ["development"],
+
+    // This config never emits: it exists so the editor and `pnpm typecheck`
+    // see the whole repository, tests included, under the same strictness.
+    // Every emit concern — `rootDir`, `outDir`, `sourceMap` — lives in
+    // tsconfig.build.json instead. `rootDir: "src"` in particular would break
+    // here, since `tests/` sits outside it.
+    "noEmit": true,
 
     "strict": true,
     "noUncheckedIndexedAccess": true,
@@ -24,8 +29,7 @@
     "exactOptionalPropertyTypes": true,
     "verbatimModuleSyntax": true,
 
-    "sourceMap": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "tests/**/*.ts", "vitest.config.ts", "drizzle.config.ts"]
 }

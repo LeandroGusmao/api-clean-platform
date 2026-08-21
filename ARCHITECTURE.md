@@ -1,12 +1,12 @@
 # Arquitetura
 
 Documentação do que **existe neste repositório**. Nada aqui é plano ou intenção —
-se está escrito, está construído e verificável rodando os comandos da §8.
+se está escrito, está construído e verificável rodando os comandos da §9.
 
 Este é o único documento de arquitetura versionado. O material de referência em
 `docs/` é rascunho local, fora do git — nada depende dele.
 
-**Stack hoje:** Node 24 LTS (Krypton) · TypeScript 7 ESM · Fastify 5 · Zod 4 · PostgreSQL · Drizzle · OpenAPI · Biome · pnpm
+**Stack hoje:** Node 24 LTS (Krypton) · TypeScript 7 ESM · Fastify 5 · Zod 4 · PostgreSQL · Drizzle · OpenAPI · Vitest · Biome · pnpm
 
 ---
 
@@ -27,13 +27,16 @@ princípio está aqui porque é ele que decide onde cada arquivo novo vai cair.
 ```text
 src/
 ├── infra/                          # infra GLOBAL, sem dono de módulo
-│   ├── config/env.ts               # ÚNICO lugar que lê process.env
+│   ├── config/
+│   │   ├── env.ts                  # ÚNICO lugar que lê process.env
+│   │   └── env.spec.ts             # unitário colocado
 │   ├── database/client.ts          # pool pg + instância Drizzle
 │   ├── health/
 │   │   └── checks/
 │   │       └── database-check.ts   # um arquivo por dependência checada
 │   ├── http/
 │   │   ├── server.ts               # instância Fastify, SEM rotas
+│   │   ├── server.spec.ts          # unitário colocado
 │   │   ├── openapi.ts              # OpenAPI + UI dos docs (só em development)
 │   │   └── endpoints/
 │   │       └── health.ts           # GET /health — agrega os checks
@@ -41,6 +44,10 @@ src/
 │       └── redact-paths.ts         # paths redigidos pelo logger
 └── main/
     └── http.ts                     # entrypoint: valida env, abre o banco, sobe o servidor
+
+tests/
+└── integration/
+    └── health.spec.ts              # suíte que precisa de Postgres de pé
 ```
 
 `src/infra/` é infra **sem dono** — o servidor, a config e a conexão do banco.
@@ -103,6 +110,10 @@ projeto não compila, e o modo de falha não é óbvio:
 
 Ambos verificados rodando uma config de biblioteca sobre esta árvore: 3 erros de
 compilação e a saída no lugar errado.
+
+**Onde cada uma mora.** `customConditions` fica no `tsconfig.json`, que vale para
+o repositório inteiro. `rootDir` e `outDir` são preocupação de quem emite, e por
+isso ficam só no `tsconfig.build.json` — ver §8.
 
 ---
 
@@ -185,9 +196,19 @@ Localmente, o Postgres sobe via `docker-compose.yml` (`postgres:18.4-alpine3.24`
 infra apenas — a aplicação roda no host:
 
 ```bash
-docker compose up -d    # sobe só o Postgres
+docker compose up -d    # sobe os dois Postgres (dev e teste)
 pnpm dev                # aplicação, no host
 ```
+
+São **dois serviços**, a mesma imagem pinada:
+
+| serviço | porta | banco | dados |
+|---|---|---|---|
+| `postgres` | 5432 | `api_clean_platform` | volume nomeado, persistente |
+| `postgres-test` | 5433 | `api_clean_platform_test` | `tmpfs`, some quando o container para |
+
+O serviço separado é o que garante que a suíte de integração nunca alcance dado
+de desenvolvimento, e o `tmpfs` faz do restart do container o reset do estado.
 
 `drizzle.config.ts` (raiz) já está pronto para gerar e aplicar migrations, mas
 seu glob de schema (`src/modules/*/infra/drizzle/schema.ts`) não casa com nada
@@ -231,17 +252,66 @@ ou uma API externa, cria-se o arquivo irmão em vez de crescer o handler.
 
 ---
 
-## 8. Comandos
+## 8. Testes
+
+**Vitest**, um runner para as duas pistas — a separação é por *project*, não por
+ferramenta:
+
+| project | onde | precisa de banco | comando |
+|---|---|---|---|
+| `unit` | `src/**/*.spec.ts`, colocado ao lado do código | não | `pnpm test:unit` |
+| `integration` | `tests/integration/**/*.spec.ts` | sim | `pnpm test:integration` |
+
+`pnpm test` roda as duas. A pista de integração usa `fileParallelism: false`,
+porque todos os arquivos compartilham o mesmo Postgres.
+
+**Nenhum teste lê `process.env`.** A env da suíte é injetada em `test.env`, no
+`vitest.config.ts`. Com isso R6 continua valendo sem exceção nenhuma no
+`biome.json`, e `import { env } from '#infra/config/env'` já chega válido dentro
+do teste.
+
+**Não há `resolve.conditions` na config, de propósito.** O Vite já pede a
+condition `development` em modo de teste, então `#infra/*` resolve para `src/` e
+nunca para o `dist/` — verificado plantando um sentinela no `dist/` e observando
+o `src/` vencer. Sobrescrever esse array substituiria os defaults do Vite e
+criaria justamente o risco que ele evitaria.
+
+### Duas peças de produção têm a forma que têm por causa disto
+
+- **`parseEnv(source)`** separa a validação do efeito colateral. Sem ela,
+  importar `env.ts` num spec dispara o `process.exit(1)` do boot e mata o worker
+  do Vitest — comprovado antes de existir.
+- **`buildServer(env, { logStream })`** recebe o destino do log por injeção;
+  destino de log é mundo externo pela definição do §1. É o que permite testar a
+  redação do §5 contra o logger real de produção, sem trazer `pino` como
+  dependência direta. Funciona porque `stream` e `transport` são mutuamente
+  exclusivos no pino, e o `pino-pretty` só é ligado em development.
+
+O que a suíte cobre hoje: os casos "não legal" do §4 dentro de `parseEnv`, a
+redação do §5 — inclusive a limitação de um nível só, que fica documentada como
+teste — e `GET /health` respondendo `200` e `503` contra Postgres real.
+
+**Ainda não há helper de migration nem `TRUNCATE` para a suíte**, porque não há
+tabela. O `tmpfs` do `postgres-test` já entrega o reset: parar o container zera o
+cluster.
+
+---
+
+## 9. Comandos
 
 ```bash
-pnpm dev          # tsx + watch, resolve # para src/
-pnpm build        # tsc -> dist/
-pnpm start        # node dist/main/http.js, resolve # para dist/
-pnpm typecheck    # tsc --noEmit
-pnpm lint         # biome check  (formatação + lint + ordem de imports)
-pnpm lint:fix     # biome check --write
-pnpm db:generate  # drizzle-kit generate — gera migration a partir do schema dos módulos
-pnpm db:migrate   # drizzle-kit migrate — aplica migrations pendentes
+pnpm dev               # tsx + watch, resolve # para src/
+pnpm build             # tsc -p tsconfig.build.json -> dist/ (sem os specs)
+pnpm start             # node dist/main/http.js, resolve # para dist/
+pnpm typecheck         # tsc --noEmit — cobre src/, tests/ e os arquivos de config
+pnpm test              # Vitest: unit + integração
+pnpm test:unit         # só a pista sem I/O
+pnpm test:integration  # só a pista com Postgres real (docker compose up -d antes)
+pnpm test:watch        # Vitest em watch
+pnpm lint              # biome check  (formatação + lint + ordem de imports)
+pnpm lint:fix          # biome check --write
+pnpm db:generate       # drizzle-kit generate — gera migration a partir do schema dos módulos
+pnpm db:migrate        # drizzle-kit migrate — aplica migrations pendentes
 ```
 
 O servidor sobe com uma única rota de aplicação, `GET /health` (§7) — mais
@@ -250,7 +320,7 @@ responde **404**, e isso é o esperado.
 
 ---
 
-## 9. Versões
+## 10. Versões
 
 **Toda dependência é pinada em versão exata. Nenhum `^`, nenhum `~`** — nem em
 `dependencies`, nem em `devDependencies`. Num boilerplate copiado N vezes, caret
@@ -288,7 +358,7 @@ Sozinho, `engines` só **avisa** e sai com exit 0. É o `engineStrict` no
 
 ---
 
-## 10. Decisões travadas
+## 11. Decisões travadas
 
 **TypeScript pinado em `7.0.2` exato, sem caret.** O TS 7 é o port em Go e mudou o
 `exports` do pacote: a raiz passou a exportar só a versão, e a API do compilador
@@ -320,9 +390,9 @@ do mesmo pacote.
 
 ---
 
-## 11. O que ainda não existe
+## 12. O que ainda não existe
 
 Listado para não ser confundido com omissão, sem detalhar o que não foi construído:
 
 módulos e camada pura · regra de fronteira no lint · error handler e taxonomia de
-erro · `traceId` por `AsyncLocalStorage` · testes · migrations · Docker · CI
+erro · `traceId` por `AsyncLocalStorage` · migrations · Docker · CI

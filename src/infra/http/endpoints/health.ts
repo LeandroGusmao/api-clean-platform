@@ -15,6 +15,7 @@ const OK_STATUS = 'ok' as const
 const ERROR_STATUS = 'error' as const
 const DATABASE_UP = 'up' as const
 const DATABASE_DOWN = 'down' as const
+const OK_HTTP_STATUS = 200
 const SERVICE_UNAVAILABLE_STATUS = 503
 
 const okSchema = z.object({
@@ -34,7 +35,10 @@ export const healthRoute: FastifyPluginAsync<{ db: Database }> = async (app, { d
         tags: [HEALTH_TAG],
         summary: HEALTH_SUMMARY,
         description: HEALTH_DESCRIPTION,
-        response: { 200: okSchema, [SERVICE_UNAVAILABLE_STATUS]: downSchema },
+        response: {
+          [OK_HTTP_STATUS]: okSchema,
+          [SERVICE_UNAVAILABLE_STATUS]: downSchema,
+        },
       },
     },
     async (request, reply) => {

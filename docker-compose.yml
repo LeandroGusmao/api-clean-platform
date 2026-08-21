@@ -24,5 +24,33 @@ services:
       retries: 5
       start_period: 10s
 
+  # Ephemeral database for the integration suite (`pnpm test:integration`).
+  # Separate service rather than a second database on the dev instance: the
+  # suite can never touch development data, and `tmpfs` keeps the whole cluster
+  # in RAM, so restarting the container is the reset — no truncate needed.
+  postgres-test:
+    # Pinned exact — bump deliberately, same convention as our npm deps.
+    image: postgres:18.4-alpine3.24
+    container_name: api-clean-platform-postgres-test
+    restart: unless-stopped
+    # Bind to localhost only, on its own port so it never shadows the dev DB.
+    ports:
+      - '127.0.0.1:5433:5432'
+    environment:
+      POSTGRES_USER: api_clean_platform
+      POSTGRES_PASSWORD: api_clean_platform_local_dev
+      POSTGRES_DB: api_clean_platform_test
+    shm_size: 256mb
+    # Data in RAM: faster, and discarded when the container stops. No volume.
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'pg_isready -U api_clean_platform -d api_clean_platform_test']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
 volumes:
   postgres_data:

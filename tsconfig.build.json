@@ -1,0 +1,14 @@
+{
+  // The only config that emits. Narrow on purpose: specs are colocated with the
+  // code they cover, and `tsc` emits everything it typechecks — so keeping them
+  // out of `dist/` means keeping them out of this file's inputs.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": "dist",
+    "sourceMap": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["**/*.spec.ts"]
+}
