@@ -1,9 +1,12 @@
 import { env } from '#infra/config/env'
+import { healthRoute } from '#infra/http/endpoints/health'
 import { buildServer } from '#infra/http/server'
 
 const SHUTDOWN_SIGNALS = ['SIGINT', 'SIGTERM'] as const
 
 const app = buildServer(env)
+
+await app.register(healthRoute)
 
 for (const signal of SHUTDOWN_SIGNALS) {
   process.once(signal, () => {
