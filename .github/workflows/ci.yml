@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# On a PR, a new push cancels the previous run. On main, never: every commit
+# needs its own verdict.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      # Same image as docker-compose.yml, on port 5433 with the same
+      # credentials: the test database URL is a literal constant in
+      # vitest.config.ts, so CI has to reproduce it exactly.
+      postgres:
+        image: postgres:18.4-alpine3.24
+        env:
+          POSTGRES_USER: api_clean_platform
+          POSTGRES_PASSWORD: api_clean_platform_local_dev
+          POSTGRES_DB: api_clean_platform_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U api_clean_platform -d api_clean_platform_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      # Actions are pinned by commit SHA: a tag is a movable pointer and
+      # Actions has no lockfile, so the tag is the only reference there is.
+      # Dependabot keeps these current — see .github/dependabot.yml.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Before setup-node: the `cache: pnpm` below needs pnpm on PATH.
+      # The version comes from the `packageManager` field in package.json.
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # A lockfile out of sync with package.json fails right here.
+      - run: pnpm install --frozen-lockfile
+
+      # Static gates first: they need no database and fail before the suite
+      # spends time on I/O.
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test:unit
+
+      # Vitest injects its own DATABASE_URL (see vitest.config.ts), so this is
+      # the only step that needs one.
+      - run: pnpm db:migrate
+        env:
+          DATABASE_URL: postgres://api_clean_platform:api_clean_platform_local_dev@127.0.0.1:5433/api_clean_platform_test
+
+      - run: pnpm test:integration
+      - run: pnpm build
+
+      # The only step that runs under the `imports` map's `default` condition.
+      # Everything above resolves `#infra/*` to `src/` because tsconfig.json
+      # sets `customConditions: ["development"]` — so the branch production
+      # actually uses is reached by nothing else in this pipeline.
+      - name: Smoke the built output
+        env:
+          NODE_ENV: production
+          PORT: 3000
+          DATABASE_URL: postgres://api_clean_platform:api_clean_platform_local_dev@127.0.0.1:5433/api_clean_platform_test
+        run: |
+          node dist/main/http.js &
+          # `node` directly, not `pnpm start`: $! must be the server itself,
+          # never a wrapper that would survive the kill.
+          server_pid=$!
+          # Fires on timeout too, where `set -e` would skip a trailing kill.
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          timeout 30 bash -c 'until curl -fsS localhost:3000/health >/dev/null; do sleep 1; done'

@@ -1,0 +1,14 @@
+version: 2
+updates:
+  # Keeps the SHA-pinned actions in ci.yml current: Dependabot rewrites both
+  # the SHA and the trailing version comment. Grouped so the whole set arrives
+  # as one pull request instead of three.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      github-actions:
+        patterns: ['*']
+    commit-message:
+      prefix: ci

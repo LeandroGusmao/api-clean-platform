@@ -585,4 +585,4 @@ do mesmo pacote.
 
 Listado para não ser confundido com omissão, sem detalhar o que não foi construído:
 
-módulos de negócio · regra de fronteira no lint · migrations · Docker · CI
+módulos de negócio · regra de fronteira no lint · migrations · Docker
