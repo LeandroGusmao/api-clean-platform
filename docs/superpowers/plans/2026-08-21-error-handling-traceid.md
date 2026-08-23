@@ -26,6 +26,10 @@
   ```
 - **Before every commit:** run `pnpm lint:fix`, then `pnpm typecheck` and `pnpm test` must both be green. Biome enforces formatting and import ordering; a commit with unformatted code will fail `pnpm lint`.
 
+> ⚠️ **Este plano foi executado. Dois pontos dele não sobreviveram ao contato com
+> o código — ver as notas na Task 4 e na Task 7.** A fonte da verdade sobre o que
+> existe hoje é o `ARCHITECTURE.md` §8, não este documento.
+
 ## Contract Codes Produced by This Plan
 
 These strings are **public contract**. Once shipped, changing one requires a coordinated mobile release. They are listed here so no task invents a variant.
@@ -476,6 +480,29 @@ git commit -m "feat: correlate requests with a uuid traceId in the ambient conte
 ---
 
 ### Task 4: Translate Zod issues into contract codes
+
+> ⚠️ **Revisado em 2026-08-23. A tabela de tradução abaixo foi removida do código.**
+>
+> **O que passou a valer:** o `code` publicado é o código do issue do Zod em
+> maiúsculo (`too_small` → `TOO_SMALL`), sem tabela e sem olhar `params.origin`.
+> Quatro códigos que descrevem a composição do schema — `custom`,
+> `invalid_union`, `invalid_key`, `invalid_element` — são colapsados em
+> `INVALID_VALUE`. É lista de exclusão, não tradução.
+>
+> **Por quê.** Medido com um payload real de 11 erros: 8 dos 11 já saíam
+> idênticos a um `toUpperCase()`. Os 3 que diferiam eram os que liam
+> `params.origin` — interno do Zod, e o único campo que o próprio Zod declara
+> aberto (`(string & {})`). A tabela era uma função identidade escrita à mão
+> sobre o ponto mais frágil da integração.
+>
+> **E o `default` era pior que inútil:** transformava "o Zod renomeou um código"
+> em `INVALID_VALUE` silenciosamente, com a suíte verde, porque os fixtures do
+> teste continuariam usando a string antiga. Quem protege o contrato agora é um
+> teste e2e que atravessa o Zod real e trava os 11 códigos publicados.
+>
+> **Efeito:** `TOO_SHORT`, `TOO_LONG` e `TOO_LARGE` não existem — viraram
+> `TOO_SMALL` e `TOO_BIG`. Isso invalida a linha `PASSWORD_FIELD` do teste da
+> Task 6 e quatro linhas da tabela de códigos no topo deste plano.
 
 A pure function, no Fastify instance involved. The spec's normative table becomes a test table.
 
@@ -1299,6 +1326,11 @@ git commit -m "feat: answer invalid payloads with 400 and per-field contract cod
 ---
 
 ### Task 7: Fastify's own 4xx errors and the missing route
+
+> ⚠️ **O `text/plain` abaixo está errado, descoberto na execução.** O Fastify
+> traz parser nativo para `application/json` **e** `text/plain` — nenhum dos dois
+> dispara 415; a requisição é aceita e responde 200. O teste real usa
+> `application/xml`, que não tem parser.
 
 Closes the last two holes in the envelope. A `Content-Type: text/plain` on a POST raises `FST_ERR_CTP_INVALID_MEDIA_TYPE`, which is not an `AppError` — without this branch the client gets **500 for its own mistake** and the log fills with fake internal errors. A request to an unregistered path gets Fastify's own `{"message":…,"error":"Not Found","statusCode":404}`, which is not the envelope.
 
