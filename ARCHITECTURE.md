@@ -53,7 +53,8 @@ src/
 │   └── errors/
 │       └── app-error.ts            # taxonomia: AppError + as 6 categorias
 └── main/
-    └── http.ts                     # entrypoint: valida env, abre o banco, sobe o servidor
+    ├── app.ts                      # compõe a aplicação: docs + rotas + deps, SEM escutar
+    └── http.ts                     # entrypoint: sobe o servidor e trata shutdown
 
 tests/
 └── integration/
@@ -65,10 +66,30 @@ Futuramente, o logger. Quando existirem módulos, `src/modules/<m>/infra/` será
 infra **daquele domínio**. Se você não consegue dizer de qual módulo uma peça é,
 ela é global.
 
+`src/main/` é o **composition root** — o único lugar autorizado a conhecer o
+concreto de todos os módulos. Os entrypoints moram aqui (`http.ts` hoje;
+`worker.ts` e `cron.ts` quando existirem) porque é aqui que o grafo é montado.
+`app.ts` compõe a aplicação HTTP e devolve; quem abre porta é o entrypoint.
+
+> `main/` não é "a pasta dos entrypoints". A regra de fronteira classifica
+> `src/main/**` inteiro como `composition`, e é isso que permite a `app.ts`
+> instanciar o banco e registrar rotas sem violar nada.
+
 **Divisão de responsabilidade que já vale:** `infra/http/server.ts` constrói e
 configura a instância Fastify e a devolve **sem nenhuma rota**. Quem registra
-rotas, prefixos e plugins é `main/http.ts`. Essa linha é o que permite ao servidor
+rotas, prefixos e plugins é `main/app.ts`. Essa linha é o que permite ao servidor
 ser montado num teste sem arrastar o roteamento inteiro junto.
+
+**E há uma segunda linha, entre compor e escutar.** `main/app.ts` devolve a
+aplicação inteira — docs, rotas e dependências — **sem abrir porta**;
+`main/http.ts` só chama `listen` e trata os sinais. Sem esse corte, montar o app
+completo num teste exigiria subir servidor, e cada suíte acabaria remontando a
+aplicação à mão — duas listas de registro para manter iguais, e um hook global
+que existe em produção e falta no teste passa despercebido, com a suíte verde.
+
+A conexão do banco é criada dentro do `buildApp`, que registra um hook `onClose`
+fechando o pool. Assim `app.close()` é o único teardown: nem o entrypoint nem os
+testes encerram conexão na mão.
 
 ---
 
@@ -81,13 +102,17 @@ Não há path alias. O projeto usa **subpath imports do Node**, declarados em
 "imports": {
   "#modules/*": { "development": "./src/modules/*.ts", "default": "./dist/modules/*.js" },
   "#shared/*":  { "development": "./src/shared/*.ts",  "default": "./dist/shared/*.js"  },
-  "#infra/*":   { "development": "./src/infra/*.ts",   "default": "./dist/infra/*.js"   }
+  "#infra/*":   { "development": "./src/infra/*.ts",   "default": "./dist/infra/*.js"   },
+  "#main/*":    { "development": "./src/main/*.ts",    "default": "./dist/main/*.js"    }
 }
 ```
 
-Os três namespaces estão declarados; só `#infra/*` tem conteúdo hoje. Os outros
-dois ficam de pé para que criar o primeiro módulo não exija mexer no
-`package.json`.
+`#infra/*`, `#shared/*` e `#main/*` têm conteúdo. `#modules/*` fica de pé para
+que criar o primeiro módulo não exija mexer no `package.json`.
+
+`#main/*` existe porque a suíte de integração, que mora em `tests/`, precisa
+alcançar `buildApp` — e a regra abaixo proíbe caminho relativo entre diretórios
+de topo.
 
 **Duas regras, sem exceção:**
 
@@ -152,7 +177,7 @@ injetada tipada, esquecer o merge vira erro de compilação.
 |---|---|
 | `buildServer(env)` — a config chega injetada | `process.env.X` fora de `env.ts` |
 | Toda env numérica com `.int().positive()` | `z.coerce.number()` cru — `PORT=` vira **`0`** em silêncio |
-| Registrar rotas em `main/http.ts` | Registrar rotas dentro de `server.ts` |
+| Registrar rotas em `main/app.ts` | Registrar rotas dentro de `server.ts` |
 | `import '#infra/http/server'` | `import '../../infra/http/server.js'` |
 | Logar campo escolhido | Logar objeto de request ou entidade inteira |
 | Dependência em versão exata | `^` ou `~` em qualquer dependência |
@@ -407,7 +432,7 @@ correlação em silêncio.
 ### Onde tudo isso é registrado
 
 Error handler, not-found handler e o hook do ALS ficam em **`buildServer`**, não
-em `main/http.ts`. A regra "`server.ts` não registra rotas" continua valendo:
+em `main/app.ts`. A regra "`server.ts` não registra rotas" continua valendo:
 isto é configuração da instância, não roteamento. O efeito é que todo servidor
 montado num teste já herda o contrato de erro inteiro.
 
