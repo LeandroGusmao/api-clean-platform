@@ -349,33 +349,44 @@ código do framework faria o nome dele virar contrato público, e distinguir 413
     "message": "Invalid payload",
     "details": [
       { "field": "email",    "code": "INVALID_FORMAT" },
-      { "field": "password", "code": "TOO_SHORT" }
+      { "field": "password", "code": "TOO_SMALL" }
     ],
     "traceId": "6eedbea3-…"
   }
 }
 ```
 
-Os códigos do `details` **não são os do Zod** — o Zod emite `invalid_format` e
-`too_small`; o contrato publica `INVALID_FORMAT` e `TOO_SHORT`. A tradução mora
-em `infra/http/validation-issues.ts` e é normativa: sem ela, cada app derivado
-publicaria um contrato de validação diferente.
+O `code` do `details` é **o código do issue do Zod em maiúsculo**, sem tabela de
+tradução:
 
-| issue do Zod | condição | `code` |
-|---|---|---|
-| `invalid_type` | — | `INVALID_TYPE` |
-| `too_small` | `origin` string/array | `TOO_SHORT` |
-| `too_small` | `origin` number/date | `TOO_SMALL` |
-| `too_big` | `origin` string/array | `TOO_LONG` |
-| `too_big` | `origin` number/date | `TOO_LARGE` |
-| `invalid_format` | — | `INVALID_FORMAT` |
-| `not_multiple_of` | — | `NOT_MULTIPLE_OF` |
-| `unrecognized_keys` | — | `UNRECOGNIZED_KEYS` |
-| qualquer outro | — | `INVALID_VALUE` |
+| issue do Zod | `code` publicado |
+|---|---|
+| `invalid_type` | `INVALID_TYPE` |
+| `too_small` | `TOO_SMALL` |
+| `too_big` | `TOO_BIG` |
+| `invalid_format` | `INVALID_FORMAT` |
+| `not_multiple_of` | `NOT_MULTIPLE_OF` |
+| `unrecognized_keys` | `UNRECOGNIZED_KEYS` |
+| `invalid_value` | `INVALID_VALUE` |
+| `custom`, `invalid_union`, `invalid_key`, `invalid_element` | `INVALID_VALUE` |
 
-O fallback existe para que uma versão nova do Zod não coloque `undefined` num
-contrato público. `field` é omitido quando o issue aponta para o corpo inteiro em
-vez de um campo — é o caso de `unrecognized_keys`.
+**Por que não há tabela.** Ela seria uma função identidade escrita à mão: medido
+com um payload real, 8 dos 11 casos saíam idênticos ao `toUpperCase()`. Os três
+que diferiam eram os que liam `params.origin` — interno do Zod, e o único campo
+que o próprio Zod declara aberto (`(string & {})`).
+
+A lista de quatro que colapsam para `INVALID_VALUE` **não é tradução, é
+exclusão**: esses códigos descrevem como o schema foi composto, não o que há de
+errado com o dado. `custom` conta ao cliente que existe um `.refine()`.
+
+**O que protege o contrato** é o teste de vocabulário em `error-handler.spec.ts`,
+que passa um payload inválido pelo Zod real e fixa todos os códigos publicados.
+Uma tabela com `default` faria o contrário: um code renomeado pelo Zod viraria
+`INVALID_VALUE` em silêncio, com a suíte verde, porque os fixtures do teste
+continuariam usando a string antiga.
+
+`field` é omitido quando o issue aponta para o corpo inteiro em vez de um campo —
+é o caso de `unrecognized_keys`.
 
 ### `traceId`: o mesmo no log e no corpo
 

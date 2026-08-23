@@ -1,30 +1,19 @@
 import type { FastifySchemaValidationError } from 'fastify'
 
-/** Issue codes as Zod 4 emits them. */
-const ZOD_INVALID_TYPE = 'invalid_type'
-const ZOD_TOO_SMALL = 'too_small'
-const ZOD_TOO_BIG = 'too_big'
-const ZOD_INVALID_FORMAT = 'invalid_format'
-const ZOD_NOT_MULTIPLE_OF = 'not_multiple_of'
-const ZOD_UNRECOGNIZED_KEYS = 'unrecognized_keys'
+const INVALID_VALUE_CODE = 'INVALID_VALUE'
 
 /**
- * Codes as the API publishes them. They are NOT the Zod codes: the client
- * branches on these, so they are ours to keep stable across Zod upgrades.
+ * Zod issue codes that describe how the schema is composed rather than what is
+ * wrong with the data. `custom` leaks that a `.refine()` exists, `invalid_union`
+ * that a `z.union()` does — neither means anything to a client, so they are not
+ * published.
  */
-export const INVALID_TYPE_CODE = 'INVALID_TYPE'
-export const TOO_SHORT_CODE = 'TOO_SHORT'
-export const TOO_SMALL_CODE = 'TOO_SMALL'
-export const TOO_LONG_CODE = 'TOO_LONG'
-export const TOO_LARGE_CODE = 'TOO_LARGE'
-export const INVALID_FORMAT_CODE = 'INVALID_FORMAT'
-export const NOT_MULTIPLE_OF_CODE = 'NOT_MULTIPLE_OF'
-export const UNRECOGNIZED_KEYS_CODE = 'UNRECOGNIZED_KEYS'
-export const INVALID_VALUE_CODE = 'INVALID_VALUE'
-
-const ORIGIN_PARAM = 'origin'
-/** Origins whose size is a length, so "too small" reads as "too short". */
-const LENGTH_ORIGINS = new Set(['string', 'array', 'set', 'file'])
+const SCHEMA_INTERNAL_CODES = new Set([
+  'custom',
+  'invalid_union',
+  'invalid_key',
+  'invalid_element',
+])
 
 const PATH_SEPARATOR = '/'
 const FIELD_SEPARATOR = '.'
@@ -41,31 +30,19 @@ function toFieldPath(instancePath: string): string {
     .join(FIELD_SEPARATOR)
 }
 
-function hasLengthOrigin(params: Record<string, unknown>): boolean {
-  const origin = params[ORIGIN_PARAM]
-  return typeof origin === 'string' && LENGTH_ORIGINS.has(origin)
-}
-
+/**
+ * The published code is Zod's own issue code, upper-cased — not a translation
+ * table. A table would be an identity function written by hand, and its
+ * fallback would quietly turn "Zod renamed a code" into INVALID_VALUE.
+ *
+ * What guards the contract instead is the vocabulary test in
+ * `error-handler.spec.ts`: it drives a real payload through real Zod and pins
+ * every code, so an upgrade that renames an issue fails loudly.
+ */
 function toContractCode(issue: FastifySchemaValidationError): string {
-  switch (issue.keyword) {
-    case ZOD_INVALID_TYPE:
-      return INVALID_TYPE_CODE
-    case ZOD_TOO_SMALL:
-      return hasLengthOrigin(issue.params) ? TOO_SHORT_CODE : TOO_SMALL_CODE
-    case ZOD_TOO_BIG:
-      return hasLengthOrigin(issue.params) ? TOO_LONG_CODE : TOO_LARGE_CODE
-    case ZOD_INVALID_FORMAT:
-      return INVALID_FORMAT_CODE
-    case ZOD_NOT_MULTIPLE_OF:
-      return NOT_MULTIPLE_OF_CODE
-    case ZOD_UNRECOGNIZED_KEYS:
-      return UNRECOGNIZED_KEYS_CODE
-    default:
-      // Anything unnamed above — `custom`, and whatever a future Zod adds —
-      // becomes INVALID_VALUE. Without this, a Zod upgrade could put
-      // `undefined` into a public contract.
-      return INVALID_VALUE_CODE
-  }
+  return SCHEMA_INTERNAL_CODES.has(issue.keyword)
+    ? INVALID_VALUE_CODE
+    : issue.keyword.toUpperCase()
 }
 
 export function toValidationDetails(

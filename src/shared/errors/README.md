@@ -132,7 +132,7 @@ flowchart TD
     "message": "Invalid payload",
     "details": [
       { "field": "email",    "code": "INVALID_FORMAT" },
-      { "field": "password", "code": "TOO_SHORT" }
+      { "field": "password", "code": "TOO_SMALL" }
     ],
     "traceId": "6eedbea3-43fd-4f2a-a41b-3a39336b0268"
   }

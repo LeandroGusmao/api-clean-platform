@@ -14,6 +14,7 @@ import {
 import { errorResponseSchema } from '#infra/http/error-response'
 import { DOCS_ROUTE_PREFIX, registerOpenApi } from '#infra/http/openapi'
 import { buildServer } from '#infra/http/server'
+import type { ValidationDetail } from '#infra/http/validation-issues'
 import {
   AppError,
   BusinessRuleError,
@@ -68,7 +69,7 @@ const VALIDATION_ERROR_MESSAGE = 'Invalid payload'
 const EMAIL_FIELD = 'email'
 const PASSWORD_FIELD = 'password'
 const INVALID_FORMAT_CODE = 'INVALID_FORMAT'
-const TOO_SHORT_CODE = 'TOO_SHORT'
+const TOO_SMALL_CODE = 'TOO_SMALL'
 
 const UNKNOWN_PATH = '/definitely-not-a-route'
 // Fastify ships parsers for `application/json` AND `text/plain`, so neither is
@@ -294,7 +295,7 @@ describe('error handler — validation', () => {
         message: VALIDATION_ERROR_MESSAGE,
         details: [
           { field: EMAIL_FIELD, code: INVALID_FORMAT_CODE },
-          { field: PASSWORD_FIELD, code: TOO_SHORT_CODE },
+          { field: PASSWORD_FIELD, code: TOO_SMALL_CODE },
         ],
         traceId: expect.stringMatching(UUID_PATTERN),
       },
@@ -372,5 +373,84 @@ describe('error handler — framework errors', () => {
     const response = await app.inject({ method: GET_METHOD, url: DOCS_JSON_PATH })
 
     expect(response.statusCode).toBe(OK_STATUS)
+  })
+})
+
+describe('validation vocabulary', () => {
+  // This is the guard the translation table used to pretend to be. It drives a
+  // real payload through real Zod and pins every code the API publishes, so a
+  // Zod upgrade that renames an issue turns the suite red instead of silently
+  // changing a public contract.
+  const VOCABULARY_PATH = '/probe/vocabulary'
+  const ROOT_FIELD = '(body)'
+  const MIN_AGE = 18
+  const MIN_TAGS = 1
+  const MAX_BIO_LENGTH = 10
+  const QUANTITY_STEP = 5
+  const SLUG_PREFIX = 'x'
+  const SLUG_MESSAGE = 'must start with the slug prefix'
+
+  const vocabularySchema = z
+    .object({
+      email: z.email(),
+      password: z.string().min(MIN_PASSWORD_LENGTH),
+      age: z.number().min(MIN_AGE),
+      role: z.enum(['admin', 'member']),
+      tags: z.array(z.string()).min(MIN_TAGS),
+      bio: z.string().max(MAX_BIO_LENGTH),
+      qty: z.number().multipleOf(QUANTITY_STEP),
+      slug: z.string().refine((value) => value.startsWith(SLUG_PREFIX), SLUG_MESSAGE),
+      either: z.union([z.number(), z.boolean()]),
+      meta: z.record(z.string(), z.number()),
+    })
+    .strict()
+
+  const invalidPayload = {
+    email: 'nope',
+    password: 'abc',
+    age: 12,
+    role: 'wizard',
+    tags: [],
+    bio: 'a bio well past the limit',
+    qty: 3,
+    slug: 'zzz',
+    either: 'neither',
+    meta: { a: 'not a number' },
+    unexpected: true,
+  }
+
+  it('publishes exactly these codes for real Zod issues', async () => {
+    const { app } = createApp()
+
+    app
+      .withTypeProvider<ZodTypeProvider>()
+      .post(VOCABULARY_PATH, { schema: { body: vocabularySchema } }, async () => ({
+        accepted: true,
+      }))
+
+    const response = await app.inject({
+      method: POST_METHOD,
+      url: VOCABULARY_PATH,
+      payload: invalidPayload,
+    })
+    const details = (response.json() as { error: { details: ValidationDetail[] } }).error
+      .details
+    const published = Object.fromEntries(
+      details.map((d) => [d.field ?? ROOT_FIELD, d.code]),
+    )
+
+    expect(published).toEqual({
+      email: 'INVALID_FORMAT',
+      password: 'TOO_SMALL',
+      age: 'TOO_SMALL',
+      role: 'INVALID_VALUE',
+      tags: 'TOO_SMALL',
+      bio: 'TOO_BIG',
+      qty: 'NOT_MULTIPLE_OF',
+      slug: 'INVALID_VALUE',
+      either: 'INVALID_VALUE',
+      'meta.a': 'INVALID_TYPE',
+      [ROOT_FIELD]: 'UNRECOGNIZED_KEYS',
+    })
   })
 })

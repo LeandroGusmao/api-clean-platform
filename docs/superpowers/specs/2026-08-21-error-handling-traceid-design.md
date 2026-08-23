@@ -119,6 +119,9 @@ Conforme a decisão 13, sem alteração de formato:
 }
 ```
 
+> ⚠️ `TOO_SHORT` deixou de existir na revisão de 2026-08-23 — hoje esse campo sai
+> como `TOO_SMALL`. Ver a nota no §8.
+
 O schema Zod desse envelope é a fonte única de três coisas: o tipo do que o handler envia, a documentação OpenAPI, e o exemplo do `ARCHITECTURE.md`.
 
 `field` é omitido quando o issue não aponta para campo nenhum (path vazio — o corpo inteiro está errado).
@@ -231,6 +234,32 @@ O argumento que decide: distinguir 413 de 415 é o que o **status HTTP já faz**
 
 ## 8. Tabela normativa — issue do Zod → `code` do contrato
 
+> ⚠️ **Revisado em 2026-08-23, durante a implementação. A tabela abaixo não é mais
+> o que o código faz** — ela fica registrada porque foi o que se decidiu aqui.
+> A fonte da verdade hoje é o `ARCHITECTURE.md` §8.
+>
+> **O que passou a valer:** o `code` publicado é o código do issue do Zod em
+> maiúsculo (`too_small` → `TOO_SMALL`), sem tabela. Quatro códigos que descrevem
+> a composição do schema em vez do dado — `custom`, `invalid_union`,
+> `invalid_key`, `invalid_element` — são colapsados em `INVALID_VALUE`. Isso é
+> uma lista de exclusão, não uma tradução.
+>
+> **Por quê.** Medido com um payload real de 11 erros: **8 dos 11 casos já saíam
+> idênticos** a um `toUpperCase()`. Os 3 que diferiam eram justamente os que liam
+> `params.origin` — interno do Zod, e o único campo que o próprio Zod declara
+> aberto (`(string & {})`). A tabela era, na prática, uma função identidade
+> escrita à mão sobre o ponto mais frágil da integração.
+>
+> **E o `default` era pior que inútil.** Ele transformava "o Zod renomeou um
+> código" em `INVALID_VALUE` silenciosamente, com a suíte verde — porque os
+> fixtures do teste continuariam usando a string antiga. Os testes de fixture
+> fixavam a minha suposição sobre o Zod, não o comportamento dele. Quem protege o
+> contrato agora é um teste e2e que atravessa o Zod real e trava os 11 códigos
+> publicados: um upgrade que renomeie qualquer issue deixa a suíte vermelha.
+>
+> **Efeito no contrato:** `TOO_SHORT`, `TOO_LONG` e `TOO_LARGE` deixaram de
+> existir; viraram `TOO_SMALL` e `TOO_BIG`. Nada havia sido publicado ainda.
+
 `instancePath` (`/items/0/email`) vira `field` (`items.0.email`); path vazio omite o campo.
 
 | issue do Zod | condição | `code` do contrato |
@@ -280,7 +309,7 @@ Sondas descartáveis, rodadas contra as versões instaladas. Nenhuma delas tocou
 |---|---|
 | `abstract new (...args: never[]) => AppError` é aceito à direita de `instanceof` (§7) | ✅ compila limpo sob a strictness do projeto — sem `as`, sem `any` |
 | `setErrorHandler` roda dentro do escopo aberto pelo hook `onRequest` (§6) | ✅ `getTraceId() === request.id` em throw síncrono, em throw depois de `await` e no `setNotFoundHandler` |
-| `params.origin` distingue `string`/`array` de `number` em `too_small`/`too_big` (§8) | ✅ Zod 4.4.3 emite `origin: string \| array \| number`; a divisão TOO_SHORT/TOO_SMALL é implementável |
+| `params.origin` distingue `string`/`array` de `number` em `too_small`/`too_big` (§8) | ✅ Zod 4.4.3 emite `origin: string \| array \| number`; a divisão TOO_SHORT/TOO_SMALL é implementável — **mas foi abandonada na revisão de 2026-08-23, ver §8** |
 | `unrecognized_keys` aponta para campo? | ❌ vem com path vazio — é o caso que justifica `field` opcional no §5 |
 
 Isto elimina o risco que o design tinha: o §6 dependia inteiramente do ALS sobreviver até o error handler, e agora há evidência em vez de suposição.
