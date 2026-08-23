@@ -1,9 +1,7 @@
 import { Writable } from 'node:stream'
 import { describe, expect, it } from 'vitest'
 import { type Env, env } from '#infra/config/env'
-import { createDatabase } from '#infra/database/client'
-import { healthRoute } from '#infra/http/endpoints/health'
-import { buildServer } from '#infra/http/server'
+import { buildApp } from '#main/app'
 
 // Spelled out rather than imported from the endpoint on purpose: these values
 // ARE the wire contract. Importing them would make the assertions tautological
@@ -28,15 +26,15 @@ const silentStream = new Writable({
 })
 
 async function injectHealth(withEnv: Env) {
-  const { db, pool } = createDatabase(withEnv)
-  const app = buildServer(withEnv, { logStream: silentStream })
-  await app.register(healthRoute, { db })
+  // The same function `main/http.ts` calls: whatever gets composed there is
+  // exercised here, with no second list to keep in sync by hand.
+  const app = await buildApp(withEnv, { logStream: silentStream })
 
   try {
     return await app.inject({ method: GET_METHOD, url: HEALTH_PATH })
   } finally {
+    // Closes the database pool too, through the `onClose` hook in `buildApp`.
     await app.close()
-    await pool.end()
   }
 }
 

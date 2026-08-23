@@ -20,6 +20,10 @@
     "#infra/*": {
       "development": "./src/infra/*.ts",
       "default": "./dist/infra/*.js"
+    },
+    "#main/*": {
+      "development": "./src/main/*.ts",
+      "default": "./dist/main/*.js"
     }
   },
   "scripts": {
