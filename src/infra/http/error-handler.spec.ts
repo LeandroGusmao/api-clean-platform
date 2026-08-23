@@ -1,0 +1,376 @@
+import { Writable } from 'node:stream'
+import type { FastifyInstance, LightMyRequestResponse } from 'fastify'
+import type { ZodTypeProvider } from 'fastify-type-provider-zod'
+import { afterEach, describe, expect, it } from 'vitest'
+import { z } from 'zod'
+import {
+  DEFAULT_HOST,
+  DEFAULT_LOG_LEVEL,
+  DEFAULT_PORT,
+  type Env,
+  NODE_ENV_DEVELOPMENT,
+  NODE_ENV_TEST,
+} from '#infra/config/env'
+import { errorResponseSchema } from '#infra/http/error-response'
+import { DOCS_ROUTE_PREFIX, registerOpenApi } from '#infra/http/openapi'
+import { buildServer } from '#infra/http/server'
+import {
+  AppError,
+  BusinessRuleError,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  UnauthorizedError,
+  ValidationError,
+} from '#shared/errors/app-error'
+
+// Duplicated from server.spec.ts on purpose: it is a fixture, not a shared
+// constant, and it is built from the same exported defaults, so the values
+// cannot drift. Extract it to a fixture module when a third spec needs it.
+const TEST_DATABASE_URL = 'postgres://user:pass@localhost:5432/app'
+const testEnv: Env = {
+  NODE_ENV: NODE_ENV_TEST,
+  HOST: DEFAULT_HOST,
+  PORT: DEFAULT_PORT,
+  LOG_LEVEL: DEFAULT_LOG_LEVEL,
+  DATABASE_URL: TEST_DATABASE_URL,
+}
+
+const THROW_PATH = '/probe/throw'
+const GET_METHOD = 'GET'
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+const PROBE_ERROR_CODE = 'PROBE_ERROR'
+const PROBE_ERROR_MESSAGE = 'Probe failed'
+/** Stands in for anything a driver might put in an error: never client-visible. */
+const INTERNAL_DETAIL = 'connection to 10.0.0.5:5432 refused'
+
+// Wire contract — spelled out rather than imported, so a rename of the
+// constants cannot keep this suite green while breaking every client.
+const BAD_REQUEST_STATUS = 400
+const UNAUTHORIZED_STATUS = 401
+const FORBIDDEN_STATUS = 403
+const NOT_FOUND_STATUS = 404
+const CONFLICT_STATUS = 409
+const UNPROCESSABLE_ENTITY_STATUS = 422
+const INTERNAL_SERVER_ERROR_STATUS = 500
+const INTERNAL_ERROR_CODE = 'INTERNAL_SERVER_ERROR'
+const INTERNAL_ERROR_MESSAGE = 'Internal server error'
+
+const VALIDATE_PATH = '/probe/validate'
+const POST_METHOD = 'POST'
+const MIN_PASSWORD_LENGTH = 8
+const INVALID_EMAIL = 'not-an-email'
+const SHORT_PASSWORD = 'abc'
+
+const VALIDATION_ERROR_CODE = 'VALIDATION_ERROR'
+const VALIDATION_ERROR_MESSAGE = 'Invalid payload'
+const EMAIL_FIELD = 'email'
+const PASSWORD_FIELD = 'password'
+const INVALID_FORMAT_CODE = 'INVALID_FORMAT'
+const TOO_SHORT_CODE = 'TOO_SHORT'
+
+const UNKNOWN_PATH = '/definitely-not-a-route'
+// Fastify ships parsers for `application/json` AND `text/plain`, so neither is
+// unsupported. XML has none, which is what makes it raise the 415.
+const UNSUPPORTED_CONTENT_TYPE = 'application/xml'
+const CONTENT_TYPE_HEADER = 'content-type'
+const UNSUPPORTED_PAYLOAD = '<request/>'
+const UNSUPPORTED_MEDIA_TYPE_STATUS = 415
+const SERVICE_UNAVAILABLE_STATUS = 503
+const OK_STATUS = 200
+const DOCS_JSON_PATH = `${DOCS_ROUTE_PREFIX}/json`
+
+const BAD_REQUEST_CODE = 'BAD_REQUEST'
+const ROUTE_NOT_FOUND_CODE = 'ROUTE_NOT_FOUND'
+const ROUTE_NOT_FOUND_MESSAGE = 'Route not found'
+
+class ProbeNotFoundError extends NotFoundError {
+  readonly code = PROBE_ERROR_CODE
+  constructor() {
+    super(PROBE_ERROR_MESSAGE)
+  }
+}
+class ProbeConflictError extends ConflictError {
+  readonly code = PROBE_ERROR_CODE
+  constructor() {
+    super(PROBE_ERROR_MESSAGE)
+  }
+}
+class ProbeUnauthorizedError extends UnauthorizedError {
+  readonly code = PROBE_ERROR_CODE
+  constructor() {
+    super(PROBE_ERROR_MESSAGE)
+  }
+}
+class ProbeForbiddenError extends ForbiddenError {
+  readonly code = PROBE_ERROR_CODE
+  constructor() {
+    super(PROBE_ERROR_MESSAGE)
+  }
+}
+class ProbeValidationError extends ValidationError {
+  readonly code = PROBE_ERROR_CODE
+  constructor() {
+    super(PROBE_ERROR_MESSAGE)
+  }
+}
+class ProbeBusinessRuleError extends BusinessRuleError {
+  readonly code = PROBE_ERROR_CODE
+  constructor() {
+    super(PROBE_ERROR_MESSAGE)
+  }
+}
+/** Extends the base directly, skipping the taxonomy: a programming mistake. */
+class RogueAppError extends AppError {
+  readonly code = PROBE_ERROR_CODE
+  constructor() {
+    super(INTERNAL_DETAIL)
+  }
+}
+
+const openApps: FastifyInstance[] = []
+
+afterEach(async () => {
+  await Promise.all(openApps.splice(0).map((app) => app.close()))
+})
+
+/** A server whose log is captured instead of printed. Closed in `afterEach`. */
+function createApp(): { app: FastifyInstance; lines: string[] } {
+  const lines: string[] = []
+  const stream = new Writable({
+    write(chunk, _encoding, callback) {
+      lines.push(String(chunk))
+      callback()
+    },
+  })
+  const app = buildServer(testEnv, { logStream: stream })
+  openApps.push(app)
+
+  return { app, lines }
+}
+
+async function injectThrow(error: unknown): Promise<{
+  statusCode: number
+  body: string
+  json: () => unknown
+  log: string
+}> {
+  const { app, lines } = createApp()
+
+  app.get(THROW_PATH, async () => {
+    throw error
+  })
+
+  const response = await app.inject({ method: GET_METHOD, url: THROW_PATH })
+
+  return {
+    statusCode: response.statusCode,
+    body: response.body,
+    json: () => response.json(),
+    log: lines.join(''),
+  }
+}
+
+describe('error handler — taxonomy', () => {
+  // Status before factory so the `%i` in the test name picks the status up.
+  const STATUS_TABLE: ReadonlyArray<[string, number, () => AppError]> = [
+    ['NotFoundError', NOT_FOUND_STATUS, () => new ProbeNotFoundError()],
+    ['ConflictError', CONFLICT_STATUS, () => new ProbeConflictError()],
+    ['UnauthorizedError', UNAUTHORIZED_STATUS, () => new ProbeUnauthorizedError()],
+    ['ForbiddenError', FORBIDDEN_STATUS, () => new ProbeForbiddenError()],
+    ['ValidationError', BAD_REQUEST_STATUS, () => new ProbeValidationError()],
+    [
+      'BusinessRuleError',
+      UNPROCESSABLE_ENTITY_STATUS,
+      () => new ProbeBusinessRuleError(),
+    ],
+  ]
+
+  it.each(STATUS_TABLE)('answers %s with %i', async (_name, expectedStatus, create) => {
+    const result = await injectThrow(create())
+
+    expect(result.statusCode).toBe(expectedStatus)
+  })
+
+  it('answers with the contract envelope', async () => {
+    const result = await injectThrow(new ProbeNotFoundError())
+
+    expect(result.json()).toEqual({
+      error: {
+        code: PROBE_ERROR_CODE,
+        message: PROBE_ERROR_MESSAGE,
+        traceId: expect.stringMatching(UUID_PATTERN),
+      },
+    })
+  })
+
+  it('produces a body that satisfies the published error schema', async () => {
+    // Keeps the handler and the schema that OpenAPI publishes from drifting
+    // apart: they are the same contract, described in two places.
+    const result = await injectThrow(new ProbeNotFoundError())
+
+    expect(errorResponseSchema.safeParse(result.json()).success).toBe(true)
+  })
+})
+
+describe('error handler — unexpected errors', () => {
+  it('answers 500 with a generic envelope', async () => {
+    const result = await injectThrow(new Error(INTERNAL_DETAIL))
+
+    expect(result.statusCode).toBe(INTERNAL_SERVER_ERROR_STATUS)
+    expect(result.json()).toEqual({
+      error: {
+        code: INTERNAL_ERROR_CODE,
+        message: INTERNAL_ERROR_MESSAGE,
+        traceId: expect.stringMatching(UUID_PATTERN),
+      },
+    })
+  })
+
+  it('never leaks the internal message to the client', async () => {
+    const result = await injectThrow(new Error(INTERNAL_DETAIL))
+
+    expect(result.body).not.toContain(INTERNAL_DETAIL)
+  })
+
+  it('records the internal message in the log', async () => {
+    const result = await injectThrow(new Error(INTERNAL_DETAIL))
+
+    expect(result.log).toContain(INTERNAL_DETAIL)
+  })
+
+  it('treats an AppError outside the six categories as unexpected', async () => {
+    const result = await injectThrow(new RogueAppError())
+
+    expect(result.statusCode).toBe(INTERNAL_SERVER_ERROR_STATUS)
+    expect(result.body).not.toContain(PROBE_ERROR_CODE)
+    expect(result.log).toContain(INTERNAL_DETAIL)
+  })
+})
+
+async function injectPayload(
+  payload: Record<string, unknown>,
+): Promise<LightMyRequestResponse> {
+  const { app } = createApp()
+
+  app.withTypeProvider<ZodTypeProvider>().post(
+    VALIDATE_PATH,
+    {
+      schema: {
+        body: z.object({
+          email: z.email(),
+          password: z.string().min(MIN_PASSWORD_LENGTH),
+        }),
+      },
+    },
+    async () => ({ accepted: true }),
+  )
+
+  // The return type is spelled out: `inject` is chainable, and TypeScript
+  // infers its call signature as an intersection that has no `json()`.
+  return await app.inject({ method: POST_METHOD, url: VALIDATE_PATH, payload })
+}
+
+describe('error handler — validation', () => {
+  it('answers 400 rather than 500 for an invalid payload', async () => {
+    const response = await injectPayload({
+      email: INVALID_EMAIL,
+      password: SHORT_PASSWORD,
+    })
+
+    expect(response.statusCode).toBe(BAD_REQUEST_STATUS)
+  })
+
+  it('reports one detail per invalid field, in the contract codes', async () => {
+    const response = await injectPayload({
+      email: INVALID_EMAIL,
+      password: SHORT_PASSWORD,
+    })
+
+    expect(response.json()).toEqual({
+      error: {
+        code: VALIDATION_ERROR_CODE,
+        message: VALIDATION_ERROR_MESSAGE,
+        details: [
+          { field: EMAIL_FIELD, code: INVALID_FORMAT_CODE },
+          { field: PASSWORD_FIELD, code: TOO_SHORT_CODE },
+        ],
+        traceId: expect.stringMatching(UUID_PATTERN),
+      },
+    })
+  })
+
+  it('produces a validation body that satisfies the published error schema', async () => {
+    const response = await injectPayload({
+      email: INVALID_EMAIL,
+      password: SHORT_PASSWORD,
+    })
+
+    expect(errorResponseSchema.safeParse(response.json()).success).toBe(true)
+  })
+})
+
+describe('error handler — framework errors', () => {
+  it('answers an unsupported content type with 415 in the envelope', async () => {
+    const { app } = createApp()
+
+    app.post(VALIDATE_PATH, async () => ({ accepted: true }))
+
+    const response = await app.inject({
+      method: POST_METHOD,
+      url: VALIDATE_PATH,
+      payload: UNSUPPORTED_PAYLOAD,
+      headers: { [CONTENT_TYPE_HEADER]: UNSUPPORTED_CONTENT_TYPE },
+    })
+
+    expect(response.statusCode).toBe(UNSUPPORTED_MEDIA_TYPE_STATUS)
+    expect(response.json()).toMatchObject({
+      error: {
+        code: BAD_REQUEST_CODE,
+        traceId: expect.stringMatching(UUID_PATTERN),
+      },
+    })
+  })
+
+  it('does not pass through a 5xx raised by the framework', async () => {
+    const frameworkError = Object.assign(new Error(INTERNAL_DETAIL), {
+      statusCode: SERVICE_UNAVAILABLE_STATUS,
+    })
+
+    const result = await injectThrow(frameworkError)
+
+    expect(result.statusCode).toBe(INTERNAL_SERVER_ERROR_STATUS)
+    expect(result.body).not.toContain(INTERNAL_DETAIL)
+  })
+
+  it('answers an unregistered route with the envelope, not the Fastify default shape', async () => {
+    const { app } = createApp()
+
+    const response = await app.inject({ method: GET_METHOD, url: UNKNOWN_PATH })
+
+    expect(response.statusCode).toBe(NOT_FOUND_STATUS)
+    expect(response.json()).toEqual({
+      error: {
+        code: ROUTE_NOT_FOUND_CODE,
+        message: ROUTE_NOT_FOUND_MESSAGE,
+        traceId: expect.stringMatching(UUID_PATTERN),
+      },
+    })
+  })
+
+  it('leaves the OpenAPI document reachable', async () => {
+    // The one open question from the design spec: a custom not-found handler
+    // installed on the root instance could plausibly shadow the docs routes.
+    const developmentEnv: Env = { ...testEnv, NODE_ENV: NODE_ENV_DEVELOPMENT }
+    const { app } = createApp()
+
+    await registerOpenApi(app, developmentEnv)
+    app.post(VALIDATE_PATH, async () => ({ accepted: true }))
+    await app.ready()
+
+    const response = await app.inject({ method: GET_METHOD, url: DOCS_JSON_PATH })
+
+    expect(response.statusCode).toBe(OK_STATUS)
+  })
+})

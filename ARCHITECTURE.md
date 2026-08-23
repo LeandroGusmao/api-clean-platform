@@ -1,7 +1,7 @@
 # Arquitetura
 
 Documentação do que **existe neste repositório**. Nada aqui é plano ou intenção —
-se está escrito, está construído e verificável rodando os comandos da §9.
+se está escrito, está construído e verificável rodando os comandos da §10.
 
 Este é o único documento de arquitetura versionado. O material de referência em
 `docs/` é rascunho local, fora do git — nada depende dele.
@@ -17,8 +17,10 @@ Este é o único documento de arquitetura versionado. O material de referência 
 "Mundo externo" é banco, HTTP, rede, arquivo, variável de ambiente, relógio e
 aleatoriedade. Tudo isso entra por contrato e é implementado em `infra/`.
 
-Ainda não há código puro no repositório — existe `infra/` e existe `main/`. O
-princípio está aqui porque é ele que decide onde cada arquivo novo vai cair.
+O primeiro código puro do repositório é a taxonomia de erro em `src/shared/`
+(§8) — nenhum import, nenhuma menção a protocolo. O resto ainda é `infra/` e
+`main/`. O princípio está aqui porque é ele que decide onde cada arquivo novo
+vai cair.
 
 ---
 
@@ -37,11 +39,19 @@ src/
 │   ├── http/
 │   │   ├── server.ts               # instância Fastify, SEM rotas
 │   │   ├── server.spec.ts          # unitário colocado
+│   │   ├── error-handler.ts        # ÚNICO lugar que traduz erro em status HTTP
+│   │   ├── error-handler.spec.ts
+│   │   ├── error-response.ts       # schema Zod do envelope de erro
+│   │   ├── validation-issues.ts    # tradução Zod -> códigos do contrato
 │   │   ├── openapi.ts              # OpenAPI + UI dos docs (só em development)
 │   │   └── endpoints/
 │   │       └── health.ts           # GET /health — agrega os checks
 │   └── observability/
-│       └── redact-paths.ts         # paths redigidos pelo logger
+│       ├── redact-paths.ts         # paths redigidos pelo logger
+│       └── request-context.ts      # AsyncLocalStorage do traceId
+├── shared/                         # camada PURA, sem dono de módulo
+│   └── errors/
+│       └── app-error.ts            # taxonomia: AppError + as 6 categorias
 └── main/
     └── http.ts                     # entrypoint: valida env, abre o banco, sobe o servidor
 
@@ -113,7 +123,7 @@ compilação e a saída no lugar errado.
 
 **Onde cada uma mora.** `customConditions` fica no `tsconfig.json`, que vale para
 o repositório inteiro. `rootDir` e `outDir` são preocupação de quem emite, e por
-isso ficam só no `tsconfig.build.json` — ver §8.
+isso ficam só no `tsconfig.build.json` — ver §9.
 
 ---
 
@@ -163,8 +173,13 @@ Variáveis de ambiente inválidas:
 exit=1
 ```
 
-O logger é o pino que já vem no Fastify. Duas configurações merecem nota:
+O logger é o pino que já vem no Fastify. Três configurações merecem nota:
 
+- **`genReqId: () => randomUUID()`** — o padrão do Fastify é um **contador por
+  processo** (`req-1`, `req-2`). Com duas réplicas as duas emitem `req-1`, e um
+  restart reinicia a contagem: grepar um `traceId` no agregador devolveria
+  requisições sem relação entre si. É o mesmo valor que aparece no corpo de erro
+  (§8), então o `traceId` de um print do usuário grepa a linha exata do log.
 - **`logController: new LogController({ requestIdLogLabel: 'traceId' })`** — sem
   isso o Fastify loga `reqId` e o resto do sistema fala `traceId`, derrotando o
   grep único. A opção `requestIdLogLabel` de topo existe, mas está **deprecada** e
@@ -252,7 +267,142 @@ ou uma API externa, cria-se o arquivo irmão em vez de crescer o handler.
 
 ---
 
-## 8. Testes
+## 8. Erros
+
+Toda falha responde no **mesmo envelope**, com um `code` estável que o cliente
+pode ramificar:
+
+```jsonc
+{ "error": { "code": "USER_NOT_FOUND", "message": "User not found", "traceId": "6eedbea3-…" } }
+```
+
+`code` é contrato e serve de chave de i18n. **`message` não é contrato** — existe
+para log e debug, e nunca deve ser exibida crua num app traduzido, ou vira texto
+em inglês numa tela em português.
+
+### A taxonomia é semântica, não protocolar
+
+`src/shared/errors/app-error.ts` é camada pura e **não menciona HTTP**. "Não
+encontrado" e "conflito" são conceitos de aplicação: significam a mesma coisa num
+worker ou num cron, onde status code não quer dizer nada.
+
+```ts
+export abstract class AppError extends Error {
+  abstract readonly code: string
+}
+export abstract class NotFoundError extends AppError {}
+// ConflictError, UnauthorizedError, ForbiddenError, ValidationError, BusinessRuleError
+```
+
+O `code` é **declarado**, nunca derivado do nome da classe. Derivar faria o nome
+da classe virar contrato público em silêncio: um PR de renome passaria no
+typecheck, no lint e em todo teste, e quebraria o `switch (error.code)` de todo
+app em produção sem deixar rastro no diff.
+
+### O mapa não cresce
+
+`infra/http/error-handler.ts` é o **único** lugar que traduz erro em status HTTP.
+(Um endpoint declara os status das respostas dele — `health.ts` publica `200` e
+`503` — mas nenhum endpoint decide o status de uma falha.) Cem erros de domínio
+continuam caindo nestas seis linhas:
+
+| categoria | status |
+|---|---|
+| `ValidationError` | 400 |
+| `UnauthorizedError` | 401 |
+| `ForbiddenError` | 403 |
+| `NotFoundError` | 404 |
+| `ConflictError` | 409 |
+| `BusinessRuleError` | 422 |
+
+As seis são **irmãs** — todas estendem `AppError` direto. Se alguma passar a
+estender outra, o mapa começa a depender da ordem das linhas.
+
+O use case só faz `throw`; o endpoint não tem `try/catch`.
+
+### As quatro coisas que não são da taxonomia
+
+| origem | resposta | por quê |
+|---|---|---|
+| validação do Fastify/Zod | 400 `VALIDATION_ERROR` + `details[]` | chega como `Error` com `FST_ERR_VALIDATION`, não como `ValidationError` — sem esse ramo, todo payload inválido daria 500 |
+| 4xx do próprio Fastify (415, 413…) | status preservado, `code` `BAD_REQUEST` | 4xx é culpa do cliente; virar 500 encheria o log de erro interno falso |
+| rota inexistente | 404 `ROUTE_NOT_FOUND` | sem `setNotFoundHandler` o 404 sai no formato do Fastify e fura o envelope |
+| qualquer outra coisa | 500 `INTERNAL_SERVER_ERROR` | corpo genérico, **sem stack e sem mensagem de driver**; o log registra tudo |
+
+Um `AppError` que estenda a base **fora** das seis categorias também cai no
+último ramo: é erro de programação, não problema do cliente.
+
+O `code` do 4xx do Fastify é um só, e não uma tabela por `FST_ERR_*`: repassar o
+código do framework faria o nome dele virar contrato público, e distinguir 413 de
+415 é o que o status HTTP já faz.
+
+> **Cuidado ao testar o 415:** o Fastify traz parser nativo para
+> `application/json` **e** `text/plain`. Nenhum dos dois dispara 415 — foi
+> preciso um `application/xml` para o ramo aparecer.
+
+### Erro de validação carrega detalhe por campo
+
+```jsonc
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid payload",
+    "details": [
+      { "field": "email",    "code": "INVALID_FORMAT" },
+      { "field": "password", "code": "TOO_SHORT" }
+    ],
+    "traceId": "6eedbea3-…"
+  }
+}
+```
+
+Os códigos do `details` **não são os do Zod** — o Zod emite `invalid_format` e
+`too_small`; o contrato publica `INVALID_FORMAT` e `TOO_SHORT`. A tradução mora
+em `infra/http/validation-issues.ts` e é normativa: sem ela, cada app derivado
+publicaria um contrato de validação diferente.
+
+| issue do Zod | condição | `code` |
+|---|---|---|
+| `invalid_type` | — | `INVALID_TYPE` |
+| `too_small` | `origin` string/array | `TOO_SHORT` |
+| `too_small` | `origin` number/date | `TOO_SMALL` |
+| `too_big` | `origin` string/array | `TOO_LONG` |
+| `too_big` | `origin` number/date | `TOO_LARGE` |
+| `invalid_format` | — | `INVALID_FORMAT` |
+| `not_multiple_of` | — | `NOT_MULTIPLE_OF` |
+| `unrecognized_keys` | — | `UNRECOGNIZED_KEYS` |
+| qualquer outro | — | `INVALID_VALUE` |
+
+O fallback existe para que uma versão nova do Zod não coloque `undefined` num
+contrato público. `field` é omitido quando o issue aponta para o corpo inteiro em
+vez de um campo — é o caso de `unrecognized_keys`.
+
+### `traceId`: o mesmo no log e no corpo
+
+`infra/observability/request-context.ts` isola um `AsyncLocalStorage` em três
+funções. Um hook `onRequest` abre o escopo com o `request.id`, e tudo a jusante
+— rotas, hooks, error handler e not-found handler — lê o mesmo valor sem receber
+parâmetro nenhum.
+
+O caminho explícito (`ctx` em toda assinatura) foi descartado por ser viral:
+contamina até a assinatura dos repositórios, e esquecer de repassar quebra a
+correlação em silêncio.
+
+> Hoje o error handler poderia usar `request.id` direto — o ALS ainda não tem
+> consumidor fora do fluxo de request. Ele existe assim mesmo porque num
+> boilerplate o que não entra hoje não chega aos apps já derivados, e porque é
+> ele que mantém a migração para OpenTelemetry como troca de **um arquivo**.
+
+### Onde tudo isso é registrado
+
+Error handler, not-found handler e o hook do ALS ficam em **`buildServer`**, não
+em `main/http.ts`. A regra "`server.ts` não registra rotas" continua valendo:
+isto é configuração da instância, não roteamento. O efeito é que todo servidor
+montado num teste já herda o contrato de erro inteiro.
+
+---
+
+## 9. Testes
 
 **Vitest**, um runner para as duas pistas — a separação é por *project*, não por
 ferramenta:
@@ -291,13 +441,18 @@ O que a suíte cobre hoje: os casos "não legal" do §4 dentro de `parseEnv`, a
 redação do §5 — inclusive a limitação de um nível só, que fica documentada como
 teste — e `GET /health` respondendo `200` e `503` contra Postgres real.
 
+Soma-se a isso o contrato de erro do §8 inteiro: as seis categorias mapeadas uma
+a uma, a tabela de tradução do Zod linha a linha, e a garantia de não-vazamento
+— um erro inesperado responde genérico e a mensagem interna aparece **só** no
+log.
+
 **Ainda não há helper de migration nem `TRUNCATE` para a suíte**, porque não há
 tabela. O `tmpfs` do `postgres-test` já entrega o reset: parar o container zera o
 cluster.
 
 ---
 
-## 9. Comandos
+## 10. Comandos
 
 ```bash
 pnpm dev               # tsx + watch, resolve # para src/
@@ -320,7 +475,7 @@ responde **404**, e isso é o esperado.
 
 ---
 
-## 10. Versões
+## 11. Versões
 
 **Toda dependência é pinada em versão exata. Nenhum `^`, nenhum `~`** — nem em
 `dependencies`, nem em `devDependencies`. Num boilerplate copiado N vezes, caret
@@ -358,7 +513,7 @@ Sozinho, `engines` só **avisa** e sai com exit 0. É o `engineStrict` no
 
 ---
 
-## 11. Decisões travadas
+## 12. Decisões travadas
 
 **TypeScript pinado em `7.0.2` exato, sem caret.** O TS 7 é o port em Go e mudou o
 `exports` do pacote: a raiz passou a exportar só a versão, e a API do compilador
@@ -390,9 +545,8 @@ do mesmo pacote.
 
 ---
 
-## 12. O que ainda não existe
+## 13. O que ainda não existe
 
 Listado para não ser confundido com omissão, sem detalhar o que não foi construído:
 
-módulos e camada pura · regra de fronteira no lint · error handler e taxonomia de
-erro · `traceId` por `AsyncLocalStorage` · migrations · Docker · CI
+módulos de negócio · regra de fronteira no lint · migrations · Docker · CI

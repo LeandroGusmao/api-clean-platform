@@ -686,7 +686,7 @@ export function toValidationDetails(
 pnpm exec vitest run --project unit src/infra/http/validation-issues.spec.ts
 ```
 
-Expected: PASS — 16 tests (12 table rows + 4 named cases).
+Expected: PASS — 15 tests (12 table rows + 3 named cases).
 
 - [ ] **Step 5: Verify the whole suite**
 
@@ -694,7 +694,7 @@ Expected: PASS — 16 tests (12 table rows + 4 named cases).
 pnpm lint:fix && pnpm typecheck && pnpm test
 ```
 
-Expected: 32 tests green.
+Expected: 31 tests green.
 
 - [ ] **Step 6: Commit**
 
@@ -1106,7 +1106,7 @@ Expected: PASS — 12 tests (6 table rows + 2 envelope + 4 unexpected).
 pnpm lint:fix && pnpm typecheck && pnpm test
 ```
 
-Expected: 44 tests green. In particular `tests/integration/health.spec.ts` must stay green: `/health` returns its 503 by `reply.status(...).send(...)` rather than by throwing, so the new handler does not intercept it.
+Expected: 43 tests green. In particular `tests/integration/health.spec.ts` must stay green: `/health` returns its 503 by `reply.status(...).send(...)` rather than by throwing, so the new handler does not intercept it.
 
 - [ ] **Step 8: Commit**
 
@@ -1287,7 +1287,7 @@ Expected: PASS — 15 tests.
 pnpm lint:fix && pnpm typecheck && pnpm test
 ```
 
-Expected: 47 tests green.
+Expected: 46 tests green.
 
 - [ ] **Step 7: Commit**
 
@@ -1500,7 +1500,7 @@ Expected: PASS — 19 tests.
 pnpm lint:fix && pnpm typecheck && pnpm test
 ```
 
-Expected: 51 tests green.
+Expected: 50 tests green.
 
 - [ ] **Step 7: Verify the running server end to end**
 
@@ -1781,7 +1781,7 @@ pnpm lint:fix && pnpm typecheck && pnpm test
 grep -n '^## ' ARCHITECTURE.md
 ```
 
-Expected: 51 tests green, and the section headings numbered 1 through 13 with no gap and no repeat. Re-read the new §8 against the code as it was actually written — if any of it describes something that is not there, the code is right and the document is wrong.
+Expected: 50 tests green, and the section headings numbered 1 through 13 with no gap and no repeat. Re-read the new §8 against the code as it was actually written — if any of it describes something that is not there, the code is right and the document is wrong.
 
 - [ ] **Step 10: Commit**
 
