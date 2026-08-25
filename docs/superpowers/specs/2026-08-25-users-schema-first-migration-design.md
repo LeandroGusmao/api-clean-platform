@@ -21,9 +21,11 @@ Esta fatia existe para exercê-lo com o menor artefato possível, isolando
   arquivo sob `src/modules/`.
 - A migration `0000` gerada e commitada.
 - Um `globalSetup` do Vitest aplicando migrations no banco de teste antes da
-  suíte de integração (ver §6).
+  suíte de integração (ver §7).
 - Um teste de integração que prova a migration.
-- Uma exceção na `CLAUDE.md` para nomes em arquivo de schema (ver §5).
+- Uma exceção na `CLAUDE.md` para nomes em arquivo de schema (ver §6).
+- A regra de posse de tabela e de foreign key entre módulos, registrada antes de
+  existir um segundo módulo para exercê-la (ver §5).
 
 **Não entra:**
 
@@ -31,8 +33,8 @@ Esta fatia existe para exercê-lo com o menor artefato possível, isolando
   `DrizzleUsersRepository`, use case, endpoint.
 - `container.ts` e `config.ts` do módulo (decisões 08, 23, 14).
 - `IClock` e `IIdGenerator` (decisão 21) — esta fatia apenas **assume** que
-  existirão e desenha o schema de acordo (ver §4).
-- A tabela `refresh_tokens` (ver §7).
+  existirão e desenha o schema de acordo (ver §3).
+- A tabela `refresh_tokens` (ver §8).
 - Regra de fronteira no lint — depende de haver mais de um módulo para
   significar algo.
 
@@ -156,7 +158,61 @@ Escolhas, com motivo:
   explícito — só preenche quando a coluna está ausente do `set`. Convive com o
   `IClock` sem criar fonte concorrente.
 
-## 5. Exceção de nomes na `CLAUDE.md`
+## 5. Posse de tabela e foreign key entre módulos
+
+O schema mora **dentro do módulo**, como o glob da decisão 06 e o §2 do
+`STRUCTURE.md` já previam. Isso não é neutro, e a consequência precisa estar
+escrita antes de existir um segundo módulo.
+
+### A regra, derivada da fronteira
+
+O `STRUCTURE.md` §4, linha 3, permite que `module-infra` importe
+`module-infra` **apenas do próprio módulo**. Aplicado a arquivo de schema:
+
+| Foreign key | Situação |
+|---|---|
+| `refresh_tokens.user_id → users.id` (ambos em `auth`) | **Legal.** Mesmo módulo, `.references()` normal. |
+| `orders.user_id → users.id` (`orders` → `auth`) | **Proibida.** Exigiria o schema de `orders` importar o de `auth`. |
+
+Logo: **entre módulos, referencia-se por id, sem FK no banco.** A coluna é um
+`uuid('user_id')` sem `.references()`, e a integridade fica na aplicação.
+
+O `byteflow` faz o oposto — `refresh-tokens.ts` importa `users.ts` e declara
+`.references(() => users.id, { onDelete: 'cascade' })`. Lá é legal, porque é um
+`packages/database` único sem dono de módulo. Aqui, atravessando módulos, não é.
+
+### Por que isso é a posição certa, e não uma limitação
+
+Tabela em módulo **não** é tabela isolada no banco: todas caem no mesmo
+`public`, na mesma timeline de migration, sob o mesmo lock. O que o layout
+modular compra não é isolamento físico — é **quem tem o direito de escrever
+nela**.
+
+E a restrição resultante é a mesma que existiria se os módulos já fossem
+serviços separados. É justamente isso que faz "módulo extraível" ser real em vez
+de aspiracional: com FK física de `orders` para `users`, extrair `orders` vira
+migração de dados, não `git mv`.
+
+**Custo aceito:** sem integridade referencial no banco entre módulos. Uma linha
+pode apontar para um registro apagado, e o Postgres não avisa. O comportamento
+de `ON DELETE` passa a ser regra de aplicação ou evento de domínio, não
+constraint.
+
+### Colisão de nome de tabela — risco conhecido, não resolvido
+
+Nada impede dois módulos declararem `users`. O `drizzle-kit` junta os globs e
+gera a migration com as duas, e **o erro aparece no `db:migrate`, não no lint**.
+
+Três saídas possíveis: disciplina, prefixo por módulo (`auth_users`), ou um
+schema do Postgres por módulo (`pgSchema('auth')` → `auth.users`).
+
+Decisão: **tudo em `public` por ora.** O `pgSchema` por módulo é a única saída
+que torna a posse real no banco e faz o join cross-módulo ficar visível no SQL,
+mas cobra atrito em toda query e em todo tooling. Como `ALTER TABLE ... SET
+SCHEMA` é barato, adiar custa pouco — fica documentado como a saída se colisão
+ou isolamento real virarem problema concreto.
+
+## 6. Exceção de nomes na `CLAUDE.md`
 
 A regra de no-magic-strings é aplicada estritamente neste repositório — em
 `src/infra/http/endpoints/health.ts` até `'/health'`, `'ok'` e `'up'` são
@@ -170,7 +226,7 @@ coluna e índice. Qualquer outro literal nesses arquivos segue a regra.
 Registrado como decisão explícita, e não como desvio silencioso, porque vale
 para todo módulo futuro.
 
-## 6. Migration, e o furo que ela abre no fluxo local
+## 7. Migration, e o furo que ela abre no fluxo local
 
 `pnpm db:generate` produz `drizzle/0000_*.sql`, que é **commitada**.
 Forward-only, sem `down` (R4).
@@ -194,7 +250,7 @@ um módulo que tanto `vitest.config.ts` quanto o `globalSetup` importam. O CI
 mantém a cópia dele — o comentário do workflow já a documenta como deliberada,
 já que o service container precisa do valor antes de qualquer código rodar.
 
-## 7. O que ficou de fora, e por quê
+## 8. O que ficou de fora, e por quê
 
 Colunas presentes na tabela equivalente do `byteflow` que **não** entram aqui:
 
@@ -219,7 +275,7 @@ imediatamente** neste projeto — vale até o TTL de 1h. Isso não é um esqueci
 leitura por request que a decisão 11 recusou, e a decisão precisa ser reaberta —
 não a tabela, remendada.
 
-## 8. O que o teste prova
+## 9. O que o teste prova
 
 Um `.spec.ts` em `tests/integration/`, operando direto pelo handle do Drizzle
 (não há repositório ainda):
@@ -235,18 +291,18 @@ Um `.spec.ts` em `tests/integration/`, operando direto pelo handle do Drizzle
 
 O item 2 é o que transforma "só schema + migration" numa fatia com prova real.
 
-## 9. Critério de aceite
+## 10. Critério de aceite
 
 - [ ] `pnpm db:generate` produz `drizzle/0000_*.sql`, e o arquivo está commitado.
 - [ ] `pnpm db:migrate` aplica a migration num banco limpo.
 - [ ] `pnpm test:integration` passa **a partir de um banco de teste recém-criado**,
       sem nenhum passo manual — é a prova de que o `globalSetup` funciona.
-- [ ] O teste do índice funcional (§8, item 2) falha se o `lower()` for removido
+- [ ] O teste do índice funcional (§9, item 2) falha se o `lower()` for removido
       do índice. Verificar removendo, rodando e restaurando.
 - [ ] `pnpm lint`, `pnpm typecheck` e `pnpm build` verdes.
 - [ ] A `TEST_DATABASE_URL` aparece uma única vez fora do `ci.yml`.
 
-## 10. Pendência de manutenção detectada
+## 11. Pendência de manutenção detectada
 
 O Node local é `v24.16.0`, mas `.nvmrc` pede `24.19.0` e `engines` exige
 `>=24.19.0`. Não bloqueia esta fatia e não é tratado aqui, mas fica registrado.
