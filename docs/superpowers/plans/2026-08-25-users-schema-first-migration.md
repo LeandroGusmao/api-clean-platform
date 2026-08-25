@@ -152,6 +152,16 @@ recomece do Step 4.
 
 - [ ] **Step 6: Aplicar a migration num banco limpo**
 
+> **Atenção ao banco que você está atingindo.** `pnpm db:migrate` **puro**
+> aponta para o banco de **desenvolvimento** (5432): o drizzle-kit carrega o
+> `.env`, e lá o `DATABASE_URL` é o de dev. O comando abaixo sobrescreve a
+> variável de propósito para atingir o banco de **teste** (5433).
+>
+> Não migrar o banco de dev aqui é deliberado, não esquecimento: dev é
+> persistente e se migra quando você quiser, enquanto o de teste é `tmpfs` e
+> precisa de automação (Task 2). Se quiser o dev migrado também, rode
+> `pnpm db:migrate` sem a variável — é um ato separado.
+
 ```bash
 docker compose restart postgres-test
 until docker exec api-clean-platform-postgres-test pg_isready -U api_clean_platform -d api_clean_platform_test >/dev/null 2>&1; do sleep 1; done
@@ -258,6 +268,9 @@ beforeEach(async () => {
 })
 
 describe('users table', () => {
+  // SCAFFOLDING — delete this one in the next slice. The DrizzleUsersRepository
+  // integration test will cover the same round trip through real code, and two
+  // tests for one behavior is one too many to maintain.
   it('stores a row and reads it back', async () => {
     const [inserted] = await db
       .insert(users)
@@ -271,6 +284,9 @@ describe('users table', () => {
     expect(found[0]?.passwordHash).toBe(PASSWORD_HASH)
   })
 
+  // KEEP — the only test bound to the functional index itself. A repository
+  // test would prove "duplicate email rejected" without proving which index
+  // rejected it, which is the part that silently breaks.
   it('rejects an email that differs from an existing one only by case', async () => {
     await db.insert(users).values({ email: EMAIL, passwordHash: PASSWORD_HASH })
 
@@ -284,6 +300,9 @@ describe('users table', () => {
     ).rejects.toThrow(EMAIL_LOWER_UNIQUE_INDEX)
   })
 
+  // KEEP, and it gets MORE valuable over time: once the application sends id
+  // and timestamps explicitly, nothing else exercises the column defaults, so
+  // this becomes the only proof that the defense-in-depth path still works.
   it('fills id and both timestamps from the column defaults', async () => {
     // Inserting only the two required columns: whatever comes back was produced
     // by the database, which is the defense-in-depth the defaults exist for.
@@ -479,6 +498,11 @@ desenho arquivado, não a referência viva do projeto. A regra de FK entre módu
 só passa a valer para quem escrever o segundo módulo se estiver nos documentos
 que essa pessoa vai ler.
 
+> **Caveat honesto sobre esta task.** Os textos abaixo foram escritos sem reler
+> o entorno exato de cada ponto de inserção. O número 24 está livre (verificado),
+> mas leia o parágrafo anterior e o seguinte em cada arquivo antes de colar, e
+> ajuste a ligação se ficar solto. Esta é a task menos verificada do plano.
+
 - [ ] **Step 1: Registrar a decisão em `docs/DECISIONS.md`**
 
 Adicionar ao fim da seção `## 2. Decisões fechadas`, seguindo o formato das
@@ -574,6 +598,98 @@ being quietly assumed away: nothing catches it until db:migrate."
 
 ---
 
+### Task 4: Provar o pipeline no CI, que é o que justifica a fatia
+
+**Files:** nenhum. Esta task não escreve código — ela fecha o último elo de
+`db:generate` → SQL commitada → `db:migrate` → **CI**, que é a razão declarada
+da fatia (§1 da spec). Sem ela, entregamos as três primeiras etapas e assumimos
+a quarta.
+
+**Interfaces:**
+- Consumes: tudo que as Tasks 1–3 commitaram.
+- Produces: nada em código. Produz a evidência.
+
+> ⚠️ **Push é ação externa.** Confirme com o dono do repositório antes de
+> executar esta task. Nada aqui é reversível do lado do GitHub.
+
+**Contexto:** `ci.yml` dispara em `push` para `main` e em `pull_request` contra
+`main`. **Push de branch, sozinho, não dispara nada** — é o PR que aciona.
+
+- [ ] **Step 1: Confirmar que está verde localmente antes de gastar CI**
+
+```bash
+fnm use
+pnpm lint && pnpm typecheck && pnpm test && pnpm build
+```
+
+Expected: tudo verde. `pnpm test` precisa reportar **5 testes** (2 de
+`health.spec.ts` + 3 de `users-schema.spec.ts`).
+
+- [ ] **Step 2: Levar o trabalho para uma branch e publicá-la**
+
+Assim o CI dá veredito **antes** de `main` receber os commits.
+
+```bash
+git switch -c feat/users-schema-first-migration
+git push -u origin feat/users-schema-first-migration
+```
+
+- [ ] **Step 3: Abrir o PR (é ele que aciona o pipeline)**
+
+```bash
+gh auth status || gh auth login
+gh pr create --base main \
+  --title "feat: users table and the project's first migration" \
+  --body "Exercises db:generate -> committed SQL -> db:migrate -> CI for the first time. The drizzle.config.ts glob had never matched a file."
+```
+
+Sem `gh`, abra pelo navegador:
+`https://github.com/levroxlabs/api-clean-platform/compare/main...feat/users-schema-first-migration`
+
+- [ ] **Step 4: Acompanhar a execução**
+
+```bash
+gh run watch
+```
+
+Ou `https://github.com/levroxlabs/api-clean-platform/actions`.
+
+- [ ] **Step 5: Conferir no log o que realmente importa**
+
+Verde não basta — o pipeline já ficava verde **sem fazer nada**. Abra o log do
+job e confirme os três:
+
+1. **`pnpm db:migrate`** mostra a migration `0000` sendo **aplicada**. Este
+   passo nunca aplicou nada na vida do repositório; se o log ainda parecer um
+   no-op, o `drizzle/` não chegou ao commit.
+2. **`pnpm test:integration`** reporta **5 testes**, não 2. Se reportar 2, o
+   arquivo novo não foi commitado.
+3. **`Smoke the built output`** continua passando — é o único passo que roda sob
+   a condição `default` do mapa `imports`, ou seja, o caminho que produção usa.
+
+- [ ] **Step 6: Só depois de verde e conferido, fazer o merge**
+
+Se estiver vermelho, corrija na branch e deixe o CI rodar de novo. Não faça
+merge para investigar depois: `main` sem veredito é exatamente o estado que esta
+fatia existe para eliminar.
+
+---
+
+## Notas registradas, não implementadas
+
+**Deriva futura entre o default da coluna e o `IIdGenerator`.** O default é
+`gen_random_uuid()` (v4). Se um dia o provider passar a gerar v7, o default
+continua v4 — o caminho de defense-in-depth passaria a produzir uma versão
+diferente da que o app produz, em silêncio. Não afeta esta fatia (as duas pontas
+são v4). Quando o provider mudar, a migration que o acompanha deve trocar o
+default para `uuidv7()`, que o PostgreSQL 18.4 tem nativo.
+
+**Os testes novos não envelhecem igual**, e o arquivo de teste já diz qual é
+qual em comentário: o de round trip é andaime e morre na fatia 2; o do índice
+funcional e o dos defaults ficam — este último **ganha** valor, porque quando o
+app passar a mandar `id` e timestamps explicitamente, nada mais exercitará os
+defaults.
+
 ## Auto-revisão do plano
 
 **Cobertura da spec:**
@@ -589,8 +705,12 @@ being quietly assumed away: nothing catches it until db:migrate."
 | §7 migration + globalSetup + dedup da URL | Task 2 Steps 4–7 |
 | §8 colunas de fora | Task 1 Step 3 — a tabela não tem `tokens_valid_after` nem `email_verified_at` |
 | §9 as três provas | Task 2 Step 2 |
-| §10 critério de aceite | Task 1 Steps 5–6, Task 2 Steps 7–9 |
+| §10 critério de aceite | Task 1 Steps 5–6, Task 2 Steps 7–9, Task 4 Step 5 |
 | §11 Node | Global Constraints e Task 1 Step 1 |
+
+O elo do CI, citado na §1 da spec como parte do objetivo, é a Task 4. Ele estava
+ausente da primeira versão deste plano: as Tasks 1–3 provavam as três primeiras
+etapas e a quarta ficava assumida.
 
 **Critério de aceite da spec §10, um a um:**
 
