@@ -65,7 +65,7 @@ Foram levantados dois fatos empíricos que invertem a intuição:
 
 | Verificação | Resultado |
 |---|---|
-| `crypto.randomUUID({ version: 7 })` no Node 24 | **Não lança erro** e devolve um **v4** — a opção é ignorada em silêncio |
+| `crypto.randomUUID({ version: 7 })` no Node 24 | **Não lança erro** e devolve um **v4** — a opção é ignorada em silêncio. Verificado tanto no `v24.16.0` quanto no `v24.19.0`, que é a versão que o `engines` exige |
 | `uuidv7()` no `postgres:18.4-alpine3.24` (container do projeto) | Existe e devolve v7 corretamente |
 
 Ou seja, o único UUIDv7 disponível está do lado que a R7 quer evitar.
@@ -304,5 +304,11 @@ O item 2 é o que transforma "só schema + migration" numa fatia com prova real.
 
 ## 11. Pendência de manutenção detectada
 
-O Node local é `v24.16.0`, mas `.nvmrc` pede `24.19.0` e `engines` exige
-`>=24.19.0`. Não bloqueia esta fatia e não é tratado aqui, mas fica registrado.
+O Node ativo por padrão na máquina é `v24.16.0`, mas `.nvmrc` pede `24.19.0` e
+`engines` exige `>=24.19.0`. Isso **bloqueia**: o `pnpm` recusa qualquer script
+com `Your Node version is incompatible with ... Expected version: >=24.19.0
+<25. Got: v24.16.0`.
+
+A `v24.19.0` já está instalada via `fnm` — só não é a default. Antes de executar
+o plano, ative-a (`fnm use`, que lê o `.nvmrc`). Não há nada a corrigir no
+repositório; a divergência é de ambiente local.
