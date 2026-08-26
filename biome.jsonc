@@ -5,6 +5,13 @@
     "clientKind": "git",
     "useIgnoreFile": true
   },
+  // `drizzle/` is drizzle-kit output: committed, but never hand-written. Biome
+  // formats JSON, and the generated `snapshot.json` does not match its style —
+  // so linting it would fail after every `db:generate`, and `lint:fix` would
+  // "resolve" that by rewriting a generated file.
+  "files": {
+    "includes": ["**", "!drizzle"]
+  },
   "formatter": {
     "indentStyle": "space",
     "indentWidth": 2,

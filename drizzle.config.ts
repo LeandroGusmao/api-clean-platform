@@ -1,6 +1,8 @@
 import { defineConfig } from 'drizzle-kit'
 
-const SCHEMA_GLOB = './src/modules/*/infra/drizzle/schema.ts'
+// One file per table, named after the table. The directory already says
+// "Drizzle schema", so the file name does not repeat it.
+const SCHEMA_GLOB = './src/modules/*/infra/drizzle/schema/*.ts'
 const MIGRATIONS_OUT_DIR = './drizzle'
 
 const databaseUrl = process.env.DATABASE_URL
