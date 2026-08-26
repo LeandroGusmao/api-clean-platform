@@ -1,14 +1,14 @@
 import { defineConfig } from 'vitest/config'
+import { TEST_DATABASE_URL } from './tests/integration/setup/test-database-url.js'
 
 const UNIT_PROJECT = 'unit'
 const UNIT_INCLUDE = 'src/**/*.spec.ts'
 
 const INTEGRATION_PROJECT = 'integration'
 const INTEGRATION_INCLUDE = 'tests/integration/**/*.spec.ts'
+const INTEGRATION_GLOBAL_SETUP = './tests/integration/setup/migrate-test-database.ts'
 
 const NODE_ENV_TEST = 'test'
-const TEST_DATABASE_URL =
-  'postgres://api_clean_platform:api_clean_platform_local_dev@127.0.0.1:5433/api_clean_platform_test'
 
 /**
  * No `resolve.conditions` here on purpose: Vite already asks for the
@@ -30,6 +30,9 @@ export default defineConfig({
         test: {
           name: INTEGRATION_PROJECT,
           include: [INTEGRATION_INCLUDE],
+          // Migrations run before the suite: the test database is tmpfs, so it
+          // is empty after every container restart.
+          globalSetup: [INTEGRATION_GLOBAL_SETUP],
           // Every integration file shares the same Postgres, so they run
           // serially — parallel files would step on each other's state.
           fileParallelism: false,
@@ -37,7 +40,7 @@ export default defineConfig({
       },
     ],
     // Injected here so no test ever touches `process.env` — R6 stays intact
-    // and `biome.json` needs no test-only exception.
+    // and `biome.jsonc` needs no test-only exception.
     env: {
       NODE_ENV: NODE_ENV_TEST,
       DATABASE_URL: TEST_DATABASE_URL,
