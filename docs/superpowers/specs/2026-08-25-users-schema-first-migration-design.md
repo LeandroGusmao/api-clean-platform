@@ -228,8 +228,11 @@ para todo módulo futuro.
 
 ## 7. Migration, e o furo que ela abre no fluxo local
 
-`pnpm db:generate` produz `drizzle/0000_*.sql`, que é **commitada**.
-Forward-only, sem `down` (R4).
+`pnpm db:generate` produz `drizzle/<timestamp>_<nome>/migration.sql` (mais
+`snapshot.json` na mesma pasta), que é **commitada**. O `drizzle-kit` na versão
+usada aqui (`1.0.0-rc.4`) escreve uma pasta por migration — o formato
+`folder-v3` do próprio `drizzle-kit`, sucessor do `0000_*.sql` plano com
+`meta/` — então não há `0000_*.sql`. Forward-only, sem `down` (R4).
 
 Isso quebra o `pnpm test:integration` local, e o motivo merece registro: o banco
 de teste é `tmpfs` (some a cada restart do container) e **nada aplica migration
@@ -293,7 +296,8 @@ O item 2 é o que transforma "só schema + migration" numa fatia com prova real.
 
 ## 10. Critério de aceite
 
-- [ ] `pnpm db:generate` produz `drizzle/0000_*.sql`, e o arquivo está commitado.
+- [ ] `pnpm db:generate` produz `drizzle/<timestamp>_<nome>/migration.sql`, e a
+      pasta está commitada.
 - [ ] `pnpm db:migrate` aplica a migration num banco limpo.
 - [ ] `pnpm test:integration` passa **a partir de um banco de teste recém-criado**,
       sem nenhum passo manual — é a prova de que o `globalSetup` funciona.
@@ -312,3 +316,47 @@ com `Your Node version is incompatible with ... Expected version: >=24.19.0
 A `v24.19.0` já está instalada via `fnm` — só não é a default. Antes de executar
 o plano, ative-a (`fnm use`, que lê o `.nvmrc`). Não há nada a corrigir no
 repositório; a divergência é de ambiente local.
+
+---
+
+## 12. Revisão pós-implementação — nome e organização dos arquivos de schema
+
+Registrado depois da implementação, sem reescrever as seções acima: elas
+descrevem o desenho no momento em que foi aprovado, e apagar isso esconderia a
+mudança.
+
+O desenho previa **um `schema.ts` por módulo**, com todas as tabelas dentro —
+o que o `STRUCTURE.md` §2 e o `DECISIONS.md` §5 prescreviam. Ao revisar o
+resultado, a pergunta que derrubou isso foi: *e quando o módulo tiver várias
+tabelas, como elas se chamam?*
+
+**Decidido: `infra/drizzle/schema/`, um arquivo por tabela, nomeado pela
+tabela** — `users.ts`, depois `refresh-tokens.ts`. O diretório já diz "schema do
+Drizzle", então o nome do arquivo não repete.
+
+Razão: o projeto já tem convenção forte de **um conceito por arquivo** — decisão
+03 ("um arquivo por endpoint") e §9 do `STRUCTURE.md` ("use case, um por
+arquivo"). Tabela ser a exceção destoava. O `byteflow`, com quatro módulos
+rodando, separa da mesma forma.
+
+**Argumento contra, que perdeu mas é bom:** tabelas de um módulo são um grafo
+conectado — `refresh_tokens` não significa nada sem `users`, nascem na mesma
+migration e referenciam uma à outra. Vê-las juntas tem valor que use cases
+independentes não têm. Perdeu porque `drizzle/` também acumula mapper e
+repositório por tabela; com quatro tabelas seriam treze arquivos no mesmo nível.
+
+**O que mudou junto:**
+
+- `drizzle.config.ts` — glob passa a `./src/modules/*/infra/drizzle/schema/*.ts`.
+- `CLAUDE.md` — a exceção de magic strings estava escopada no nome literal
+  `schema.ts` e **deixaria de cobrir o arquivo**; reescopada para `schema/*.ts`.
+- `ARCHITECTURE.md` §2, §3, §6 e o `STRUCTURE.md`/`DECISIONS.md` locais.
+
+**Custo verificado como zero:** `pnpm db:generate` após a mudança respondeu
+`No schema changes, nothing to migrate`, e o `md5sum` do `migration.sql` ficou
+idêntico. O `snapshot.json` guarda definição de tabela, não caminho de arquivo.
+
+**Ressalva para o futuro:** o glob `schema/*.ts` casaria também com um
+`index.ts` de barrel, registrando cada tabela duas vezes. Se a superfície
+pública do módulo (`STRUCTURE.md` §11) trouxer barrels, este glob precisa ser
+revisto.

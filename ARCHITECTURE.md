@@ -49,6 +49,12 @@ src/
 │   └── observability/
 │       ├── redact-paths.ts         # paths redigidos pelo logger
 │       └── request-context.ts      # AsyncLocalStorage do traceId
+├── modules/
+│   └── auth/
+│       └── infra/
+│           └── drizzle/
+│               └── schema/         # um arquivo por tabela, nomeado pela tabela
+│                   └── users.ts    # tabela `users`, dona do módulo auth
 ├── shared/                         # camada PURA, sem dono de módulo
 │   └── errors/
 │       └── app-error.ts            # taxonomia: AppError + as 6 categorias
@@ -58,13 +64,18 @@ src/
 
 tests/
 └── integration/
-    └── health.spec.ts              # suíte que precisa de Postgres de pé
+    ├── health.spec.ts              # suíte que precisa de Postgres de pé
+    ├── setup/
+    │   ├── migrate-test-database.ts  # globalSetup: aplica migrations commitadas antes da suíte
+    │   └── test-database-url.ts      # única fonte da TEST_DATABASE_URL fora do CI
+    └── users-schema.spec.ts        # prova a migration da tabela `users`
 ```
 
 `src/infra/` é infra **sem dono** — o servidor, a config e a conexão do banco.
-Futuramente, o logger. Quando existirem módulos, `src/modules/<m>/infra/` será a
-infra **daquele domínio**. Se você não consegue dizer de qual módulo uma peça é,
-ela é global.
+Futuramente, o logger. `src/modules/<m>/infra/` é a infra **daquele domínio**;
+hoje só `auth` existe, e só com o schema Drizzle da tabela `users` — sem
+domínio, use case ou endpoint ainda. Se você não consegue dizer de qual módulo
+uma peça é, ela é global.
 
 `src/main/` é o **composition root** — o único lugar autorizado a conhecer o
 concreto de todos os módulos. Os entrypoints moram aqui (`http.ts` hoje;
@@ -107,18 +118,28 @@ Não há path alias. O projeto usa **subpath imports do Node**, declarados em
 }
 ```
 
-`#infra/*`, `#shared/*` e `#main/*` têm conteúdo. `#modules/*` fica de pé para
-que criar o primeiro módulo não exija mexer no `package.json`.
+`#infra/*`, `#shared/*`, `#main/*` e `#modules/*` têm conteúdo hoje.
+`tests/integration/users-schema.spec.ts` já importa
+`#modules/auth/infra/drizzle/schema/users` — criar o primeiro módulo não exigiu mexer
+no `package.json`, que é exatamente o que o mapeamento pronto de antemão
+comprava.
 
 `#main/*` existe porque a suíte de integração, que mora em `tests/`, precisa
 alcançar `buildApp` — e a regra abaixo proíbe caminho relativo entre diretórios
 de topo.
 
-**Duas regras, sem exceção:**
+**Duas regras, com uma exceção:**
 
 - **Entre diretórios de topo:** `#infra/...`, `#modules/...`, `#shared/...`
 - **Dentro da mesma pasta:** relativo **com extensão `.js`** — `./user-mapper.js`.
   ESM com `nodenext` exige a extensão; sem ela o `tsc` falha com `TS2835`.
+
+**A exceção:** `vitest.config.ts`, na raiz, importa
+`./tests/integration/setup/test-database-url.js` por caminho relativo,
+cruzando para `tests/`. Não há `#tests/*` no `imports` do `package.json` — a
+suíte de teste não é código de produção — e um arquivo de config do Vite é
+carregado pelo Vite, não pelo resolver do Node: não haveria como usar um
+subpath import ali mesmo que o mapeamento existisse.
 
 O `tsc` **não reescreve** esses especificadores: `dist/main/http.js` sai com
 `import { env } from '#infra/config/env'` literal, e o Node resolve pela condition
@@ -221,8 +242,9 @@ Em `NODE_ENV=development` o log sai por `pino-pretty`; em produção é JSON pur
 ## 6. Banco de dados
 
 **PostgreSQL**, acessado via `pg` (driver `node-postgres`) e Drizzle. A conexão
-mora em `src/infra/database/client.ts`, infra global — ainda não há módulo
-dono de tabela nenhuma.
+mora em `src/infra/database/client.ts`, infra global compartilhada por todos
+os módulos — cada um dono das próprias tabelas, como descrito em `Posse de
+tabela` mais abaixo.
 
 ```ts
 // src/infra/database/client.ts
@@ -249,15 +271,58 @@ São **dois serviços**, a mesma imagem pinada:
 
 O serviço separado é o que garante que a suíte de integração nunca alcance dado
 de desenvolvimento, e o `tmpfs` faz do restart do container o reset do estado.
+O `globalSetup` do projeto `integration` no Vitest
+(`tests/integration/setup/migrate-test-database.ts`) aplica as migrations
+commitadas antes de qualquer teste rodar, então o banco vazio do `tmpfs` nunca
+é um passo manual.
 
-`drizzle.config.ts` (raiz) já está pronto para gerar e aplicar migrations, mas
-seu glob de schema (`src/modules/*/infra/drizzle/schema.ts`) não casa com nada
-até o primeiro módulo existir — não há migration real neste repositório ainda.
+`drizzle.config.ts` (raiz) gera e aplica migrations via `pnpm db:generate` /
+`pnpm db:migrate` (§10). Seu glob de schema
+(`src/modules/*/infra/drizzle/schema/*.ts`) casa com
+`src/modules/auth/infra/drizzle/schema/users.ts`, e a migration gerada dele está
+commitada em `drizzle/`.
+
+### Migration: sempre com `--name`, e nunca renomeie uma já aplicada
+
+O drizzle-kit escreve **uma pasta por migration** — `<timestamp>_<nome>/` com
+`migration.sql` e `snapshot.json` dentro. Sem `--name` ele sorteia um nome
+aleatório (`bouncy_makkari`), que não diz nada numa pasta com trinta migrations:
+
+```bash
+pnpm db:generate --name=create_users_table
+```
+
+> ⚠️ **O nome da pasta é a chave de controle.** O migrator decide o que rodar
+> comparando **nome**, não hash: `localMigrations.filter((lm) => !dbNamesSet.has(lm.name))`.
+> Renomear uma migration já aplicada faz o drizzle tratá-la como nova e rodar de
+> novo — num `CREATE TABLE`, erro de "relation already exists".
+>
+> O hash **é** gravado na tabela `drizzle.__drizzle_migrations`, mas nunca é
+> comparado. Editar o SQL de uma migration já aplicada, portanto, não é
+> detectado: passa em silêncio e o hash gravado fica velho. Migration commitada
+> é imutável — corrija com uma nova (R4, forward-only).
+
+`drizzle/` está **fora do Biome** (`biome.jsonc`): é saída de ferramenta, e o
+`snapshot.json` gerado não bate com a formatação dele — lintar aquilo faria
+`pnpm lint` quebrar depois de todo `db:generate`, e o `lint:fix` "resolveria"
+reescrevendo um arquivo gerado.
 
 `GET /health` consulta o banco (`select 1`) a cada chamada: responde `200` com
 o banco no ar, `503` com o banco fora. Sem preflight no boot — o processo sobe
 mesmo com o banco inatingível, para que `/health` consiga reportar a falha em
 vez do processo crash-loopar.
+
+### Posse de tabela
+
+Cada módulo declara suas tabelas em `infra/drizzle/schema/`, **um arquivo por
+tabela, nomeado pela tabela** — o diretório já diz "schema do Drizzle", então o
+nome do arquivo não repete. Uma foreign key
+só atravessa arquivos **do mesmo módulo**; entre módulos, referencia-se por id
+sem constraint, e a integridade fica na aplicação. Todas as tabelas vivem em
+`public` — um schema do Postgres por módulo foi considerado e adiado.
+Raciocínio completo em
+[`docs/superpowers/specs/2026-08-25-users-schema-first-migration-design.md`](docs/superpowers/specs/2026-08-25-users-schema-first-migration-design.md)
+§5 (decisão 24).
 
 ---
 
@@ -453,7 +518,7 @@ porque todos os arquivos compartilham o mesmo Postgres.
 
 **Nenhum teste lê `process.env`.** A env da suíte é injetada em `test.env`, no
 `vitest.config.ts`. Com isso R6 continua valendo sem exceção nenhuma no
-`biome.json`, e `import { env } from '#infra/config/env'` já chega válido dentro
+`biome.jsonc`, e `import { env } from '#infra/config/env'` já chega válido dentro
 do teste.
 
 **Não há `resolve.conditions` na config, de propósito.** O Vite já pede a
@@ -482,9 +547,17 @@ a uma, a tabela de tradução do Zod linha a linha, e a garantia de não-vazamen
 — um erro inesperado responde genérico e a mensagem interna aparece **só** no
 log.
 
-**Ainda não há helper de migration nem `TRUNCATE` para a suíte**, porque não há
-tabela. O `tmpfs` do `postgres-test` já entrega o reset: parar o container zera o
-cluster.
+O helper de migration da suíte é o `globalSetup` do projeto `integration`
+(`tests/integration/setup/migrate-test-database.ts`, §6): aplica as migrations
+commitadas antes de qualquer teste rodar. O `tmpfs` do `postgres-test` ainda é
+quem zera o cluster, mas só **entre restarts do container** — dentro de uma
+mesma execução ele não isola uma spec da outra.
+
+Essa isolação é por teste, não por suíte: `users-schema.spec.ts` limpa a
+tabela com `db.delete(users)` no **`beforeEach`**, não no `afterEach`. Uma
+suíte pode terminar com linhas na tabela, e a limpeza só acontece no início do
+próximo teste — quem escrever a próxima spec de integração não pode assumir
+banco vazio ao entrar, e precisa limpar as próprias tabelas no `beforeEach`.
 
 ---
 
@@ -501,7 +574,8 @@ pnpm test:integration  # só a pista com Postgres real (docker compose up -d ant
 pnpm test:watch        # Vitest em watch
 pnpm lint              # biome check  (formatação + lint + ordem de imports)
 pnpm lint:fix          # biome check --write
-pnpm db:generate       # drizzle-kit generate — gera migration a partir do schema dos módulos
+pnpm db:generate --name=create_users_table   # gera migration a partir do schema dos módulos
+                                             # SEMPRE com --name; sem ele o nome é sorteado (§6)
 pnpm db:migrate        # drizzle-kit migrate — aplica migrations pendentes
 ```
 
@@ -585,4 +659,4 @@ do mesmo pacote.
 
 Listado para não ser confundido com omissão, sem detalhar o que não foi construído:
 
-módulos de negócio · regra de fronteira no lint · migrations · Docker
+módulos de negócio · regra de fronteira no lint · Docker
