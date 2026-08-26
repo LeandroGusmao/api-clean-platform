@@ -307,6 +307,36 @@ pnpm db:generate --name=create_users_table
 `pnpm lint` quebrar depois de todo `db:generate`, e o `lint:fix` "resolveria"
 reescrevendo um arquivo gerado.
 
+### Tempo: `timestamptz` sempre, e a perda de precisão na leitura
+
+Toda coluna de tempo é `timestamp with time zone`. **Ele não guarda fuso** — o
+nome engana. Guarda um instante absoluto; o fuso só participa em duas bordas:
+converte na entrada, se o valor vier com offset, e renderiza na saída conforme o
+`TimeZone` da sessão. O mesmo registro, lido em três sessões:
+
+```
+UTC                 2026-08-26 00:55:13.159767+00    epoch 1787705713.159767
+America/Sao_Paulo   2026-08-25 21:55:13.159767-03    epoch 1787705713.159767
+Asia/Tokyo          2026-08-26 09:55:13.159767+09    epoch 1787705713.159767
+```
+
+Três aparências, um instante. A aplicação é imune: o `pg` devolve um `Date` do
+JS, que também é instante absoluto — verificado com o processo Node em
+`America/Sao_Paulo` lendo o mesmo epoch.
+
+O que **não** se usa é `timestamp` sem timezone: esse guarda o relógio de parede
+literal, sem conversão. É de onde vêm os bugs de deploy multi-região — dois
+servidores gravando "14:00" e nenhuma forma de saber qual.
+
+> ⚠️ **Precisão se perde na leitura.** O Postgres guarda microssegundos; o `Date`
+> do JS só tem milissegundos. Ler um valor gravado pelo `now()` do banco trunca:
+> `…13.159767` vira `…13.159`.
+>
+> Irrelevante para `created_at`. Relevante para qualquer comparação exata de
+> instantes onde um lado venha do banco e o outro do `IClock` — ver decisão 11.
+> Quando o `IClock` for a fonte, tudo passa a ser gravado com precisão de ms de
+> qualquer forma, e a assimetria sobra só nas linhas escritas pelo default.
+
 `GET /health` consulta o banco (`select 1`) a cada chamada: responde `200` com
 o banco no ar, `503` com o banco fora. Sem preflight no boot — o processo sobe
 mesmo com o banco inatingível, para que `/health` consiga reportar a falha em
