@@ -144,6 +144,6 @@ vite.config.ts.timestamp-*
 
 #Local docs for reference
 docs/DECISIONS.md
-docs/ARCHITECTURE.md
+docs/OLD_ARCHITECTURE.md
 docs/STRUCTURE.md
 docs/TODO.md
