@@ -172,6 +172,28 @@ O feedback por regra ("falta um número") é trabalho do cliente — o byteflow 
 exatamente isso em `apps/web/src/features/auth/lib/password.ts`, validação viva na
 tela. O servidor recusa; a tela ensina.
 
+#### A flag `s` é obrigatória, e o OpenAPI a descarta
+
+Verificado (§13): sem a flag, `"abc\n123!"` — que satisfaz a política inteira —
+seria **recusada**, porque `.` não atravessa `\n` e o padrão está ancorado em `^`.
+Quebra de linha é caractere legítimo de senha, do mesmo modo que espaço.
+
+O Zod honra a flag em runtime. O **OpenAPI gerado, não**:
+
+```json
+"pattern": "^(?=.*[a-zA-Z])(?=.*\\d)(?=.*[^a-zA-Z0-9])"
+```
+
+`pattern` do JSON Schema não tem conceito de flag, então ela some — sem erro e sem
+aviso. O padrão publicado é portanto **mais estrito** que o servidor: um cliente
+que valide localmente contra o documento recusaria uma senha com quebra de linha
+que o servidor aceitaria.
+
+A direção do desvio é a inofensiva (o cliente recusa o que o servidor aceitaria,
+nunca o contrário), e o caso é raro o bastante para não justificar contorção. Fica
+registrado porque é o tipo de divergência que, descoberta em produção, consome uma
+tarde.
+
 ### 4.5 — `IIdGenerator` separado de `ITokenGenerator` (emenda à decisão 21)
 
 A decisão 21 escreveu um contrato único:
@@ -218,8 +240,7 @@ houver alvo.
 ### 4.8 — Insert e trata a violação; nunca check-then-insert
 
 O índice único funcional `users_email_lower_unique` é a autoridade sobre
-unicidade. O repositório insere e traduz o `23505` do Postgres para
-`EmailAlreadyInUseError`.
+unicidade. O repositório insere e traduz a violação para `EmailAlreadyInUseError`.
 
 `findByEmail` antes do insert **corre**: duas requisições simultâneas com o mesmo
 e-mail passam as duas pela checagem.
@@ -228,6 +249,38 @@ A tradução anda a **cadeia de `cause`**, não o erro de topo. Isso é o que a 
 1 descobriu na prática: o Drizzle embrulha o erro do driver em `DrizzleQueryError`,
 cuja `.message` é o texto da query; o erro do Postgres, com `.code` e
 `.constraint`, vive no `.cause`.
+
+#### A checagem casa o nome da constraint, não só o código
+
+Casar apenas `code === '23505'` é o que o byteflow faz, e é um bug latente: a
+tabela `users` **já tem uma segunda constraint única**, a primary key. Uma colisão
+de `id` levanta `23505` com `constraint = 'users_pkey'` e seria reportada ao
+cliente como "e-mail já em uso" — um `409` mentiroso sobre uma falha que é `500`.
+
+O repositório casa `code === '23505' && constraint === USERS_EMAIL_LOWER_UNIQUE_INDEX`.
+Qualquer outra violação de unicidade continua borbulhando.
+
+**Consequência sobre o `CLAUDE.md`.** O nome do índice passa a aparecer em dois
+arquivos, e a exceção de magic strings dos arquivos de schema deixa de valer para
+ele — pela própria razão que ela enuncia:
+
+> *"Extracting them would add indirection over a name that appears exactly once."*
+
+Não aparece mais uma vez só. Então o schema **exporta** a constante e a usa na
+própria declaração:
+
+```ts
+// src/modules/auth/infra/drizzle/schema/users.ts
+export const USERS_EMAIL_LOWER_UNIQUE_INDEX = 'users_email_lower_unique'
+```
+
+O valor não muda, então `db:generate` não deve produzir migration nenhuma — isso
+precisa ser **confirmado**, não presumido, durante a implementação.
+
+O teste de integração `users-schema.spec.ts` continua com o literal escrito à mão,
+e isso não é incoerência: lá a duplicação é deliberada, para que a asserção não
+seja tautológica. Um teste que importa o nome que está testando passa mesmo depois
+de uma renomeação que quebra todo cliente.
 
 ### 4.9 — O container é montado dentro do `buildApp` (emenda à decisão 23)
 
@@ -556,12 +609,40 @@ export const toPersistenceUser = (user: User): NewUserRow => ({
 /** `unique_violation` do Postgres. */
 const PG_UNIQUE_VIOLATION = '23505'
 
+/** O recorte do erro do `pg` que interessa aqui. */
+interface UniqueViolationCandidate {
+  code?: unknown
+  constraint?: unknown
+}
+
 /**
- * O Drizzle embrulha o erro do driver: o erro do `pg`, que carrega o `code`,
- * pode estar no `cause` e não no topo. Descoberto na fatia 1, ao escrever a
- * asserção de unicidade do índice funcional.
+ * Anda a cadeia de `cause`: o Drizzle embrulha o erro do driver em
+ * `DrizzleQueryError`, cuja `.message` é o texto da query. O erro do `pg`, que
+ * carrega `.code` e `.constraint`, vive no `.cause`. Descoberto na fatia 1.
+ *
+ * Casa o **nome da constraint**, não só o código. A tabela já tem uma segunda
+ * constraint única — a primary key —, então um `23505` de `users_pkey` viraria
+ * um `409` "e-mail já em uso" sobre uma falha que é `500`. Qualquer violação
+ * que não seja a do índice de e-mail continua borbulhando.
  */
-function isUniqueViolation(error: unknown): boolean { /* anda a cadeia de cause */ }
+function isEmailAlreadyInUse(error: unknown): boolean {
+  let current: unknown = error
+
+  while (typeof current === 'object' && current !== null) {
+    const candidate = current as UniqueViolationCandidate
+
+    if (
+      candidate.code === PG_UNIQUE_VIOLATION &&
+      candidate.constraint === USERS_EMAIL_LOWER_UNIQUE_INDEX
+    ) {
+      return true
+    }
+
+    current = 'cause' in current ? current.cause : undefined
+  }
+
+  return false
+}
 
 export class DrizzleUsersRepository implements IUsersRepository {
   constructor(private readonly db: Database) {}
@@ -570,7 +651,7 @@ export class DrizzleUsersRepository implements IUsersRepository {
     try {
       await this.db.insert(users).values(toPersistenceUser(user))
     } catch (error) {
-      if (isUniqueViolation(error)) throw new EmailAlreadyInUseError()
+      if (isEmailAlreadyInUse(error)) throw new EmailAlreadyInUseError()
       throw error
     }
   }
@@ -691,6 +772,22 @@ Sonda: `buildServer` real, rota com o schema, `app.inject`.
 
 Duas entradas idênticas no primeiro caso. Foi o que motivou §4.4.
 
+### A flag `s` muda o resultado, e o OpenAPI a descarta
+
+| Senha | com `/s` | sem `/s` |
+|---|---|---|
+| `"abcd1234!"` | aceita | aceita |
+| `"abc\n123!"` (quebra no meio) | aceita | **recusa** |
+| `"\nabc123!x"` (quebra no início) | aceita | **recusa** |
+| `"\n1234567"` (sem letra) | recusa | recusa |
+
+O Zod honra a flag: `"\nabc123!x"` passa por `z.string().regex(WITH_S)`.
+
+O documento OpenAPI gerado, não — sai como
+`"pattern": "^(?=.*[a-zA-Z])(?=.*\\d)(?=.*[^a-zA-Z0-9])"`, sem flag, sem erro e
+sem aviso, porque `pattern` do JSON Schema não tem esse conceito. Motivou o bloco
+final do §4.4.
+
 ### `REDACT_PATHS` não cobre `passwordHash`
 
 O redact do pino casa nome de chave exato: `password` não pega `passwordHash`.
@@ -749,7 +846,10 @@ exclui `*.spec.ts` — um arquivo de fake iria para o `dist/`. Só o
 
 - **`drizzle-users-repository.spec.ts`** — a row gravada bate campo a campo com a
   entidade; um segundo `save` com e-mail que difere só em maiúsculas lança
-  `EmailAlreadyInUseError`.
+  `EmailAlreadyInUseError`; e **um `save` com `id` repetido e e-mail diferente
+  NÃO lança `EmailAlreadyInUseError`** — viola `users_pkey`, também com código
+  `23505`, e tem que borbulhar. Essa terceira é o que separa "casa o código" de
+  "casa a constraint" (§4.8); sem ela, a versão errada passa nos outros dois.
 - **`register.spec.ts`** — via `buildApp`, a mesma função que o `main/http.ts`
   chama: `201 { id }`; `409` com `code: EMAIL_ALREADY_IN_USE` no duplicado; `400`
   com `details` no payload inválido; e **nem a senha nem o hash aparecem no corpo
@@ -767,6 +867,13 @@ comentário dele já mandava, e o substituto é exatamente o
 
 **Versionado — `ARCHITECTURE.md`:** a árvore do §2 ganha o módulo real; o §13
 ("o que ainda não existe") perde as linhas que esta fatia passa a cobrir.
+
+**Versionado — `CLAUDE.md`:** a exceção de magic strings para arquivos de schema
+ganha o limite que o §4.8 revelou. O texto atual justifica escrever o nome inline
+porque *"appears exactly once"*; quando um nome passa a ser **lido** de outro
+arquivo — como `USERS_EMAIL_LOWER_UNIQUE_INDEX`, que o repositório precisa para
+distinguir a violação —, a justificativa cai e ele vira constante exportada,
+declarada e usada no próprio schema.
 
 **Local — `docs/DECISIONS.md`** (gitignored, não viaja com o repositório):
 
