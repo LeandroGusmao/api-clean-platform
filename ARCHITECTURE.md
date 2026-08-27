@@ -17,10 +17,13 @@ Este é o único documento de arquitetura versionado. O material de referência 
 "Mundo externo" é banco, HTTP, rede, arquivo, variável de ambiente, relógio e
 aleatoriedade. Tudo isso entra por contrato e é implementado em `infra/`.
 
-O primeiro código puro do repositório é a taxonomia de erro em `src/shared/`
-(§8) — nenhum import, nenhuma menção a protocolo. O resto ainda é `infra/` e
-`main/`. O princípio está aqui porque é ele que decide onde cada arquivo novo
-vai cair.
+A taxonomia de erro em `src/shared/` (§8) foi o primeiro código puro do
+repositório — nenhum import, nenhuma menção a protocolo. Hoje o módulo `auth`
+tem uma camada pura inteira: entidade, value objects, use case e os contratos de
+repositório e provider. Nenhum desses arquivos importa Fastify, Drizzle, `pg` ou
+`process.env`, e é isso que os torna testáveis em milissegundos, sem banco.
+
+O princípio está aqui porque é ele que decide onde cada arquivo novo vai cair.
 
 ---
 
@@ -32,7 +35,9 @@ src/
 │   ├── config/
 │   │   ├── env.ts                  # ÚNICO lugar que lê process.env
 │   │   └── env.spec.ts             # unitário colocado
-│   ├── database/client.ts          # pool pg + instância Drizzle
+│   ├── database/
+│   │   ├── client.ts               # pool pg + instância Drizzle
+│   │   └── driver-error.ts         # converte erro do driver antes de sair do infra/
 │   ├── health/
 │   │   └── checks/
 │   │       └── database-check.ts   # um arquivo por dependência checada
@@ -46,25 +51,51 @@ src/
 │   │   ├── openapi.ts              # OpenAPI + UI dos docs (só em development)
 │   │   └── endpoints/
 │   │       └── health.ts           # GET /health — agrega os checks
+│   ├── providers/                   # adapters dos contratos transversais
+│   │   ├── system-clock.ts
+│   │   ├── system-clock.spec.ts     # unitário colocado
+│   │   ├── uuid-id-generator.ts
+│   │   └── uuid-id-generator.spec.ts
 │   └── observability/
+│       ├── error-serializer.ts     # serializer do err do pino (sanitiza params)
 │       ├── redact-paths.ts         # paths redigidos pelo logger
 │       └── request-context.ts      # AsyncLocalStorage do traceId
 ├── modules/
-│   └── auth/
-│       └── infra/
-│           └── drizzle/
-│               └── schema/         # um arquivo por tabela, nomeado pela tabela
-│                   └── users.ts    # tabela `users`, dona do módulo auth
+│   └── auth/                        # domínio + infra do módulo
+│       ├── entities/user.ts         # puro — estado em campos `#`
+│       ├── value-objects/           # puro — email.ts, password.ts
+│       ├── repositories/            # SÓ contratos — users-repository.ts
+│       ├── providers/               # SÓ contratos — hash-provider.ts
+│       ├── use-cases/               # puro (+ .spec.ts colocado)
+│       ├── errors/                  # um arquivo por erro do módulo
+│       ├── container.ts             # factory do container do módulo
+│       └── infra/                   # tudo que toca o mundo externo
+│           ├── drizzle/
+│           │   ├── schema/users.ts  # um arquivo por tabela, nomeado pela tabela
+│           │   ├── user-mapper.ts   # entidade -> row (decisão 20)
+│           │   └── drizzle-users-repository.ts
+│           ├── in-memory/           # repositório de teste (decisão 09)
+│           ├── providers/           # argon2-hash-provider.ts
+│           └── http/
+│               ├── endpoints/       # 1 arquivo = schema + handler + rota
+│               │   └── register.ts  # POST /auth/register
+│               └── routes.ts        # agregador fino do módulo
 ├── shared/                         # camada PURA, sem dono de módulo
-│   └── errors/
-│       └── app-error.ts            # taxonomia: AppError + as 6 categorias
+│   ├── errors/
+│   │   └── app-error.ts            # taxonomia: AppError + as 6 categorias
+│   └── providers/                   # contratos transversais
+│       ├── clock.ts                 # IClock — tempo entra por aqui (R7)
+│       └── id-generator.ts          # IIdGenerator — identidade entra por aqui (R7)
 └── main/
+    ├── container.ts                 # composition root: junta os módulos
     ├── app.ts                      # compõe a aplicação: docs + rotas + deps, SEM escutar
     └── http.ts                     # entrypoint: sobe o servidor e trata shutdown
 
 tests/
 └── integration/
+    ├── drizzle-users-repository.spec.ts  # repositório Drizzle contra Postgres real
     ├── health.spec.ts              # suíte que precisa de Postgres de pé
+    ├── register.spec.ts            # POST /auth/register fim a fim
     ├── setup/
     │   ├── migrate-test-database.ts  # globalSetup: aplica migrations commitadas antes da suíte
     │   └── test-database-url.ts      # única fonte da TEST_DATABASE_URL fora do CI
@@ -73,18 +104,130 @@ tests/
 
 `src/infra/` é infra **sem dono** — o servidor, a config e a conexão do banco.
 Futuramente, o logger. `src/modules/<m>/infra/` é a infra **daquele domínio**;
-hoje só `auth` existe, e só com o schema Drizzle da tabela `users` — sem
-domínio, use case ou endpoint ainda. Se você não consegue dizer de qual módulo
-uma peça é, ela é global.
+hoje só `auth` existe, e ele é o modelo completo: camada pura em `entities/`,
+`value-objects/`, `use-cases/` e nos contratos de `repositories/` e `providers/`,
+com os adapters — Drizzle, in-memory, argon2, HTTP — isolados sob `infra/`. Se
+você não consegue dizer de qual módulo uma peça é, ela é global.
 
-`src/main/` é o **composition root** — o único lugar autorizado a conhecer o
-concreto de todos os módulos. Os entrypoints moram aqui (`http.ts` hoje;
-`worker.ts` e `cron.ts` quando existirem) porque é aqui que o grafo é montado.
-`app.ts` compõe a aplicação HTTP e devolve; quem abre porta é o entrypoint.
+`src/main/` é o **composition root** — o único lugar que conhece o concreto de
+**todos** os módulos ao mesmo tempo. Cada módulo conhece o próprio concreto no
+seu `container.ts`, e o `main/` apenas junta as fatias; a divisão está desenhada
+logo abaixo. Os entrypoints moram aqui (`http.ts` hoje; `worker.ts` e `cron.ts`
+quando existirem) porque é aqui que o grafo é montado. `app.ts` compõe a
+aplicação HTTP e devolve; quem abre porta é o entrypoint.
 
 > `main/` não é "a pasta dos entrypoints". A regra de fronteira classifica
 > `src/main/**` inteiro como `composition`, e é isso que permite a `app.ts`
 > instanciar o banco e registrar rotas sem violar nada.
+
+### A regra de fronteira, enunciada
+
+O §1 dá o princípio; esta tabela é ele por tipo de arquivo. É o que o lint de
+fronteira vai configurar quando entrar — e é por isso que ela precisa estar
+escrita antes, não depois.
+
+| Elemento | Padrão | Pode importar |
+|---|---|---|
+| `pure` | `src/modules/*/{entities,value-objects,repositories,providers,use-cases,dtos,errors}/**` · `src/modules/*/config.ts` · `src/shared/**` | só `pure` |
+| `module-infra` | `src/modules/*/infra/**` | `pure` · `global-infra` · o `module-infra` **do próprio módulo** |
+| `global-infra` | `src/infra/**` | `pure` · `global-infra` |
+| `composition` | `src/modules/*/container.ts` · `src/main/**` | tudo |
+| `test` | `**/*.spec.ts` · `tests/**` | tudo |
+
+**`composition` e `test` são exceções deliberadas, não brechas.** O composition
+root existe justamente para conhecer o concreto, e o teste unitário precisa
+alcançar o repositório in-memory. Deixá-las implícitas é o que produz "exceção
+não documentada" e esvazia a regra.
+
+A linha `module-infra` também resolve o cruzamento entre módulos: o `infra/` de
+um módulo não alcança o `infra/` de outro.
+
+#### E quem pode importar `composition`?
+
+A tabela acima diz o que cada elemento **importa**. Falta a direção contrária, e
+ela não é óbvia — `composition` não aparece na coluna direita de nenhuma linha,
+o que leria como "ninguém pode importar um container". Não é isso:
+
+| Quem importa | O quê | Como |
+|---|---|---|
+| `src/main/**` | `modules/*/container.ts` de qualquer módulo | valor — é o composition root juntando as fatias |
+| `src/modules/<m>/infra/**` | o `container.ts` **do próprio módulo** | **só o tipo** |
+| qualquer outro | — | proibido |
+
+A segunda linha é a que surpreende. `routes.ts` e `endpoints/register.ts` fazem
+`import type { AuthContainer }` porque a decisão 23 tipa o plugin pela fatia que
+ele recebe — é o que transforma "alcançar o use case de outro módulo" em erro de
+compilação. Sendo `import type`, some na compilação: nenhuma dependência em
+runtime, nenhum ciclo.
+
+A terceira linha é literal: o `container.ts` de um módulo nunca é alcançado pelo
+`infra/` de outro módulo, nem pela camada pura.
+
+Sem esta seção, a configuração literal da tabela quebraria o CI no primeiro
+módulo que existe — que é exatamente o `auth` de hoje.
+
+### O container: cada módulo exporta o seu, `main/` compõe
+
+Injeção de dependência aqui é **container manual tipado**. Sem biblioteca, sem
+string key, sem decorator: duas funções, e o grafo inteiro legível.
+
+```ts
+// modules/auth/container.ts — o módulo conhece o concreto
+export function makeAuthContainer(db: Database) {
+  const usersRepository = new DrizzleUsersRepository(db)
+  const hashProvider = new Argon2HashProvider()
+  const clock = new SystemClock()
+  const idGenerator = new UuidIdGenerator()
+
+  return { registerUser: new RegisterUserUseCase(usersRepository, hashProvider, clock, idGenerator) }
+}
+export type AuthContainer = ReturnType<typeof makeAuthContainer>
+
+// main/container.ts — o composition root junta os módulos
+export function makeContainer(db: Database) {
+  return { auth: makeAuthContainer(db) }
+}
+```
+
+Tipagem 100% inferida, e o mesmo grafo serve os três entrypoints porque é
+montado **sem Fastify** — requisito para worker e cron existirem depois sem
+duplicar wiring. Objeto stateless (repositório, provider) é singleton no
+container; o custo de um `new` é nanosegundos contra milissegundos de rede, e o
+problema do `new` no handler nunca foi performance, foi acoplamento.
+
+**O plugin do módulo recebe só a fatia dele.**
+
+```ts
+await app.register(authRoutes, { prefix: AUTH_PREFIX, container: container.auth })
+```
+
+Alcançar o use case de outro módulo vira **erro de compilação** — o tipo
+`AuthContainer` simplesmente não tem o campo. É garantia do compilador, não
+combinado que depende de lint.
+
+> **O grafo é montado no `buildApp`, não no `http.ts`.** `buildApp` é o
+> composition root que as suítes exercitam; se o container nascesse no
+> entrypoint, as rotas do módulo existiriam em produção e faltariam no teste —
+> exatamente o buraco que o corte entre compor e escutar (§2) fechou.
+
+**Onde mora o DTO de um use case.** No arquivo do próprio use case.
+`RegisterUserCommand` e `RegisterUserResult` são 1:1 com `RegisterUserUseCase` e
+mudam sempre junto — mesmo raciocínio que mantém schema, handler e rota no mesmo
+arquivo de endpoint. A pasta `dtos/` está prevista na convenção para o dia em que
+um DTO passar a ser compartilhado entre use cases — não existe ainda, e criá-la
+vazia só adicionaria um diretório que ninguém abre.
+
+**Duas portas transversais, e por que são duas.** `IClock` e `IIdGenerator` moram
+em `shared/providers/`, com adapters em `infra/providers/`. Estão separadas de
+propósito: id de entidade e segredo criptográfico têm perfis de segurança e
+motivos de mudar diferentes — trocar o id de UUIDv4 para v7 não tem relação com a
+entropia de um refresh token. Juntas numa porta só, o use case que quer apenas um
+id receberia uma porta que também cunha segredos.
+
+Pela mesma economia, um contrato nasce com os métodos que têm consumidor.
+`IHashProvider` tem `hash()` e não `compare()`, porque cadastrar não compara
+senha — quem compara é o login, e é lá que o método entra. Contrato com método
+sem consumidor é código que N apps derivados copiam sem nunca exercitar.
 
 **Divisão de responsabilidade que já vale:** `infra/http/server.ts` constrói e
 configura a instância Fastify e a devolve **sem nenhuma rota**. Quem registra
@@ -131,8 +274,15 @@ de topo.
 **Duas regras, com uma exceção:**
 
 - **Entre diretórios de topo:** `#infra/...`, `#modules/...`, `#shared/...`
-- **Dentro da mesma pasta:** relativo **com extensão `.js`** — `./user-mapper.js`.
-  ESM com `nodenext` exige a extensão; sem ela o `tsc` falha com `TS2835`.
+- **Dentro do próprio galho** — mesma pasta ou uma subpasta dela: relativo **com
+  extensão `.js`** — `./user-mapper.js`, `./schema/users.js`,
+  `./endpoints/register.js`. ESM com `nodenext` exige a extensão; sem ela o `tsc`
+  falha com `TS2835`.
+
+Subir de pasta com `..` fica fora do padrão: de `value-objects/` para `errors/`
+escreve-se `#modules/auth/errors/invalid-email-error`, não `../errors/...`. O
+critério é legibilidade sob refatoração — um caminho `#` continua correto depois
+de mover o arquivo; um `../../..` não.
 
 **A exceção:** `vitest.config.ts`, na raiz, importa
 `./tests/integration/setup/test-database-url.js` por caminho relativo,
@@ -182,9 +332,32 @@ N projetos derivados. Estas falham no `pnpm lint`:
 |---|---|---|---|
 | **R6** | Só `src/infra/config/env.ts` lê `process.env` | Biome `style/noProcessEnv` + `overrides` | ✅ fixture faz o lint sair com exit 1 |
 
-Só R6 tem dente hoje, porque só R6 tem alvo hoje. As demais entram quando o código
-que elas protegem existir — regra configurada sobre o vazio dá falsa sensação de
-enforcement, que é pior que não ter.
+**Só R6 tem dente hoje — e o motivo mudou.** A redação anterior desta seção dizia
+que as outras entrariam "quando o código que elas protegem existir". Esse código
+agora existe: a fatia do `POST /auth/register` criou a camada pura, o primeiro
+repositório e a primeira fronteira de módulo real. O critério foi satisfeito e
+nada foi configurado, então isto deixou de ser desenho e virou **dívida**, com o
+tamanho abaixo:
+
+| Regra | Alvo desde | Mecanismo possível | Situação |
+|---|---|---|---|
+| **R7** — camada pura não produz valor não determinístico | `modules/auth/{entities,value-objects,use-cases}` | Biome `noRestrictedGlobals`/`noRestrictedImports` restrito por caminho | ⚠️ só revisão humana |
+| **Fronteira** — quem importa quem | `modules/auth/**` | `dependency-cruiser` (a tabela do §2 é a config) | ⚠️ só revisão humana |
+| **R1** — repositório usa só a API core do Drizzle | `infra/drizzle/drizzle-users-repository.ts` | lint proibindo `db.query.*` | ⚠️ só revisão humana |
+| **R2** — coluna sempre nomeada explicitamente | `infra/drizzle/schema/users.ts` | difícil de lintar; teste de schema cobre na prática | ⚠️ aceito |
+| **R4** — migrations forward-only | `drizzle/` | difícil de lintar; convenção + review | ⚠️ aceito |
+
+As duas primeiras são as que valem automação: R7 e a fronteira são regras que
+quebram em silêncio e que um revisor cansado deixa passar. R2 e R4 são
+convenções que o teste de integração e o próprio formato da pasta já tornam
+visíveis.
+
+> **A regra que existia e não pegou.** A tabela abaixo já proibia "logar objeto
+> de request ou entidade inteira" desde antes desta fatia. O vazamento de hash
+> que a revisão final encontrou (§8) era exatamente essa forma — por um objeto de
+> **erro**, não de entidade. A regra estava certa; nada a verificava, e ninguém
+> leu a linha na hora de escrever `request.log.error({ err })`. É o argumento
+> mais concreto que este projeto tem a favor de dar dente às cinco acima.
 
 **Por que R6 importa:** cada módulo vai declarar o schema Zod das suas env vars, e
 o boot faz o merge. Se um módulo lesse `process.env` direto, esquecer de registrar
@@ -307,6 +480,63 @@ pnpm db:generate --name=create_users_table
 `pnpm lint` quebrar depois de todo `db:generate`, e o `lint:fix` "resolveria"
 reescrevendo um arquivo gerado.
 
+### Violação de unicidade: case o nome da constraint, não só o código
+
+O repositório traduz `23505` do Postgres para erro de domínio, mas **só quando a
+`constraint` é a esperada**. A `users` já tem duas constraints únicas — o índice
+de e-mail e a primary key —, e casar apenas o código transformaria uma colisão de
+`id` num `409 EMAIL_ALREADY_IN_USE` sobre uma falha que é `500`.
+
+O nome do índice é constante exportada do arquivo de schema, lida pelo
+repositório. É a exceção à exceção de magic strings do `CLAUDE.md`: ela vale
+enquanto o nome aparece uma vez só.
+
+O erro do `pg` fica no `.cause`, não no topo — o Drizzle embrulha em
+`DrizzleQueryError`. Por isso a checagem anda a cadeia de `cause`, e não olha a
+`message`.
+
+### Erro de driver não sai do `infra/`
+
+> **Regra:** um repositório **nunca** relança o erro que o driver lhe deu.
+
+O motivo é que esse objeto carrega segredo. A `.message` do `DrizzleQueryError`
+**não** é o texto da query: é `Failed query: ${query}\nparams: ${params}` — o
+texto **mais todo parâmetro vinculado**. Num INSERT em `users`, um desses
+parâmetros é o hash de senha. Como a `stack` deriva da `message` e `params` é
+propriedade própria enumerável, são **três** carregadores do mesmo segredo no
+mesmo objeto.
+
+```ts
+} catch (error) {
+  if (isEmailAlreadyInUse(error)) throw new EmailAlreadyInUseError()
+
+  throw toPersistenceError(error)   // ← nunca `throw error`
+}
+```
+
+`src/infra/database/driver-error.ts` faz a conversão. O que sobrevive é **lista
+de permissão, não de proibição**: a `message` do erro do Postgres, o `code`, o
+`constraint` e a `query` com marcadores. Copiar tudo menos `params` traria o
+`detail` junto, e é nele que o Postgres escreve o valor conflitante —
+`Key (email)=(joao@example.com) already exists.`. Com lista de permissão, campo
+novo que o driver adicione amanhã não entra por acidente.
+
+O `PersistenceError` resultante **não tem `cause`**, e isso é o ponto do tipo: o
+`stdSerializers.err` do pino concatena a cadeia inteira de `cause` na `message`
+e na `stack` do erro de topo, então guardar o original vazaria tudo de volta a
+partir de uma posição aninhada.
+
+**Por que prevenir na origem em vez de limpar no log.** Conter no logger exige
+antecipar *toda* posição onde um erro pode se esconder — `cause`, os `errors[]`
+de um `AggregateError`, qualquer chave própria com valor parecido com erro. O
+pino caminha por todas; um sanitizador nosso caminharia pelas que a gente
+lembrasse. Prevenir tem **um** lugar para acertar, e ele já existia: o `catch`
+que traduz a violação de constraint.
+
+O `error-serializer.ts` continua registrado no logger como **segunda camada**,
+para o caso de um repositório que não siga a regra deixar um erro cru chegar ao
+log no topo.
+
 ### Tempo: `timestamptz` sempre, e a perda de precisão na leitura
 
 Toda coluna de tempo é `timestamp with time zone`. **Ele não guarda fuso** — o
@@ -380,6 +610,34 @@ Duas armadilhas de ordem, ambas silenciosas:
   aparece na spec — sem erro, sem aviso.
 - **`transform: jsonSchemaTransform` é obrigatório.** É ele que converte o Zod
   em JSON Schema. Sem ele a spec sai vazia.
+
+### Todo endpoint declara todo status que ele mesmo produz
+
+```ts
+response: {
+  [CREATED_STATUS]: createdSchema,
+  [BAD_REQUEST_STATUS]: errorResponseSchema,   // validação do Zod
+  [CONFLICT_STATUS]: errorResponseSchema,      // EmailAlreadyInUseError
+},
+```
+
+O motivo é o cliente: num boilerplate cujo consumidor é app mobile, o OpenAPI é o
+contrato de onde se gera código. Endpoint que documenta só o caminho feliz
+obriga o cliente a descobrir os erros por tentativa.
+
+**"Que ele mesmo produz" é o recorte, e ele importa.** Declara-se o que o handler
+e o schema daquela rota podem gerar — `register.ts` declara `201`, `400` e `409`;
+`health.ts` declara `200` e `503`. **Não** se declara o que o framework produz em
+qualquer rota: `500` do handler genérico e `415` de content-type errado são
+universais, e repetir os dois em todo arquivo é ruído que ninguém mantém.
+
+> **Declarar tem uma consequência que não é óbvia:** o `serializerCompiler` passa
+> a **validar** o corpo daquele status contra o schema. Se o `error-handler.ts`
+> um dia produzir uma forma que não bate, o cliente recebe **500** no lugar do
+> status pretendido. Funciona hoje porque `errorResponseSchema` tem `details`
+> opcional, e as duas formas que o handler emite — com e sem `details` — passam
+> nas duas. Um campo novo obrigatório no envelope quebraria isso em silêncio, e
+> o teste que pega é o que assere o **corpo**, não só o status.
 
 Os endpoints checados por `/health` vivem em `infra/health/checks/`, um arquivo
 por dependência. O endpoint só agrega e traduz para HTTP — quando entrar Redis
@@ -689,4 +947,6 @@ do mesmo pacote.
 
 Listado para não ser confundido com omissão, sem detalhar o que não foi construído:
 
-módulos de negócio · regra de fronteira no lint · Docker
+login e verificação de e-mail · módulos de negócio · Unit of Work · `config.ts` de
+módulo · entrypoints `worker.ts` e `cron.ts` · rate limiting · regra de fronteira
+no lint · Docker

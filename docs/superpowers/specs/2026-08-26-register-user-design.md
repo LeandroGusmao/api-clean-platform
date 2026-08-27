@@ -139,7 +139,17 @@ Os dois pontos de enforcement têm consumidores diferentes:
   seed, onde não existe Zod nenhum. Sem o VO, o use case só é seguro quando
   chamado por HTTP.
 
-A duplicação tem motivo escrito, e os números não podem divergir.
+A duplicação tem motivo escrito, e os **números** não podem divergir — são a
+fonte compartilhada da verdade, importada em um lugar só.
+
+O **formato** do e-mail é outra história: `z.email()` no schema exige domínio
+com ponto e TLD de 2+ caracteres e recusa pontos consecutivos; `Email.create`
+aceita qualquer string com exatamente um `@` e os dois lados não-vazios (ex.:
+`a@b`). Isso é deliberado, não um descuido — o Zod é estritamente mais
+restritivo, então nunca rejeita algo que o VO aceitaria, e é por isso que
+`InvalidEmailError` continua **inalcançável por HTTP** (ver §10). Mas o VO
+existe para os entrypoints de worker/cron/seed da decisão 10, e esses aceitam
+`a@b`: linhas que nenhum cliente HTTP jamais conseguiria criar.
 
 ### 4.3 — Política de senha: mínimo 8, máximo 128, letra + dígito + não-alfanumérico
 
@@ -247,8 +257,11 @@ e-mail passam as duas pela checagem.
 
 A tradução anda a **cadeia de `cause`**, não o erro de topo. Isso é o que a fatia
 1 descobriu na prática: o Drizzle embrulha o erro do driver em `DrizzleQueryError`,
-cuja `.message` é o texto da query; o erro do Postgres, com `.code` e
-`.constraint`, vive no `.cause`.
+cuja `.message` **não** é o texto da query — é o texto da query mais todo
+parâmetro vinculado (`params`), o que inclui o hash de senha quando o INSERT
+falha; por isso o log passa por um serializer dedicado
+(`src/infra/observability/error-serializer.ts`) antes de sair. O erro do
+Postgres, com `.code` e `.constraint`, vive no `.cause`.
 
 #### A checagem casa o nome da constraint, não só o código
 
@@ -617,8 +630,10 @@ interface UniqueViolationCandidate {
 
 /**
  * Anda a cadeia de `cause`: o Drizzle embrulha o erro do driver em
- * `DrizzleQueryError`, cuja `.message` é o texto da query. O erro do `pg`, que
- * carrega `.code` e `.constraint`, vive no `.cause`. Descoberto na fatia 1.
+ * `DrizzleQueryError`, cuja `.message` NÃO é só o texto da query — é o texto
+ * mais todo parâmetro vinculado, o que inclui o hash de senha (por isso o log
+ * passa pelo serializer dedicado antes de sair). O erro do `pg`, que carrega
+ * `.code` e `.constraint`, vive no `.cause`. Descoberto na fatia 1.
  *
  * Casa o **nome da constraint**, não só o código. A tabela já tem uma segunda
  * constraint única — a primary key —, então um `23505` de `users_pkey` viraria

@@ -1,4 +1,3 @@
-import { eq } from 'drizzle-orm'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { env } from '#infra/config/env'
@@ -30,22 +29,6 @@ beforeEach(async () => {
 })
 
 describe('users table', () => {
-  // SCAFFOLDING — delete this one in the next slice. The DrizzleUsersRepository
-  // integration test will cover the same round trip through real code, and two
-  // tests for one behavior is one too many to maintain.
-  it('stores a row and reads it back', async () => {
-    const [inserted] = await db
-      .insert(users)
-      .values({ email: EMAIL, passwordHash: PASSWORD_HASH })
-      .returning()
-
-    const found = await db.select().from(users).where(eq(users.email, EMAIL))
-
-    expect(found).toHaveLength(1)
-    expect(found[0]?.id).toBe(inserted?.id)
-    expect(found[0]?.passwordHash).toBe(PASSWORD_HASH)
-  })
-
   // KEEP — the only test bound to the functional index itself. A repository
   // test would prove "duplicate email rejected" without proving which index
   // rejected it, which is the part that silently breaks.

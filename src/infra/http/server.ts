@@ -3,6 +3,7 @@ import type { Writable } from 'node:stream'
 import Fastify, { type FastifyInstance, LogController } from 'fastify'
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod'
 import { type Env, NODE_ENV_DEVELOPMENT } from '#infra/config/env'
+import { serializeError } from '#infra/observability/error-serializer'
 import { REDACT_PATHS } from '#infra/observability/redact-paths'
 import { runWithRequestContext } from '#infra/observability/request-context'
 import { registerErrorHandling } from './error-handler.js'
@@ -39,6 +40,7 @@ export function buildServer(env: Env, options: BuildServerOptions = {}): Fastify
         paths: [...REDACT_PATHS],
         censor: REDACTED_CENSOR,
       },
+      serializers: { err: serializeError },
       ...(options.logStream ? { stream: options.logStream } : {}),
       ...(env.NODE_ENV === NODE_ENV_DEVELOPMENT
         ? {

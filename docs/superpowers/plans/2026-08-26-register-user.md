@@ -1619,7 +1619,9 @@ interface UniqueViolationCandidate {
 
 /**
  * Walks the `cause` chain. Drizzle wraps the driver error in a
- * `DrizzleQueryError` whose `.message` is the query text; the `pg` error that
+ * `DrizzleQueryError` whose `.message` is the query text plus every bound
+ * parameter, not the query text alone — which is why it must go through
+ * `error-serializer.ts` before it ever reaches a log; the `pg` error that
  * carries `.code` and `.constraint` lives in `.cause`.
  *
  * Matches the constraint NAME, not just the code. The table already has a
@@ -2176,7 +2178,10 @@ repositório. É a exceção à exceção de magic strings do `CLAUDE.md`: ela v
 enquanto o nome aparece uma vez só.
 
 O erro do `pg` fica no `.cause`, não no topo — o Drizzle embrulha em
-`DrizzleQueryError`, cuja `.message` é o texto da query. A checagem anda a cadeia.
+`DrizzleQueryError`. A `.message` dela **não** é só o texto da query: é o texto
+mais todo parâmetro vinculado, incluindo o hash de senha quando o INSERT falha
+— por isso o log passa por um serializer dedicado antes de sair. A checagem de
+constraint anda a cadeia a partir da `cause`.
 ```
 
 - [ ] **Step 5: Emende as decisões 20, 21 e 23 no `docs/DECISIONS.md` (local)**

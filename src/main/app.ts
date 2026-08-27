@@ -4,6 +4,10 @@ import { createDatabase } from '#infra/database/client'
 import { healthRoute } from '#infra/http/endpoints/health'
 import { registerOpenApi } from '#infra/http/openapi'
 import { type BuildServerOptions, buildServer } from '#infra/http/server'
+import { authRoutes } from '#modules/auth/infra/http/routes'
+import { makeContainer } from './container.js'
+
+const AUTH_PREFIX = '/auth'
 
 /**
  * Composes the whole application — instance, dependencies, docs and routes —
@@ -28,6 +32,12 @@ export async function buildApp(
   await registerOpenApi(app, env)
 
   await app.register(healthRoute, { db })
+
+  // The graph is built here, not in `http.ts`: `buildApp` is the composition
+  // root the suites exercise, so anything wired here reaches the tests too.
+  const container = makeContainer(db)
+
+  await app.register(authRoutes, { prefix: AUTH_PREFIX, container: container.auth })
 
   return app
 }
