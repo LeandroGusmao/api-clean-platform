@@ -529,10 +529,13 @@ export class JwtTokenSigner implements ITokenSigner {
   }
 
   async verify(token: string): Promise<AccessTokenPayload> {
-    // Pinning `algorithms` is load-bearing, not decoration: verified that a
-    // token signed HS512 with this same secret verifies WITHOUT the pin.
     const { payload } = await jwtVerify(token, this.#secret, {
+      // Pinning `algorithms` is load-bearing, not decoration: verified that a
+      // token signed HS512 with this same secret verifies WITHOUT the pin.
       algorithms: [ALGORITHM],
+      // Without this, jose checks `exp` against its own `Date.now()` and the
+      // injected clock would be decorative on this side — verified.
+      currentDate: this.#clock.now(),
     })
 
     if (typeof payload.sub !== 'string') throw new Error(MISSING_SUBJECT_MESSAGE)
@@ -546,6 +549,11 @@ export class JwtTokenSigner implements ITokenSigner {
 o que torna o spec da expiração determinístico: o relógio fake avança `TTL + 1s` e
 o token vence, sem `setTimeout`. O relógio já existe no container; custa um
 argumento.
+
+**E ele tem que entrar dos dois lados.** `sign` usa o relógio para `iat`/`exp`,
+mas `jwtVerify` valida `exp` contra o **relógio do `jose`** a menos que receba
+`currentDate` — sem essa opção, avançar o relógio fake não vence token nenhum, e o
+teste de expiração precisaria de `setTimeout` de uma hora. Verificado em §13.
 
 ## 9. O guard
 
@@ -681,6 +689,21 @@ schema: {
 por não ter consumidor. A entidade já protege por construção — `#passwordHash` é
 campo privado não-enumerável, então nem um `reply.send(user)` distraído vazaria.
 
+**O handler tem que serializar as datas à mão.** `user.createdAt` é um `Date`, e
+`z.iso.datetime()` recusa `Date` — o `serializerCompiler` valida a resposta, então
+devolver o objeto cru produz **500**, não 200 (verificado, §13). É a armadilha que
+o `ARCHITECTURE.md` §7 descreve ao dizer que declarar um status passa a validar o
+corpo daquele status.
+
+```ts
+return reply.status(OK_STATUS).send({
+  id: user.id,
+  email: user.email.value,
+  emailVerifiedAt: user.emailVerifiedAt?.toISOString() ?? null,
+  createdAt: user.createdAt.toISOString(),
+})
+```
+
 ### `openapi.ts` ganha o esquema de segurança
 
 `security: [{ bearerAuth: [] }]` referenciando um esquema inexistente gera
@@ -732,6 +755,19 @@ exp vencido há 60s, clockTolerance 5s  THROW  JWTExpired
 iat 30s no futuro, sem tolerância      OK  ← jose não valida `iat` contra o relógio
 ```
 
+### `jwtVerify` aceita `currentDate`, e sem ele o `IClock` é decorativo
+
+```
+sem currentDate (relógio real, token válido)   OK
+currentDate = now                              OK
+currentDate = now + TTL - 1s                   OK
+currentDate = now + TTL + 1s                   THROW  JWTExpired
+```
+
+É o que permite o spec da expiração avançar um relógio fake em vez de esperar uma
+hora. Sem a opção, `jose` usa `Date.now()` e o relógio injetado só teria efeito no
+`sign`.
+
 ### `jose` não impõe tamanho mínimo de segredo
 
 Assinar com um segredo de **5 bytes** é aceito sem aviso. O `z.string().min(32)`
@@ -749,6 +785,18 @@ preHandler que passa              200  {"principal":{"id":"user-1"}}
 O segundo caso prova que o `AsyncLocalStorage` do `traceId` sobrevive à fronteira
 assíncrona; o terceiro, que o `WeakMap` chaveado pelo `request` atravessa
 `preHandler → handler`.
+
+### Devolver `Date` onde o schema diz `z.iso.datetime()` produz 500
+
+```
+GET /raw-date     500  {"error":{"code":"INTERNAL_SERVER_ERROR",…}}
+GET /iso-string   200  {"createdAt":"2026-08-28T01:07:36.064Z"}
+```
+
+`z.iso.datetime().safeParse(new Date())` é `false` — o schema quer string ISO. Como
+o `serializerCompiler` valida a resposta, o handler de `/auth/me` precisa chamar
+`.toISOString()` (§11). Um implementador que devolva `user.createdAt` cru vê 500
+sem nenhuma pista de onde veio.
 
 ### `Error` simples: 500 genérico ao cliente, mensagem completa no log
 
