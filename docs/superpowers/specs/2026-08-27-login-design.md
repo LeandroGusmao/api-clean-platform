@@ -107,10 +107,18 @@ export function makeAuthGuard(verify: VerifyAccessToken): preHandlerHookHandler
 export function getPrincipal(request: FastifyRequest): Principal
 ```
 
-`getPrincipal` devolve `Principal` **não-opcional** e falha fechada
-(`InvalidAccessTokenError` → 401) se chamado em rota não guardada. A invariante
-"rota atrás do guard sempre tem principal" fica codificada em um lugar, em vez de
-virar um `?` que toda rota do sistema carrega para sempre.
+`getPrincipal` devolve `Principal` **não-opcional**. A invariante "rota atrás do
+guard sempre tem principal" fica codificada em um lugar, em vez de virar um `?`
+que toda rota do sistema carrega para sempre.
+
+**Chamá-lo em rota não guardada é erro de programação, e o erro lançado diz isso.**
+Não é `InvalidAccessTokenError`: um 401 ali responderia igual a um token expirado,
+e quem esqueceu o `preHandler` iria caçar no cliente enquanto a linha some no
+ruído de tráfego normal. É um `Error` simples, que cai no ramo genérico do
+`error-handler.ts` — o tratamento que aquele arquivo já documenta para erro de
+programação — e portanto **500, logado com `traceId`, sem vazar a mensagem**
+(verificado, §13). Fecha fechado dos dois jeitos: o handler não roda em nenhum
+dos casos, então a escolha é puramente de diagnóstico.
 
 **Não é mais seguro contra atacante externo** — a superfície de fora é idêntica
 nas duas opções, e nenhuma das duas impede registrar uma rota **sem** o guard. A
@@ -590,10 +598,19 @@ export function makeAuthGuard(verify: VerifyAccessToken): preHandlerHookHandler 
   }
 }
 
-/** Fails closed: only reachable on a route registered without the guard. */
+const UNGUARDED_ROUTE_MESSAGE =
+  'getPrincipal called on a route registered without the auth guard'
+
+/**
+ * Only reachable when a route was registered without the guard — a wiring
+ * mistake, not a credential failure. A plain `Error` on purpose: it lands in the
+ * error handler's generic branch, so the mistake is LOGGED as a 500 with its
+ * traceId instead of answering 401 and reading like ordinary expired-token
+ * traffic. The client still sees only the generic body.
+ */
 export function getPrincipal(request: FastifyRequest): Principal {
   const principal = principals.get(request)
-  if (principal === undefined) throw new InvalidAccessTokenError()
+  if (principal === undefined) throw new Error(UNGUARDED_ROUTE_MESSAGE)
   return principal
 }
 ```
@@ -607,6 +624,11 @@ export function getPrincipal(request: FastifyRequest): Principal {
 | guard | header ausente / malformado | `InvalidAccessTokenError` | `UnauthorizedError` | 401 |
 | guard | token inválido / expirado / forjado | `InvalidAccessTokenError` | `UnauthorizedError` | 401 |
 | `get-user-profile` | `sub` válido sem linha | `UserNotFoundError` | `NotFoundError` | 404 |
+| `getPrincipal` | rota registrada **sem** o guard | `Error` simples | — fora da taxonomia | 500 |
+
+A última linha é a única do sistema que sai da taxonomia de propósito. Não é falha
+do cliente: é o desenvolvedor que montou a rota sem `preHandler`, e o ramo genérico
+do handler existe exatamente para isso — 500, logado, corpo genérico.
 
 **`USER_NOT_FOUND` nunca sai do login.** Ele só existe no `/auth/me`, onde quem
 pergunta já provou ter o token. Devolvê-lo no login diria que o e-mail não existe
@@ -728,6 +750,20 @@ O segundo caso prova que o `AsyncLocalStorage` do `traceId` sobrevive à frontei
 assíncrona; o terceiro, que o `WeakMap` chaveado pelo `request` atravessa
 `preHandler → handler`.
 
+### `Error` simples: 500 genérico ao cliente, mensagem completa no log
+
+O que decidiu o `getPrincipal` do §4.1:
+
+```
+status: 500
+body  : {"error":{"code":"INTERNAL_SERVER_ERROR","message":"Internal server error","traceId":"3076a50e-…"}}
+logged: YES — a mensagem chega ao log
+leaks : no  — o cliente vê corpo genérico
+```
+
+As duas metades importam. Se a mensagem não chegasse ao log, um `Error` simples
+seria pior que o 401 — falha muda. Se chegasse ao corpo, seria vazamento.
+
 ### O dummy hash equaliza, e `hashSync` casa com `hash`
 
 ```
@@ -840,11 +876,11 @@ genérico do §4.3 só existe porque alguém leu a tabela de fronteira à mão.
 
 | Arquivo | O que prova |
 |---|---|
-| `use-cases/login-user.spec.ts` | sucesso; senha errada e e-mail inexistente produzem **o mesmo** erro; e que `compare` **é chamado** quando o usuário não existe — o spy é o que impede a equalização de regredir em silêncio |
+| `use-cases/login-user.spec.ts` | sucesso; senha errada e e-mail inexistente produzem **o mesmo** erro; e que `compare` **é chamado com o `dummyHash`** quando o usuário não existe (§15.1) |
 | `use-cases/get-user-profile.spec.ts` | achado; `UserNotFoundError` quando o `sub` não tem linha |
 | `infra/providers/jwt-token-signer.spec.ts` | ida e volta; expirado (relógio fake avança `TTL + 1s`); segredo errado; HS512 recusado; token sem `sub` |
 | `infra/providers/argon2-hash-provider.spec.ts` | `compare` true/false; `dummyHash` é argon2id válido e perde a comparação |
-| `infra/http/auth-guard.spec.ts` | sem header · `Basic x` · `Bearer` vazio · `verify` que lança → todos `401 INVALID_ACCESS_TOKEN` no envelope; sucesso injeta o principal; `getPrincipal` sem guard falha fechada |
+| `infra/http/auth-guard.spec.ts` | sem header · `Basic x` · `Bearer` vazio · `verify` que lança → todos `401 INVALID_ACCESS_TOKEN` no envelope; sucesso injeta o principal; `getPrincipal` em rota **sem** o guard → `500` genérico **e a mensagem no log** (§15.2) |
 | `entities/user.spec.ts` | `fromTrusted` preserva os seis campos e clona as datas |
 | `config.spec.ts` | `JWT_SECRET` de 31 caracteres é recusado; `ACCESS_TOKEN_TTL_SECONDS=` não vira `0` |
 
@@ -854,6 +890,32 @@ fake iria para o `dist/`.
 
 `auth-guard.spec.ts` sobe um servidor e usa `inject`, seguindo o padrão que
 `error-handler.spec.ts` e `server.spec.ts` já usam — sem I/O, portanto unitário.
+
+### 15.1 — O teste que protege a equalização de timing
+
+Não basta assertar que o erro é o mesmo nos dois modos de falha: isso continua
+passando se alguém introduzir um `if (user === null) throw …` **antes** do
+`compare`. O erro seria idêntico e o tempo, não — a equalização teria sumido sem
+um único teste vermelho.
+
+O que fecha é assertar a **chamada**, não só o resultado:
+
+```ts
+// The assertion is that argon2 ran at all. A future `if (!user) throw` before
+// the compare keeps every other assertion in this file green while silently
+// restoring the timing oracle.
+expect(compareSpy).toHaveBeenCalledWith(PASSWORD, hashProvider.dummyHash)
+```
+
+### 15.2 — O teste que documenta a rota sem guard
+
+Uma rota registrada **sem** `preHandler` cujo handler chama `getPrincipal`
+responde `500` com corpo genérico, e a mensagem aparece **no log**. As duas
+metades são a asserção: o corpo prova que nada vaza, e o log prova que a falha é
+diagnosticável — que é a única razão de não ser um 401.
+
+O spec captura o log pelo `logStream` de `BuildServerOptions`, como
+`register.spec.ts` já faz.
 
 ### Integração — Postgres real
 
