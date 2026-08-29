@@ -18,7 +18,12 @@ lança, o endpoint não trata, o handler responde.
 | [`error-response.ts`](../../infra/http/errors/error-response.ts) | infra | schema Zod do corpo de erro |
 | [`validation-issues.ts`](../../infra/http/errors/validation-issues.ts) | infra | issue do Zod → `code` do contrato |
 
-Erro de módulo mora no módulo. `src/shared/errors/` guarda só as categorias.
+Erro concreto mora onde é lançado: erro de domínio em
+`src/modules/<m>/errors/`; erro de uma peça de infra compartilhada, no próprio
+arquivo dela — `InvalidAccessTokenError` é declarado dentro de
+[`auth-guard.ts`](../../infra/http/auth-guard.ts), porque quem o lança é o guard,
+e não um módulo. `src/shared/errors/` guarda só as categorias abstratas: erro
+concreto nenhum entra aqui.
 
 ---
 
@@ -30,17 +35,21 @@ Erro de módulo mora no módulo. `src/shared/errors/` guarda só as categorias.
 // src/modules/auth/errors/invalid-credentials-error.ts
 import { UnauthorizedError } from '#shared/errors/app-error'
 
+const INVALID_CREDENTIALS_CODE = 'INVALID_CREDENTIALS'
+const INVALID_CREDENTIALS_MESSAGE = 'Invalid credentials'
+
 export class InvalidCredentialsError extends UnauthorizedError {
-  readonly code = 'INVALID_CREDENTIALS'
+  readonly code = INVALID_CREDENTIALS_CODE
 
   constructor() {
-    super('Invalid credentials')
+    super(INVALID_CREDENTIALS_MESSAGE)
   }
 }
 ```
 
 O `code` é escrito à mão, nunca derivado do nome da classe: renomear a classe não
-pode mudar o contrato público. Mensagem em inglês (`CLAUDE.md`).
+pode mudar o contrato público. O literal fica numa constante nomeada como todo
+literal do projeto, e a mensagem é em inglês (`CLAUDE.md`).
 
 **2. Lance no use case**
 
@@ -52,13 +61,30 @@ if (!user) throw new InvalidCredentialsError()
 
 ```ts
 async (request, reply) => {
-  const result = await authenticate.execute(request.body)
-  return reply.status(OK_HTTP_STATUS).send(result)
+  const { accessToken } = await container.loginUser.execute(request.body)
+
+  return reply.status(OK_STATUS).send({ accessToken })
 }
 ```
 
-Sai `401` com `{"error":{"code":"INVALID_CREDENTIALS", ...}}`, sem você escrever
-uma linha de HTTP.
+Sai `401` com `{"error":{"code":"INVALID_CREDENTIALS", ...}}`: nenhum
+`try/catch`, nenhum status de falha decidido aqui.
+
+**4. Declare o status no schema da rota**
+
+```ts
+response: {
+  [OK_STATUS]: okSchema,
+  [BAD_REQUEST_STATUS]: errorResponseSchema,   // validação do Zod
+  [UNAUTHORIZED_STATUS]: errorResponseSchema,  // InvalidCredentialsError
+},
+```
+
+É a única linha de HTTP que o erro custa, e ela não é opcional: não tratar não é
+o mesmo que não documentar. O OpenAPI é o contrato de onde o cliente gera código,
+e o recorte é o que **aquela rota** produz — o `500` do handler genérico e o `415`
+de content-type são universais e não se repetem em todo arquivo
+([`ARCHITECTURE.md`](../../../ARCHITECTURE.md) §7).
 
 ---
 
@@ -152,10 +178,12 @@ flowchart TD
 | ✅ | ❌ |
 |---|---|
 | `throw new InvalidCredentialsError()` | `return { error: 'invalid' }` |
-| `readonly code = 'INVALID_CREDENTIALS'` | derivar o `code` do nome da classe |
+| `readonly code = INVALID_CREDENTIALS_CODE` | `readonly code = 'INVALID_CREDENTIALS'` |
+| constante escrita à mão | `code` derivado do nome da classe |
 | estender uma das seis categorias | estender `AppError` direto |
-| erro do módulo em `src/modules/<m>/errors/` | erro do módulo em `src/shared/` |
+| erro concreto onde ele é lançado | erro concreto novo em `src/shared/errors/` |
 | endpoint sem `try/catch` | `try/catch` traduzindo erro para status |
+| `[UNAUTHORIZED_STATUS]: errorResponseSchema` na rota | rota que declara só o caminho feliz |
 | `import { X } from '#shared/errors/app-error'` | `import ... from '../../../shared/...'` |
 
 **Nunca** adicione `statusCode` a um erro da camada pura. É o atalho óbvio e é o
@@ -172,19 +200,23 @@ categoria.
 No use case, verifique o tipo:
 
 ```ts
-await expect(authenticate.execute(input)).rejects.toBeInstanceOf(InvalidCredentialsError)
+await expect(useCase.execute(input)).rejects.toBeInstanceOf(InvalidCredentialsError)
 ```
 
-No endpoint, verifique o contrato — com constante nomeada no próprio spec, nunca
-importada do erro, senão o teste vira tautologia:
+Na borda HTTP, verifique o contrato — com constante nomeada no próprio spec,
+nunca importada do erro, senão o teste vira tautologia:
 
 ```ts
-const UNAUTHORIZED_STATUS_CODE = 401
+const UNAUTHORIZED_STATUS = 401
 const INVALID_CREDENTIALS_CODE = 'INVALID_CREDENTIALS'
 
-expect(response.statusCode).toBe(UNAUTHORIZED_STATUS_CODE)
+expect(response.statusCode).toBe(UNAUTHORIZED_STATUS)
 expect(response.json().error.code).toBe(INVALID_CREDENTIALS_CODE)
 ```
+
+Nenhum endpoint tem spec ainda: acima está a forma que o primeiro deve ter. O
+padrão já roda em [`auth-guard.spec.ts`](../../infra/http/auth-guard.spec.ts),
+que fixa `401` e `INVALID_ACCESS_TOKEN` exatamente assim.
 
 <sub>O diagrama é Mermaid: o GitHub renderiza nativamente; no VS Code exige a
 extensão <i>Markdown Preview Mermaid Support</i>.</sub>
