@@ -1,0 +1,18 @@
+import { InvoiceNotFoundError } from '#modules/billing/errors/invoice-not-found-error'
+import type { IInvoicesRepository } from '#modules/billing/repositories/invoices-repository'
+
+export interface InvoiceResult {
+  id: string
+  total: number
+}
+
+export class GetInvoiceUseCase {
+  constructor(private readonly repository: IInvoicesRepository) {}
+
+  async execute(invoiceId: string, userId: string): Promise<InvoiceResult> {
+    const invoice = await this.repository.findById(invoiceId)
+    if (invoice === null) throw new InvoiceNotFoundError()
+
+    return { id: invoice.id, total: invoice.total }
+  }
+}

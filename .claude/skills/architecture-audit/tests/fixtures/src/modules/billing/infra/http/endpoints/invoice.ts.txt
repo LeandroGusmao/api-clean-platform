@@ -1,0 +1,23 @@
+import { z } from 'zod'
+import type { BillingContainer } from '#modules/billing/container'
+
+const invoiceSchema = z.object({ createdAt: z.iso.datetime() })
+
+export const invoiceRoute = async (app: unknown, { container }: BillingContainer) => {
+  app.get(
+    '/invoices/:id',
+    { schema: { response: { 200: invoiceSchema } } },
+    async (request, reply) => {
+      try {
+        request.log.info({ request, body: request.body }, 'loading invoice')
+        const user = await container.loadUser.execute(request.params.id)
+        console.log(user)
+
+        return reply.status(200).send({ passwordHash: user.passwordHash })
+      } catch (error) {
+        request.log.error({ err: error }, 'invoice failed')
+        throw error
+      }
+    },
+  )
+}

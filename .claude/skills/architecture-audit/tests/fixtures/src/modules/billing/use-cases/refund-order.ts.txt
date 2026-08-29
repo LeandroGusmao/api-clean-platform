@@ -1,0 +1,23 @@
+import type { IClock } from '#shared/providers/clock'
+import type { IIdGenerator } from '#shared/providers/id-generator'
+import { RefundNotAllowedError } from '#modules/billing/errors/refund-not-allowed-error'
+import type { IOrdersRepository } from '#modules/billing/repositories/orders-repository'
+
+/** Time never comes from `new Date()` here — it comes from `IClock` (R7). */
+export class RefundOrderUseCase {
+  constructor(
+    private readonly ordersRepository: IOrdersRepository,
+    private readonly clock: IClock,
+    private readonly idGenerator: IIdGenerator,
+  ) {}
+
+  async execute(orderId: string) {
+    const order = await this.ordersRepository.findById(orderId)
+    if (order === null) throw new RefundNotAllowedError()
+
+    // Defensive copy of a value we were given: deterministic, not a clock read.
+    const refundedAt = new Date(this.clock.now().getTime())
+
+    return { id: this.idGenerator.generate(), refundedAt }
+  }
+}

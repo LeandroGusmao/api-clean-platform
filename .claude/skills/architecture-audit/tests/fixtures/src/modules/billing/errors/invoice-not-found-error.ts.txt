@@ -1,0 +1,7 @@
+import { AppError } from '#shared/errors/app-error'
+
+const INVOICE_NOT_FOUND_CODE = 'INVOICE_NOT_FOUND'
+
+export class InvoiceNotFoundError extends AppError {
+  readonly code = INVOICE_NOT_FOUND_CODE
+}

@@ -1,0 +1,26 @@
+import type { Database } from '#infra/database/client'
+import { findDriverError, toPersistenceError } from '#infra/database/driver-error'
+import { DuplicateOrderError } from '#modules/billing/errors/duplicate-order-error'
+import { ORDERS_NUMBER_UNIQUE_INDEX, orders } from './schema/orders.js'
+
+const PG_UNIQUE_VIOLATION = '23505'
+
+export class DrizzleOrdersRepository {
+  constructor(private readonly db: Database) {}
+
+  async save(order: unknown): Promise<void> {
+    try {
+      await this.db.insert(orders).values(order)
+    } catch (error) {
+      const driverError = findDriverError(error)
+      if (
+        driverError?.code === PG_UNIQUE_VIOLATION &&
+        driverError.constraint === ORDERS_NUMBER_UNIQUE_INDEX
+      ) {
+        throw new DuplicateOrderError()
+      }
+
+      throw toPersistenceError(error)
+    }
+  }
+}

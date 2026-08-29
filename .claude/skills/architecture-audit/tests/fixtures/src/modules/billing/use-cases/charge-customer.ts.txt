@@ -1,0 +1,21 @@
+import { eq } from 'drizzle-orm'
+import type { FastifyRequest } from 'fastify'
+import { db } from '#infra/database/client'
+import type { AuthContainer } from '#modules/auth/container'
+
+/**
+ * A comment that mentions process.env and new Date() and Math.random()
+ * must never be flagged — comments are prose, not code.
+ */
+// const stale = process.env.OLD
+const TTL = process.env.BILLING_TTL
+
+export class ChargeCustomerUseCase {
+  async execute(id: string, request: FastifyRequest) {
+    const now = new Date()
+    const ref = crypto.randomUUID()
+    const jitter = Math.random()
+
+    return { id, now, ref, jitter, eq, db, TTL, request }
+  }
+}

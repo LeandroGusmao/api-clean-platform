@@ -1,0 +1,7 @@
+import { it } from 'vitest'
+
+const url = process.env.DATABASE_URL
+
+it.only('charges the customer', () => {
+  console.log(url)
+})

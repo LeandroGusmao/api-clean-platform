@@ -1,0 +1,18 @@
+import { toPersistenceUser } from '#modules/auth/infra/drizzle/user-mapper'
+import { invoices } from './schema/invoices'
+import { helper } from '../../helper.js'
+
+export class DrizzleInvoicesRepository {
+  async save(invoice: unknown) {
+    try {
+      await this.db.insert(invoices).values(invoice)
+    } catch (error) {
+      this.app.log.error({ err: error }, 'insert failed')
+      throw error
+    }
+  }
+
+  async findById(id: string) {
+    return this.db.query.invoices.findFirst({ where: helper(id, toPersistenceUser) })
+  }
+}

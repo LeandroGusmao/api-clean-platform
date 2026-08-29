@@ -1,0 +1,7 @@
+export abstract class AppError extends Error {
+  abstract readonly code: string
+}
+
+/** A própria taxonomia: estas SÃO as seis irmãs, não podem disparar. */
+export abstract class NotFoundError extends AppError {}
+export abstract class ConflictError extends AppError {}
