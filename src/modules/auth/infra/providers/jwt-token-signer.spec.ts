@@ -2,7 +2,7 @@ import { SignJWT } from 'jose'
 import { describe, expect, it } from 'vitest'
 import type { AuthConfig } from '#modules/auth/config'
 import { JwtTokenSigner } from '#modules/auth/infra/providers/jwt-token-signer'
-import type { IClock } from '#shared/providers/clock'
+import type { IClock } from '#shared/ports/clock'
 
 const SECRET = 'a-test-secret-with-at-least-32-chars'
 const OTHER_SECRET = 'a-different-secret-with-32-chars-ok'

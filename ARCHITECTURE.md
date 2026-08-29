@@ -54,7 +54,7 @@ src/
 │   │   │   └── validation-issues.spec.ts
 │   │   └── endpoints/
 │   │       └── health.ts           # GET /health — agrega os checks
-│   ├── providers/                   # adapters dos contratos transversais
+│   ├── providers/                   # adapters dos contratos de shared/ports/
 │   │   ├── system-clock.ts
 │   │   ├── system-clock.spec.ts     # unitário colocado
 │   │   ├── uuid-id-generator.ts
@@ -69,7 +69,7 @@ src/
 │       ├── entities/user.ts         # puro — estado em campos `#`
 │       ├── value-objects/           # puro — email.ts, password.ts
 │       ├── repositories/            # SÓ contratos — users-repository.ts
-│       ├── providers/               # SÓ contratos — hash-provider.ts, token-signer.ts
+│       ├── ports/                   # SÓ contratos — hash-provider.ts, token-signer.ts
 │       ├── use-cases/               # puro (+ .spec.ts colocado) — register-user.ts, login-user.ts, get-user-profile.ts
 │       ├── errors/                  # um arquivo por erro do módulo — inclui invalid-credentials-error.ts, user-not-found-error.ts
 │       ├── container.ts             # factory do container do módulo
@@ -79,7 +79,7 @@ src/
 │           │   ├── user-mapper.ts   # entidade -> row (decisão 20)
 │           │   └── drizzle-users-repository.ts
 │           ├── in-memory/           # repositório de teste (decisão 09)
-│           ├── providers/           # argon2-hash-provider.ts, jwt-token-signer.ts
+│           ├── providers/           # adapters dos contratos de ports/ — argon2, jose
 │           └── http/
 │               ├── constants.ts     # status HTTP e tag do OpenAPI do módulo
 │               ├── endpoints/       # 1 arquivo = schema + handler + rota
@@ -90,7 +90,7 @@ src/
 ├── shared/                         # camada PURA, sem dono de módulo
 │   ├── errors/
 │   │   └── app-error.ts            # taxonomia: AppError + as 6 categorias
-│   └── providers/                   # contratos transversais
+│   └── ports/                       # contratos transversais
 │       ├── clock.ts                 # IClock — tempo entra por aqui (R7)
 │       └── id-generator.ts          # IIdGenerator — identidade entra por aqui (R7)
 └── main/
@@ -114,7 +114,7 @@ tests/
 `src/infra/` é infra **sem dono** — o servidor, a config e a conexão do banco.
 Futuramente, o logger. `src/modules/<m>/infra/` é a infra **daquele domínio**;
 hoje só `auth` existe, e ele é o modelo completo: camada pura em `entities/`,
-`value-objects/`, `use-cases/` e nos contratos de `repositories/` e `providers/`,
+`value-objects/`, `use-cases/` e nos contratos de `repositories/` e `ports/`,
 com os adapters — Drizzle, in-memory, argon2, HTTP — isolados sob `infra/`. Se
 você não consegue dizer de qual módulo uma peça é, ela é global.
 
@@ -137,7 +137,7 @@ escrita antes, não depois.
 
 | Elemento | Padrão | Pode importar |
 |---|---|---|
-| `pure` | `src/modules/*/{entities,value-objects,repositories,providers,use-cases,dtos,errors}/**` · `src/modules/*/config.ts` · `src/shared/**` | só `pure` |
+| `pure` | `src/modules/*/{entities,value-objects,repositories,ports,use-cases,dtos,errors}/**` · `src/modules/*/config.ts` · `src/shared/**` | só `pure` |
 | `module-infra` | `src/modules/*/infra/**` | `pure` · `global-infra` · o `module-infra` **do próprio módulo** |
 | `global-infra` | `src/infra/**` | `pure` · `global-infra` |
 | `composition` | `src/modules/*/container.ts` · `src/main/**` | tudo |
@@ -237,7 +237,7 @@ um DTO passar a ser compartilhado entre use cases — não existe ainda, e criá
 vazia só adicionaria um diretório que ninguém abre.
 
 **Duas portas transversais, e por que são duas.** `IClock` e `IIdGenerator` moram
-em `shared/providers/`, com adapters em `infra/providers/`. Estão separadas de
+em `shared/ports/`, com adapters em `infra/providers/`. Estão separadas de
 propósito: id de entidade e segredo criptográfico têm perfis de segurança e
 motivos de mudar diferentes — trocar o id de UUIDv4 para v7 não tem relação com a
 entropia de um refresh token. Juntas numa porta só, o use case que quer apenas um

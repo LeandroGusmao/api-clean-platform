@@ -1,5 +1,5 @@
 import { hash, hashSync, verify } from '@node-rs/argon2'
-import type { IHashProvider } from '#modules/auth/providers/hash-provider'
+import type { IHashProvider } from '#modules/auth/ports/hash-provider'
 
 /** Never a real password: this value only ever loses a comparison. */
 const DUMMY_PLAINTEXT = 'no account matches this comparison'

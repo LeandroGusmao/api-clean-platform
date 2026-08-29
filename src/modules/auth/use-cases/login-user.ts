@@ -1,6 +1,6 @@
 import { InvalidCredentialsError } from '#modules/auth/errors/invalid-credentials-error'
-import type { IHashProvider } from '#modules/auth/providers/hash-provider'
-import type { ITokenSigner } from '#modules/auth/providers/token-signer'
+import type { IHashProvider } from '#modules/auth/ports/hash-provider'
+import type { ITokenSigner } from '#modules/auth/ports/token-signer'
 import type { IUsersRepository } from '#modules/auth/repositories/users-repository'
 import { Email } from '#modules/auth/value-objects/email'
 

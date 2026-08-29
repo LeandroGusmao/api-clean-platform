@@ -1,10 +1,10 @@
 import { User } from '#modules/auth/entities/user'
-import type { IHashProvider } from '#modules/auth/providers/hash-provider'
+import type { IHashProvider } from '#modules/auth/ports/hash-provider'
 import type { IUsersRepository } from '#modules/auth/repositories/users-repository'
 import { Email } from '#modules/auth/value-objects/email'
 import { Password } from '#modules/auth/value-objects/password'
-import type { IClock } from '#shared/providers/clock'
-import type { IIdGenerator } from '#shared/providers/id-generator'
+import type { IClock } from '#shared/ports/clock'
+import type { IIdGenerator } from '#shared/ports/id-generator'
 
 /** Raw, untrusted input. The value objects validate it. */
 export interface RegisterUserCommand {

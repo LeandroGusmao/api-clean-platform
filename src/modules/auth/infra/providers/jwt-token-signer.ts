@@ -1,10 +1,7 @@
 import { jwtVerify, SignJWT } from 'jose'
 import type { AuthConfig } from '#modules/auth/config'
-import type {
-  AccessTokenPayload,
-  ITokenSigner,
-} from '#modules/auth/providers/token-signer'
-import type { IClock } from '#shared/providers/clock'
+import type { AccessTokenPayload, ITokenSigner } from '#modules/auth/ports/token-signer'
+import type { IClock } from '#shared/ports/clock'
 
 const ALGORITHM = 'HS256'
 const MILLISECONDS_PER_SECOND = 1000

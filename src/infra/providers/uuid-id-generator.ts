@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { IIdGenerator } from '#shared/providers/id-generator'
+import type { IIdGenerator } from '#shared/ports/id-generator'
 
 /**
  * UUIDv4. Node 24 has no v7: `randomUUID({ version: 7 })` **silently ignores**

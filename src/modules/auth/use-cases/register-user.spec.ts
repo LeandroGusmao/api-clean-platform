@@ -3,10 +3,10 @@ import { EmailAlreadyInUseError } from '#modules/auth/errors/email-already-in-us
 import { InvalidEmailError } from '#modules/auth/errors/invalid-email-error'
 import { InvalidPasswordError } from '#modules/auth/errors/invalid-password-error'
 import { InMemoryUsersRepository } from '#modules/auth/infra/in-memory/in-memory-users-repository'
-import type { IHashProvider } from '#modules/auth/providers/hash-provider'
+import type { IHashProvider } from '#modules/auth/ports/hash-provider'
 import { RegisterUserUseCase } from '#modules/auth/use-cases/register-user'
-import type { IClock } from '#shared/providers/clock'
-import type { IIdGenerator } from '#shared/providers/id-generator'
+import type { IClock } from '#shared/ports/clock'
+import type { IIdGenerator } from '#shared/ports/id-generator'
 
 const ID = '0f1c8a2e-7b4d-4c9f-9a3e-2d5b6c7e8f90'
 const NOW = new Date('2026-08-26T12:00:00.000Z')
