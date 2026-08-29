@@ -985,8 +985,39 @@ foi para `./unstable/*`. Consequência prática — **`typescript-eslint` e
 O `dependency-cruiser` é o pior dos dois: ele emite *aviso*, não erro, e sai com
 **exit 0** e `0 modules cruised`, ou seja, CI verde sem enforçar nada.
 
-**Biome no lugar de ESLint + Prettier.** Decorre do parágrafo acima: o Biome é um
-binário Rust com **zero dependências JS**, com parser próprio — a versão do
+**A terceira consequência é o seu editor, e ela tem saída.** O TS 7 também não
+entrega `tsserver.js` — o mecanismo que o `typescript.tsdk` do VS Code
+classicamente aponta. O pacote `typescript` virou um **localizador**: `lib/` tem
+só `tsc.js`, `version.cjs` e `getExePath.js`, e o compilador de verdade é um
+binário Go de ~24 MB entregue por plataforma em `optionalDependencies`
+(`@typescript/typescript-linux-x64` e irmãos).
+
+Isso **não** significa que o editor não possa usá-lo. O próprio `getExePath.js`
+do pacote carrega a nota:
+
+```js
+// NOTE: Keep VS Code extension's resolveTsdkPathToExe in sync with this function.
+```
+
+Ou seja: a extensão TypeScript do VS Code resolve o tsdk **para o executável**, em
+vez de para um `tsserver.js`. Numa extensão nova o bastante, editor e CI rodam o
+mesmo compilador. Numa mais antiga, o editor cai no TypeScript embutido dele
+(linha 5.x) e passa a discordar do CI **nos dois sentidos** — acusando o que o
+`tsc` aceita e deixando passar o que o `tsc` pega.
+
+Como saber em qual caso você está: `TypeScript: Select TypeScript Version` na
+paleta de comandos mostra o que está ativo e oferece *Use Workspace Version*. Se
+a do workspace não pegar, `"typescript.tsdk": "node_modules/typescript/lib"` em
+`.vscode/settings.json` e reiniciar o TS server; se ainda reportar 5.x, a
+extensão é antiga demais.
+
+> **A regra que vale de qualquer forma:** `pnpm typecheck` é a autoridade, porque
+> é ele que o CI roda, com a versão pinada. Divergiu do editor, o editor está
+> errado. E antes de investigar uma divergência, reinicie o TS server — ele
+> guarda estado velho e a maioria dos "erros fantasma" é isso.
+
+**Biome no lugar de ESLint + Prettier.** Decorre do primeiro parágrafo: o Biome é
+um binário Rust com **zero dependências JS**, com parser próprio — a versão do
 TypeScript é indiferente para ele. Além disso `noProcessEnv` (R6) é regra nativa, e
 `noRestrictedImports` casa o especificador **como string**, o que resolve
 fronteira sem precisar de resolver de módulo.
