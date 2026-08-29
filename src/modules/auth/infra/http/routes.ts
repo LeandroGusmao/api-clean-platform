@@ -1,18 +1,22 @@
-import type { FastifyPluginAsync } from 'fastify'
+import type { FastifyPluginAsync, preHandlerHookHandler } from 'fastify'
 import type { AuthContainer } from '#modules/auth/container'
+import { loginRoute } from './endpoints/login.js'
+import { meRoute } from './endpoints/me.js'
 import { registerRoute } from './endpoints/register.js'
 
 /**
  * The module's HTTP surface. Thin by design: a new endpoint is a new file plus
  * one line here.
  *
- * It receives only the module's own slice of the container (decision 23), so
- * reaching another module's use case is a compile error rather than something
- * a lint rule has to catch.
+ * It receives only the module's own slice of the container (decision 23), plus
+ * the guard the composition root built — the guard is generic global infra, so
+ * the module never imports a protection mechanism of its own.
  */
-export const authRoutes: FastifyPluginAsync<{ container: AuthContainer }> = async (
-  app,
-  { container },
-) => {
+export const authRoutes: FastifyPluginAsync<{
+  container: AuthContainer
+  guard: preHandlerHookHandler
+}> = async (app, { container, guard }) => {
   await app.register(registerRoute, { container })
+  await app.register(loginRoute, { container })
+  await app.register(meRoute, { container, guard })
 }

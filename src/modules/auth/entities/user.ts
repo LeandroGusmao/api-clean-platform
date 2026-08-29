@@ -23,7 +23,13 @@ export interface CreateUserProps {
   now: Date
 }
 
-interface UserProps {
+/**
+ * The complete state of an already-persisted user. Named for the same reason as
+ * `Email.fromTrusted`: the row was validated when it was written, and
+ * re-validating on read would let a future stricter rule break the loading of
+ * rows that were valid at the time.
+ */
+export interface TrustedUserProps {
   id: string
   email: Email
   passwordHash: string
@@ -51,7 +57,7 @@ export class User {
   readonly #createdAt: Date
   readonly #updatedAt: Date
 
-  private constructor(props: UserProps) {
+  private constructor(props: TrustedUserProps) {
     this.#id = props.id
     this.#email = props.email
     this.#passwordHash = props.passwordHash
@@ -79,6 +85,11 @@ export class User {
       createdAt: props.now,
       updatedAt: props.now,
     })
+  }
+
+  /** Rehydrates a row. Validation is `create`'s job, on the way in. */
+  static fromTrusted(props: TrustedUserProps): User {
+    return new User(props)
   }
 
   get id(): string {

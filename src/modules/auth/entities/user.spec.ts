@@ -92,3 +92,46 @@ describe('User immutability', () => {
     expect(user.createdAt).not.toBe(user.updatedAt)
   })
 })
+
+describe('User.fromTrusted', () => {
+  it('rehydrates every field from a trusted source', () => {
+    const email = Email.fromTrusted(EMAIL)
+    const verifiedAt = new Date('2026-08-20T10:00:00.000Z')
+    const createdAt = new Date('2026-08-19T10:00:00.000Z')
+    const updatedAt = new Date('2026-08-21T10:00:00.000Z')
+
+    const user = User.fromTrusted({
+      id: ID,
+      email,
+      passwordHash: PASSWORD_HASH,
+      emailVerifiedAt: verifiedAt,
+      createdAt,
+      updatedAt,
+    })
+
+    expect(user.id).toBe(ID)
+    expect(user.email.value).toBe(EMAIL)
+    expect(user.passwordHash).toBe(PASSWORD_HASH)
+    expect(user.emailVerifiedAt).toEqual(verifiedAt)
+    expect(user.createdAt).toEqual(createdAt)
+    expect(user.updatedAt).toEqual(updatedAt)
+  })
+
+  it('clones the dates it was rehydrated with', () => {
+    // `Object.freeze` is shallow: without cloning, mutating the caller's Date
+    // would rewrite the entity's own state.
+    const createdAt = new Date('2026-08-19T10:00:00.000Z')
+
+    const user = User.fromTrusted({
+      id: ID,
+      email: Email.fromTrusted(EMAIL),
+      passwordHash: PASSWORD_HASH,
+      emailVerifiedAt: null,
+      createdAt,
+      updatedAt: createdAt,
+    })
+    createdAt.setFullYear(MUTATED_YEAR)
+
+    expect(user.createdAt.getFullYear()).not.toBe(MUTATED_YEAR)
+  })
+})

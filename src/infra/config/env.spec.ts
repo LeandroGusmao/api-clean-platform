@@ -6,12 +6,18 @@ import {
   NODE_ENV_DEVELOPMENT,
   parseEnv,
 } from '#infra/config/env'
+import { DEFAULT_ACCESS_TOKEN_TTL_SECONDS } from '#modules/auth/config'
 
 const VALID_DATABASE_URL = 'postgres://user:pass@localhost:5432/app'
+const VALID_JWT_SECRET = 'a-test-secret-with-at-least-32-chars'
 
 describe('parseEnv', () => {
   it('rejects an empty PORT instead of coercing it to zero', () => {
-    const result = parseEnv({ DATABASE_URL: VALID_DATABASE_URL, PORT: '' })
+    const result = parseEnv({
+      DATABASE_URL: VALID_DATABASE_URL,
+      JWT_SECRET: VALID_JWT_SECRET,
+      PORT: '',
+    })
 
     expect(result.success).toBe(false)
   })
@@ -22,8 +28,19 @@ describe('parseEnv', () => {
     expect(result.success).toBe(false)
   })
 
-  it('applies defaults when only DATABASE_URL is provided', () => {
+  // New: proves the module's schema actually reached the merge. Without this,
+  // dropping the `.extend()` line would leave every other case green.
+  it('rejects a missing JWT_SECRET', () => {
     const result = parseEnv({ DATABASE_URL: VALID_DATABASE_URL })
+
+    expect(result.success).toBe(false)
+  })
+
+  it('applies defaults when only the required variables are provided', () => {
+    const result = parseEnv({
+      DATABASE_URL: VALID_DATABASE_URL,
+      JWT_SECRET: VALID_JWT_SECRET,
+    })
 
     expect(result.success).toBe(true)
     expect(result.data).toEqual({
@@ -32,6 +49,8 @@ describe('parseEnv', () => {
       PORT: DEFAULT_PORT,
       LOG_LEVEL: DEFAULT_LOG_LEVEL,
       DATABASE_URL: VALID_DATABASE_URL,
+      JWT_SECRET: VALID_JWT_SECRET,
+      ACCESS_TOKEN_TTL_SECONDS: DEFAULT_ACCESS_TOKEN_TTL_SECONDS,
     })
   })
 })

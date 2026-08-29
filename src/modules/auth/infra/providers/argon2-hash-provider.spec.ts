@@ -44,4 +44,32 @@ describe('Argon2HashProvider', () => {
     // salt segment shows WHICH field varies, which is the actual claim.
     expect(saltOf(first)).not.toBe(saltOf(second))
   })
+
+  it('accepts the password it hashed', async () => {
+    const provider = new Argon2HashProvider()
+    const hashed = await provider.hash(PASSWORD)
+
+    await expect(provider.compare(PASSWORD, hashed)).resolves.toBe(true)
+  })
+
+  it('rejects a different password', async () => {
+    const provider = new Argon2HashProvider()
+    const hashed = await provider.hash(PASSWORD)
+
+    await expect(provider.compare('a-different-password', hashed)).resolves.toBe(false)
+  })
+
+  it('exposes a decoy hash built with its own parameters', () => {
+    // The parameters have to match the real ones, or the cost stops equalizing
+    // and a missing account becomes measurably faster than a wrong password.
+    const provider = new Argon2HashProvider()
+
+    expect(provider.dummyHash.startsWith(EXPECTED_ARGON2_PARAMETERS)).toBe(true)
+  })
+
+  it('never accepts anything against the decoy hash', async () => {
+    const provider = new Argon2HashProvider()
+
+    await expect(provider.compare(PASSWORD, provider.dummyHash)).resolves.toBe(false)
+  })
 })

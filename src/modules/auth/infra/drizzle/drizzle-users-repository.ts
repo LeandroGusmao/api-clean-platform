@@ -1,13 +1,18 @@
+import { eq, sql } from 'drizzle-orm'
 import type { Database } from '#infra/database/client'
 import { findDriverError, toPersistenceError } from '#infra/database/driver-error'
 import type { User } from '#modules/auth/entities/user'
 import { EmailAlreadyInUseError } from '#modules/auth/errors/email-already-in-use-error'
 import type { IUsersRepository } from '#modules/auth/repositories/users-repository'
+import type { Email } from '#modules/auth/value-objects/email'
 import { USERS_EMAIL_LOWER_UNIQUE_INDEX, users } from './schema/users.js'
-import { toPersistenceUser } from './user-mapper.js'
+import { toDomainUser, toPersistenceUser } from './user-mapper.js'
 
 /** Postgres `unique_violation`. */
 const PG_UNIQUE_VIOLATION = '23505'
+
+/** Every lookup here returns at most one row. */
+const SINGLE_ROW = 1
 
 /**
  * Matches the constraint NAME, not just the code. The table already carries a
@@ -45,5 +50,35 @@ export class DrizzleUsersRepository implements IUsersRepository {
       // leak it through a concatenated message.
       throw toPersistenceError(error)
     }
+  }
+
+  /**
+   * `lower(email)` on the left is what matches the functional unique index.
+   * Verified with EXPLAIN: `WHERE email = $1` plans a sequential scan, while
+   * this form plans an Index Scan using users_email_lower_unique. Both return
+   * the same row for ASCII data, which is why the mistake survives a test
+   * suite.
+   *
+   * The parameter is already lowercase — `Email.create` normalizes — so the
+   * call aligns the expression with the index, it does not fix the value.
+   */
+  async findByEmail(email: Email): Promise<User | null> {
+    const [row] = await this.db
+      .select()
+      .from(users)
+      .where(sql`lower(${users.email}) = ${email.value}`)
+      .limit(SINGLE_ROW)
+
+    return row === undefined ? null : toDomainUser(row)
+  }
+
+  async findById(id: string): Promise<User | null> {
+    const [row] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.id, id))
+      .limit(SINGLE_ROW)
+
+    return row === undefined ? null : toDomainUser(row)
   }
 }

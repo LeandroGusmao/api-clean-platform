@@ -1,6 +1,7 @@
 import type { User } from '#modules/auth/entities/user'
 import { EmailAlreadyInUseError } from '#modules/auth/errors/email-already-in-use-error'
 import type { IUsersRepository } from '#modules/auth/repositories/users-repository'
+import type { Email } from '#modules/auth/value-objects/email'
 
 /**
  * In-memory adapter, for the unit tests of the use cases (decision 09).
@@ -22,5 +23,13 @@ export class InMemoryUsersRepository implements IUsersRepository {
     if (taken) throw new EmailAlreadyInUseError()
 
     this.users.push(user)
+  }
+
+  async findByEmail(email: Email): Promise<User | null> {
+    return this.users.find((existing) => existing.email.equals(email)) ?? null
+  }
+
+  async findById(id: string): Promise<User | null> {
+    return this.users.find((existing) => existing.id === id) ?? null
   }
 }

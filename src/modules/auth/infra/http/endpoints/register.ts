@@ -3,6 +3,12 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { errorResponseSchema } from '#infra/http/error-response'
 import type { AuthContainer } from '#modules/auth/container'
+import {
+  AUTH_TAG,
+  BAD_REQUEST_STATUS,
+  CONFLICT_STATUS,
+  CREATED_STATUS,
+} from '#modules/auth/infra/http/constants'
 import { MAX_EMAIL_LENGTH } from '#modules/auth/value-objects/email'
 import {
   MAX_PASSWORD_LENGTH,
@@ -11,15 +17,10 @@ import {
 } from '#modules/auth/value-objects/password'
 
 const REGISTER_PATH = '/register'
-const AUTH_TAG = 'Auth'
 const REGISTER_SUMMARY = 'Register a new account'
 const REGISTER_DESCRIPTION =
   'Creates an account from an email and a password. Issues no session tokens: ' +
   'authenticate through the login endpoint afterwards.'
-
-const CREATED_STATUS = 201
-const BAD_REQUEST_STATUS = 400
-const CONFLICT_STATUS = 409
 
 /**
  * The limits come from the value objects, so the policy has exactly one

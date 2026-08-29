@@ -9,6 +9,11 @@ const API_TITLE = 'API Clean Platform'
 const API_DESCRIPTION = 'HTTP API built on the Clean Platform boilerplate.'
 const API_VERSION = '0.0.0'
 
+export const BEARER_SECURITY_SCHEME = 'bearerAuth'
+const HTTP_SECURITY_TYPE = 'http'
+const BEARER_SCHEME = 'bearer'
+const BEARER_FORMAT = 'JWT'
+
 export const DOCS_ROUTE_PREFIX = '/docs'
 
 /**
@@ -28,6 +33,15 @@ export async function registerOpenApi(app: FastifyInstance, env: Env): Promise<v
         title: API_TITLE,
         description: API_DESCRIPTION,
         version: API_VERSION,
+      },
+      components: {
+        securitySchemes: {
+          [BEARER_SECURITY_SCHEME]: {
+            type: HTTP_SECURITY_TYPE,
+            scheme: BEARER_SCHEME,
+            bearerFormat: BEARER_FORMAT,
+          },
+        },
       },
     },
     // Converts the endpoints' raw Zod schemas into JSON Schema. Without it

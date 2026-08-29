@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { authEnvSchema } from '#modules/auth/config'
 
 /**
  * Only place in the project that reads `process.env` (R6).
@@ -15,13 +16,20 @@ export const DEFAULT_HOST = '0.0.0.0'
 export const DEFAULT_PORT = 3000
 export const DEFAULT_LOG_LEVEL: (typeof LOG_LEVELS)[number] = 'info'
 
-const envSchema = z.object({
+const coreEnvSchema = z.object({
   NODE_ENV: z.enum(NODE_ENVS).default(NODE_ENV_DEVELOPMENT),
   HOST: z.string().min(1).default(DEFAULT_HOST),
   PORT: z.coerce.number().int().positive().default(DEFAULT_PORT),
   LOG_LEVEL: z.enum(LOG_LEVELS).default(DEFAULT_LOG_LEVEL),
   DATABASE_URL: z.url(),
 })
+
+/**
+ * Every module's schema merged, validated once at boot (decision 14). A module
+ * declaring a variable and forgetting this line would ship an unvalidated
+ * `undefined` to production — which is why no module reads `process.env` itself.
+ */
+const envSchema = coreEnvSchema.extend(authEnvSchema.shape)
 
 export type Env = z.infer<typeof envSchema>
 

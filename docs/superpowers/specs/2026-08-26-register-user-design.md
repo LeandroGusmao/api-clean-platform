@@ -34,7 +34,10 @@ Cadastro de conta: `POST /auth/register` recebe e-mail e senha, devolve `201 { i
 
 - **Login e tokens** — decisão 11 inteira (tabela `refresh_tokens`, rotação,
   janela de graça de 30s, Unit of Work, cookie `httpOnly` da decisão 12).
-- **Verificação de e-mail** — próxima fatia. Ver §3.
+- **Verificação de e-mail** — fatia 4, **não** a próxima. Ver §3, e o argumento
+  logo abaixo: quem recusa quem não verificou é o login, então a verificação
+  construída antes dele seria uma trava sem porta. A fatia 3 é o login
+  ([`2026-08-27-login-design.md`](2026-08-27-login-design.md)).
 - **Rate limiting** — decisão em aberto. Ver §14.
 
 ### A ordem das fatias, e o motivo dela

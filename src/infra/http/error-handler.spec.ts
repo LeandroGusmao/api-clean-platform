@@ -15,6 +15,7 @@ import { errorResponseSchema } from '#infra/http/error-response'
 import { DOCS_ROUTE_PREFIX, registerOpenApi } from '#infra/http/openapi'
 import { buildServer } from '#infra/http/server'
 import type { ValidationDetail } from '#infra/http/validation-issues'
+import { DEFAULT_ACCESS_TOKEN_TTL_SECONDS } from '#modules/auth/config'
 import {
   AppError,
   BusinessRuleError,
@@ -35,6 +36,8 @@ const testEnv: Env = {
   PORT: DEFAULT_PORT,
   LOG_LEVEL: DEFAULT_LOG_LEVEL,
   DATABASE_URL: TEST_DATABASE_URL,
+  JWT_SECRET: 'a-test-secret-with-at-least-32-chars',
+  ACCESS_TOKEN_TTL_SECONDS: DEFAULT_ACCESS_TOKEN_TTL_SECONDS,
 }
 
 const THROW_PATH = '/probe/throw'

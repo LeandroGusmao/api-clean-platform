@@ -18,6 +18,10 @@ const PASSWORD = 'sup3r-s3cr3t!'
 const INVALID_EMAIL = 'not-an-email'
 const WEAK_PASSWORD = 'abcdefghij'
 
+// Registration never compares or falls back to a decoy; these only exist to
+// satisfy IHashProvider's shape.
+const UNUSED_DUMMY_HASH = 'unused-by-registration-tests'
+
 const USER_MISSING_MESSAGE = 'the repository stored no user'
 
 // One-method ports do not deserve their own file: an object literal here keeps
@@ -34,6 +38,8 @@ const hashProvider: IHashProvider = {
     hashedPlaintexts.push(plain)
     return Promise.resolve(`${HASH_PREFIX}${plain}`)
   },
+  compare: () => Promise.resolve(false),
+  dummyHash: UNUSED_DUMMY_HASH,
 }
 
 let usersRepository: InMemoryUsersRepository

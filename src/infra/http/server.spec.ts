@@ -11,6 +11,7 @@ import {
 } from '#infra/config/env'
 import { buildServer, REDACTED_CENSOR } from '#infra/http/server'
 import { getTraceId } from '#infra/observability/request-context'
+import { DEFAULT_ACCESS_TOKEN_TTL_SECONDS } from '#modules/auth/config'
 
 const SECRET_VALUE = 'super-secret'
 const LOG_MESSAGE = 'log line under test'
@@ -26,6 +27,8 @@ const testEnv: Env = {
   PORT: DEFAULT_PORT,
   LOG_LEVEL: DEFAULT_LOG_LEVEL,
   DATABASE_URL: 'postgres://user:pass@localhost:5432/app',
+  JWT_SECRET: 'a-test-secret-with-at-least-32-chars',
+  ACCESS_TOKEN_TTL_SECONDS: DEFAULT_ACCESS_TOKEN_TTL_SECONDS,
 }
 
 function createLogCollector() {

@@ -48,6 +48,7 @@ src/
 │   │   ├── error-handler.spec.ts
 │   │   ├── error-response.ts       # schema Zod do envelope de erro
 │   │   ├── validation-issues.ts    # tradução Zod -> códigos do contrato
+│   │   ├── auth-guard.ts           # preHandler genérico; verificador injetado, sem import de #modules/*
 │   │   ├── openapi.ts              # OpenAPI + UI dos docs (só em development)
 │   │   └── endpoints/
 │   │       └── health.ts           # GET /health — agrega os checks
@@ -62,12 +63,13 @@ src/
 │       └── request-context.ts      # AsyncLocalStorage do traceId
 ├── modules/
 │   └── auth/                        # domínio + infra do módulo
+│       ├── config.ts                # schema Zod das env vars do módulo (decisão 14)
 │       ├── entities/user.ts         # puro — estado em campos `#`
 │       ├── value-objects/           # puro — email.ts, password.ts
 │       ├── repositories/            # SÓ contratos — users-repository.ts
-│       ├── providers/               # SÓ contratos — hash-provider.ts
-│       ├── use-cases/               # puro (+ .spec.ts colocado)
-│       ├── errors/                  # um arquivo por erro do módulo
+│       ├── providers/               # SÓ contratos — hash-provider.ts, token-signer.ts
+│       ├── use-cases/               # puro (+ .spec.ts colocado) — register-user.ts, login-user.ts, get-user-profile.ts
+│       ├── errors/                  # um arquivo por erro do módulo — inclui invalid-credentials-error.ts, user-not-found-error.ts
 │       ├── container.ts             # factory do container do módulo
 │       └── infra/                   # tudo que toca o mundo externo
 │           ├── drizzle/
@@ -75,10 +77,13 @@ src/
 │           │   ├── user-mapper.ts   # entidade -> row (decisão 20)
 │           │   └── drizzle-users-repository.ts
 │           ├── in-memory/           # repositório de teste (decisão 09)
-│           ├── providers/           # argon2-hash-provider.ts
+│           ├── providers/           # argon2-hash-provider.ts, jwt-token-signer.ts
 │           └── http/
+│               ├── constants.ts     # status HTTP e tag do OpenAPI do módulo
 │               ├── endpoints/       # 1 arquivo = schema + handler + rota
-│               │   └── register.ts  # POST /auth/register
+│               │   ├── register.ts  # POST /auth/register
+│               │   ├── login.ts     # POST /auth/login
+│               │   └── me.ts        # GET /auth/me
 │               └── routes.ts        # agregador fino do módulo
 ├── shared/                         # camada PURA, sem dono de módulo
 │   ├── errors/
@@ -96,6 +101,8 @@ tests/
     ├── drizzle-users-repository.spec.ts  # repositório Drizzle contra Postgres real
     ├── health.spec.ts              # suíte que precisa de Postgres de pé
     ├── register.spec.ts            # POST /auth/register fim a fim
+    ├── login.spec.ts                # POST /auth/login fim a fim
+    ├── me.spec.ts                   # GET /auth/me fim a fim
     ├── setup/
     │   ├── migrate-test-database.ts  # globalSetup: aplica migrations commitadas antes da suíte
     │   └── test-database-url.ts      # única fonte da TEST_DATABASE_URL fora do CI
@@ -173,27 +180,37 @@ string key, sem decorator: duas funções, e o grafo inteiro legível.
 
 ```ts
 // modules/auth/container.ts — o módulo conhece o concreto
-export function makeAuthContainer(db: Database) {
+export function makeAuthContainer(db: Database, config: AuthConfig) {
   const usersRepository = new DrizzleUsersRepository(db)
   const hashProvider = new Argon2HashProvider()
   const clock = new SystemClock()
   const idGenerator = new UuidIdGenerator()
+  const tokenSigner = new JwtTokenSigner(config, clock)
 
-  return { registerUser: new RegisterUserUseCase(usersRepository, hashProvider, clock, idGenerator) }
+  return {
+    registerUser: new RegisterUserUseCase(usersRepository, hashProvider, clock, idGenerator),
+    loginUser: new LoginUserUseCase(usersRepository, hashProvider, tokenSigner),
+    getUserProfile: new GetUserProfileUseCase(usersRepository),
+    verifyAccessToken: (token: string) => tokenSigner.verify(token),
+  }
 }
 export type AuthContainer = ReturnType<typeof makeAuthContainer>
 
 // main/container.ts — o composition root junta os módulos
-export function makeContainer(db: Database) {
-  return { auth: makeAuthContainer(db) }
+export function makeContainer(db: Database, env: Env) {
+  return { auth: makeAuthContainer(db, env) }
 }
 ```
 
 Tipagem 100% inferida, e o mesmo grafo serve os três entrypoints porque é
 montado **sem Fastify** — requisito para worker e cron existirem depois sem
-duplicar wiring. Objeto stateless (repositório, provider) é singleton no
-container; o custo de um `new` é nanosegundos contra milissegundos de rede, e o
-problema do `new` no handler nunca foi performance, foi acoplamento.
+duplicar wiring. `env` chega inteiro em `makeContainer`, e cada módulo declara
+só a fatia que precisa — `makeAuthContainer` pede `AuthConfig`, então `auth` nem
+enxerga `DATABASE_URL`. Tipagem estrutural dá de graça a regra da decisão 23,
+sem nenhum código de recorte. Objeto stateless (repositório, provider) é
+singleton no container; o custo de um `new` é nanosegundos contra milissegundos
+de rede, e o problema do `new` no handler nunca foi performance, foi
+acoplamento.
 
 **O plugin do módulo recebe só a fatia dele.**
 
@@ -224,10 +241,11 @@ motivos de mudar diferentes — trocar o id de UUIDv4 para v7 não tem relação
 entropia de um refresh token. Juntas numa porta só, o use case que quer apenas um
 id receberia uma porta que também cunha segredos.
 
-Pela mesma economia, um contrato nasce com os métodos que têm consumidor.
-`IHashProvider` tem `hash()` e não `compare()`, porque cadastrar não compara
-senha — quem compara é o login, e é lá que o método entra. Contrato com método
-sem consumidor é código que N apps derivados copiam sem nunca exercitar.
+Pela mesma economia, um contrato nasce com os métodos — ou os campos — que têm
+consumidor. O payload do access token tem `sub`, `iat` e `exp`, e não `jti`,
+porque nada no sistema consome uma denylist — é a decisão 11 quem recusou essa
+ideia. Campo sem consumidor é código que N apps derivados copiam sem nunca
+exercitar.
 
 **Divisão de responsabilidade que já vale:** `infra/http/server.ts` constrói e
 configura a instância Fastify e a devolve **sem nenhuma rota**. Quem registra
@@ -598,7 +616,10 @@ Sem eles o Fastify recebe schema Zod onde espera JSON Schema e **falha em
 runtime**.
 
 `infra/http/openapi.ts` gera o documento OpenAPI 3.1 e serve a UI em `/docs`
-(spec crua em `/docs/json`).
+(spec crua em `/docs/json`). Ali também é declarado
+`components.securitySchemes.bearerAuth` (`http`, esquema `bearer`, formato
+`JWT`) — os endpoints protegidos referenciam esse esquema por `security:
+[{ bearerAuth: [] }]` em vez de repetir a definição em cada arquivo.
 
 > **Só em `NODE_ENV=development`.** Nenhum ambiente deployado publica a
 > superfície da API: fora de development as rotas nem existem, respondem 404.
@@ -638,6 +659,48 @@ universais, e repetir os dois em todo arquivo é ruído que ninguém mantém.
 > opcional, e as duas formas que o handler emite — com e sem `details` — passam
 > nas duas. Um campo novo obrigatório no envelope quebraria isso em silêncio, e
 > o teste que pega é o que assere o **corpo**, não só o status.
+
+> **Medida, não hipotética.** `z.iso.datetime()` rejeita um `Date`: devolver um
+> campo de data cru onde o schema promete essa string responde **500**, sem nada
+> no corpo apontando a causa — é exatamente a consequência acima, aplicada.
+
+### Data em resposta: declare `z.date()`, não `z.iso.datetime()`
+
+A saída de um schema de data é a mesma nas duas formas; o que muda é **quem
+converte**.
+
+| No schema | O handler entrega | Vai no corpo | Publica no OpenAPI |
+|---|---|---|---|
+| `z.date()` | `Date` | `"2026-08-28T00:38:13.576Z"` | `type: string, format: date-time` |
+| `z.iso.datetime()` | `string` ISO | idem | idem **+ um `pattern` longo** |
+
+O `serializerCompiler` aceita o `Date` e emite ISO sozinho — medido, inclusive
+com campo anulável, e continua rejeitando tipo errado, então o schema segue sendo
+guarda. O `pattern` extra não tem consumidor num schema de **resposta**: quem gera
+cliente usa o `format`, e ninguém valida a resposta do servidor contra a regex.
+Ele ganha o pão em schema de **request** — é o caso do `PASSWORD_POLICY_PATTERN`
+no register.
+
+**O que isso decide não é formatação, é fronteira.** Com `z.iso.datetime()`, todo
+handler chama `.toISOString()`, e para isso precisa conhecer os tipos internos do
+domínio. Com `z.date()`, o use case entrega a forma que o contrato publica e o
+endpoint só escolhe o status:
+
+```ts
+const profile = await container.getUserProfile.execute(getPrincipal(request).id)
+
+return reply.status(OK_STATUS).send(profile)
+```
+
+**A regra que sai daí, e vale para o próximo use case:** *comando devolve recibo,
+consulta devolve read model.* `registerUser` e `loginUser` mudam estado e
+devolvem o mínimo (`{ id }`, `{ accessToken }`); `getUserProfile` não muda nada e
+devolve `UserProfileResult` — plano, com o value object já desembrulhado e as
+datas ainda como `Date`.
+
+Datas ficam `Date` de propósito: formatar é trabalho do transporte, e devolver
+ISO da camada pura faria ela servir HTTP especificamente, deixando os entrypoints
+de worker e cron (decisão 10) fazendo parse de volta.
 
 Os endpoints checados por `/health` vivem em `infra/health/checks/`, um arquivo
 por dependência. O endpoint só agrega e traduz para HTTP — quando entrar Redis
@@ -947,6 +1010,5 @@ do mesmo pacote.
 
 Listado para não ser confundido com omissão, sem detalhar o que não foi construído:
 
-login e verificação de e-mail · módulos de negócio · Unit of Work · `config.ts` de
-módulo · entrypoints `worker.ts` e `cron.ts` · rate limiting · regra de fronteira
-no lint · Docker
+verificação de e-mail · módulos de negócio · Unit of Work · entrypoints
+`worker.ts` e `cron.ts` · rate limiting · regra de fronteira no lint · Docker

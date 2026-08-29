@@ -689,11 +689,44 @@ schema: {
 por não ter consumidor. A entidade já protege por construção — `#passwordHash` é
 campo privado não-enumerável, então nem um `reply.send(user)` distraído vazaria.
 
-**O handler tem que serializar as datas à mão.** `user.createdAt` é um `Date`, e
-`z.iso.datetime()` recusa `Date` — o `serializerCompiler` valida a resposta, então
-devolver o objeto cru produz **500**, não 200 (verificado, §13). É a armadilha que
-o `ARCHITECTURE.md` §7 descreve ao dizer que declarar um status passa a validar o
-corpo daquele status.
+> **Emendado em 2026-08-28, durante a revisão da fatia.** O desenho abaixo — use
+> case devolvendo a entidade e handler serializando as datas à mão — **não é o
+> que foi entregue**. O achado do §13 continua correto (`z.iso.datetime()` recusa
+> um `Date`); o que mudou foi a saída escolhida para ele.
+>
+> Medido durante a revisão: `z.date()` num schema de resposta publica **o mesmo**
+> `type: string, format: date-time`, e o `serializerCompiler` aceita o `Date` e
+> emite ISO sozinho — inclusive no campo anulável, e continuando a rejeitar tipo
+> errado. A única diferença é um `pattern` que schema de resposta não consome.
+>
+> Então o schema virou `z.date()`, o use case passou a devolver
+> `UserProfileResult` — plano, `Email` desembrulhado, datas ainda como `Date` — e
+> o handler virou passagem pura. O endpoint deixou de conhecer os tipos internos
+> do domínio, e os três endpoints do módulo ficaram uniformes.
+>
+> A regra que saiu disso está no `ARCHITECTURE.md` §7: *comando devolve recibo,
+> consulta devolve read model*, com as datas ficando `Date` para não fazer a
+> camada pura servir HTTP.
+
+**Como ficou:**
+
+```ts
+const userSchema = z.object({
+  id: z.uuid(),
+  email: z.email(),
+  emailVerifiedAt: z.date().nullable(),
+  createdAt: z.date(),
+})
+
+// handler
+const profile = await container.getUserProfile.execute(getPrincipal(request).id)
+
+return reply.status(OK_STATUS).send(profile)
+```
+
+**Como estava desenhado, e por que não sobreviveu:** o handler chamava
+`.toISOString()` em cada campo e lia `user.email.value`, o que punha três linhas
+de conhecimento de domínio na camada de transporte.
 
 ```ts
 return reply.status(OK_STATUS).send({

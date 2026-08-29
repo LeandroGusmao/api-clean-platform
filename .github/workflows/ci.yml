@@ -80,6 +80,7 @@ jobs:
           NODE_ENV: production
           PORT: 3000
           DATABASE_URL: postgres://api_clean_platform:api_clean_platform_local_dev@127.0.0.1:5433/api_clean_platform_test
+          JWT_SECRET: a-ci-secret-with-at-least-32-characters
         run: |
           node dist/main/http.js &
           # `node` directly, not `pnpm start`: $! must be the server itself,

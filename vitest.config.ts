@@ -9,6 +9,7 @@ const INTEGRATION_INCLUDE = 'tests/integration/**/*.spec.ts'
 const INTEGRATION_GLOBAL_SETUP = './tests/integration/setup/migrate-test-database.ts'
 
 const NODE_ENV_TEST = 'test'
+const TEST_JWT_SECRET = 'an-integration-test-secret-32-chars'
 
 /**
  * No `resolve.conditions` here on purpose: Vite already asks for the
@@ -44,6 +45,10 @@ export default defineConfig({
     env: {
       NODE_ENV: NODE_ENV_TEST,
       DATABASE_URL: TEST_DATABASE_URL,
+      // Not configuration: a test fixture, like TEST_DATABASE_URL. `env.ts`
+      // exits the process on an invalid environment, so without this the whole
+      // integration project fails to boot rather than failing a test.
+      JWT_SECRET: TEST_JWT_SECRET,
     },
   },
 })

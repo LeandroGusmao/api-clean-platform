@@ -1,3 +1,4 @@
+import type { Env } from '#infra/config/env'
 import type { Database } from '#infra/database/client'
 import { makeAuthContainer } from '#modules/auth/container'
 
@@ -6,11 +7,13 @@ import { makeAuthContainer } from '#modules/auth/container'
  * decision 10 requires: a worker and a cron share this graph and never see an
  * HTTP framework.
  *
- * No `env` parameter yet — no module declares configuration of its own so far.
- * It gains one when login brings `JWT_SECRET` (decision 14).
+ * `env` is passed whole, and each module's factory declares only the slice it
+ * needs — `makeAuthContainer` takes `AuthConfig`, so `auth` cannot even see
+ * `DATABASE_URL`. Structural typing gives decision 23's rule for free, with no
+ * slicing code.
  */
-export function makeContainer(db: Database) {
-  return { auth: makeAuthContainer(db) }
+export function makeContainer(db: Database, env: Env) {
+  return { auth: makeAuthContainer(db, env) }
 }
 
 export type Container = ReturnType<typeof makeContainer>
