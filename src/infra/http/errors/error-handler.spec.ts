@@ -11,10 +11,10 @@ import {
   NODE_ENV_DEVELOPMENT,
   NODE_ENV_TEST,
 } from '#infra/config/env'
-import { errorResponseSchema } from '#infra/http/error-response'
+import { errorResponseSchema } from '#infra/http/errors/error-response'
 import { DOCS_ROUTE_PREFIX, registerOpenApi } from '#infra/http/openapi'
 import { buildServer } from '#infra/http/server'
-import type { ValidationDetail } from '#infra/http/validation-issues'
+import type { ValidationDetail } from '#infra/http/errors/validation-issues'
 import { DEFAULT_ACCESS_TOKEN_TTL_SECONDS } from '#modules/auth/config'
 import {
   AppError,

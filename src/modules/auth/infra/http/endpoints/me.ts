@@ -2,7 +2,7 @@ import type { FastifyPluginAsync, preHandlerHookHandler } from 'fastify'
 import type { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { getPrincipal } from '#infra/http/auth-guard'
-import { errorResponseSchema } from '#infra/http/error-response'
+import { errorResponseSchema } from '#infra/http/errors/error-response'
 import { BEARER_SECURITY_SCHEME } from '#infra/http/openapi'
 import type { AuthContainer } from '#modules/auth/container'
 import {

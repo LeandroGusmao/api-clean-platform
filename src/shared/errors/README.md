@@ -14,9 +14,9 @@ lança, o endpoint não trata, o handler responde.
 |---|---|---|
 | [`app-error.ts`](./app-error.ts) | pura | `AppError` + as 6 categorias abstratas |
 | `src/modules/<m>/errors/*.ts` | pura | os erros concretos do módulo |
-| [`error-handler.ts`](../../infra/http/error-handler.ts) | infra | traduz erro → status + corpo |
-| [`error-response.ts`](../../infra/http/error-response.ts) | infra | schema Zod do corpo de erro |
-| [`validation-issues.ts`](../../infra/http/validation-issues.ts) | infra | issue do Zod → `code` do contrato |
+| [`error-handler.ts`](../../infra/http/errors/error-handler.ts) | infra | traduz erro → status + corpo |
+| [`error-response.ts`](../../infra/http/errors/error-response.ts) | infra | schema Zod do corpo de erro |
+| [`validation-issues.ts`](../../infra/http/errors/validation-issues.ts) | infra | issue do Zod → `code` do contrato |
 
 Erro de módulo mora no módulo. `src/shared/errors/` guarda só as categorias.
 
@@ -166,7 +166,7 @@ que este desenho existe para impedir.
 ## Testes
 
 Não teste que `NotFoundError` vira `404` — já está coberto em
-[`error-handler.spec.ts`](../../infra/http/error-handler.spec.ts), categoria por
+[`error-handler.spec.ts`](../../infra/http/errors/error-handler.spec.ts), categoria por
 categoria.
 
 No use case, verifique o tipo:

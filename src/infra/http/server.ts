@@ -6,7 +6,7 @@ import { type Env, NODE_ENV_DEVELOPMENT } from '#infra/config/env'
 import { serializeError } from '#infra/observability/error-serializer'
 import { REDACT_PATHS } from '#infra/observability/redact-paths'
 import { runWithRequestContext } from '#infra/observability/request-context'
-import { registerErrorHandling } from './error-handler.js'
+import { registerErrorHandling } from './errors/error-handler.js'
 
 const TRACE_ID_LOG_LABEL = 'traceId'
 export const REDACTED_CENSOR = '[REDACTED]'

@@ -44,12 +44,14 @@ src/
 │   ├── http/
 │   │   ├── server.ts               # instância Fastify, SEM rotas
 │   │   ├── server.spec.ts          # unitário colocado
-│   │   ├── error-handler.ts        # ÚNICO lugar que traduz erro em status HTTP
-│   │   ├── error-handler.spec.ts
-│   │   ├── error-response.ts       # schema Zod do envelope de erro
-│   │   ├── validation-issues.ts    # tradução Zod -> códigos do contrato
 │   │   ├── auth-guard.ts           # preHandler genérico; verificador injetado, sem import de #modules/*
 │   │   ├── openapi.ts              # OpenAPI + UI dos docs (só em development)
+│   │   ├── errors/                 # o contrato de erro; os três mudam juntos
+│   │   │   ├── error-handler.ts    # ÚNICO lugar que traduz erro em status HTTP
+│   │   │   ├── error-handler.spec.ts
+│   │   │   ├── error-response.ts   # schema Zod do envelope — o único público dos três
+│   │   │   ├── validation-issues.ts     # tradução Zod -> códigos do contrato
+│   │   │   └── validation-issues.spec.ts
 │   │   └── endpoints/
 │   │       └── health.ts           # GET /health — agrega os checks
 │   ├── providers/                   # adapters dos contratos transversais
@@ -742,7 +744,7 @@ app em produção sem deixar rastro no diff.
 
 ### O mapa não cresce
 
-`infra/http/error-handler.ts` é o **único** lugar que traduz erro em status HTTP.
+`infra/http/errors/error-handler.ts` é o **único** lugar que traduz erro em status HTTP.
 (Um endpoint declara os status das respostas dele — `health.ts` publica `200` e
 `503` — mas nenhum endpoint decide o status de uma falha.) Cem erros de domínio
 continuam caindo nestas seis linhas:

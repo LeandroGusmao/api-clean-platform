@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import type { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
-import { errorResponseSchema } from '#infra/http/error-response'
+import { errorResponseSchema } from '#infra/http/errors/error-response'
 import type { AuthContainer } from '#modules/auth/container'
 import {
   AUTH_TAG,

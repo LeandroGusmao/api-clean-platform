@@ -1,6 +1,6 @@
 import type { FastifySchemaValidationError } from 'fastify'
 import { describe, expect, it } from 'vitest'
-import { toValidationDetails } from '#infra/http/validation-issues'
+import { toValidationDetails } from '#infra/http/errors/validation-issues'
 
 const EMAIL_PATH = '/email'
 const EMAIL_FIELD = 'email'
