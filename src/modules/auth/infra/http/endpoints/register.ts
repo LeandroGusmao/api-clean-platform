@@ -8,6 +8,9 @@ import {
   BAD_REQUEST_STATUS,
   CONFLICT_STATUS,
   CREATED_STATUS,
+  EXAMPLE_EMAIL,
+  EXAMPLE_PASSWORD,
+  EXAMPLE_USER_ID,
 } from '#modules/auth/infra/http/constants'
 import { MAX_EMAIL_LENGTH } from '#modules/auth/value-objects/email'
 import {
@@ -30,15 +33,21 @@ const REGISTER_DESCRIPTION =
  * keep the use case safe for the non-HTTP entrypoints of decision 10.
  */
 const bodySchema = z.object({
-  email: z.string().trim().max(MAX_EMAIL_LENGTH).pipe(z.email()),
+  email: z
+    .string()
+    .trim()
+    .max(MAX_EMAIL_LENGTH)
+    .pipe(z.email())
+    .meta({ examples: [EXAMPLE_EMAIL] }),
   password: z
     .string()
     .min(MIN_PASSWORD_LENGTH)
     .max(MAX_PASSWORD_LENGTH)
-    .regex(PASSWORD_POLICY_PATTERN),
+    .regex(PASSWORD_POLICY_PATTERN)
+    .meta({ examples: [EXAMPLE_PASSWORD] }),
 })
 
-const createdSchema = z.object({ id: z.uuid() })
+const createdSchema = z.object({ id: z.uuid().meta({ examples: [EXAMPLE_USER_ID] }) })
 
 export const registerRoute: FastifyPluginAsync<{ container: AuthContainer }> = async (
   app,

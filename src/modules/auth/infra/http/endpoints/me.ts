@@ -7,6 +7,8 @@ import { BEARER_SECURITY_SCHEME } from '#infra/http/openapi'
 import type { AuthContainer } from '#modules/auth/container'
 import {
   AUTH_TAG,
+  EXAMPLE_EMAIL,
+  EXAMPLE_USER_ID,
   NOT_FOUND_STATUS,
   OK_STATUS,
   UNAUTHORIZED_STATUS,
@@ -36,8 +38,8 @@ const ME_DESCRIPTION =
  * schema has no consumer for.
  */
 const userSchema = z.object({
-  id: z.uuid(),
-  email: z.email(),
+  id: z.uuid().meta({ examples: [EXAMPLE_USER_ID] }),
+  email: z.email().meta({ examples: [EXAMPLE_EMAIL] }),
   emailVerifiedAt: z.date().nullable(),
   createdAt: z.date(),
 })

@@ -6,6 +6,8 @@ import type { AuthContainer } from '#modules/auth/container'
 import {
   AUTH_TAG,
   BAD_REQUEST_STATUS,
+  EXAMPLE_EMAIL,
+  EXAMPLE_PASSWORD,
   OK_STATUS,
   UNAUTHORIZED_STATUS,
 } from '#modules/auth/infra/http/constants'
@@ -30,8 +32,17 @@ const MIN_SUBMITTED_PASSWORD_LENGTH = 1
  * becomes argon2 over 10 MB.
  */
 const bodySchema = z.object({
-  email: z.string().trim().max(MAX_EMAIL_LENGTH).pipe(z.email()),
-  password: z.string().min(MIN_SUBMITTED_PASSWORD_LENGTH).max(MAX_PASSWORD_LENGTH),
+  email: z
+    .string()
+    .trim()
+    .max(MAX_EMAIL_LENGTH)
+    .pipe(z.email())
+    .meta({ examples: [EXAMPLE_EMAIL] }),
+  password: z
+    .string()
+    .min(MIN_SUBMITTED_PASSWORD_LENGTH)
+    .max(MAX_PASSWORD_LENGTH)
+    .meta({ examples: [EXAMPLE_PASSWORD] }),
 })
 
 const okSchema = z.object({ accessToken: z.string() })
