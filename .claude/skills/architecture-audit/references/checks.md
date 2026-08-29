@@ -10,12 +10,18 @@ O scanner deriva a camada do caminho, exatamente como a tabela de fronteira do
 
 | Camada | Padrão | Pode importar |
 |---|---|---|
-| `pure` | `src/modules/*/{entities,value-objects,repositories,providers,use-cases,dtos,errors}/**` · `src/modules/*/config.ts` · `src/shared/**` | só `pure` |
+| `pure` | `src/modules/*/{entities,value-objects,repositories,ports,use-cases,dtos,errors}/**` · `src/modules/*/config.ts` · `src/shared/**` | só `pure` |
 | `module-infra` | `src/modules/*/infra/**` | `pure` · `global-infra` · o `module-infra` do próprio módulo |
 | `global-infra` | `src/infra/**` | `pure` · `global-infra` |
 | `composition` | `src/modules/*/container.ts` · `src/main/**` | tudo |
 | `test` | `**/*.spec.ts` · `tests/**` | tudo |
 | `unknown` | qualquer outro `src/**` | — dispara `LAYER-UNKNOWN` |
+
+> **`ports/` é o contrato; `infra/providers/` é a implementação.** Os dois se
+> chamavam `providers/` e eram indistinguíveis na árvore sem abrir as duas
+> pastas — `repositories/` nunca teve o problema porque o adapter dele mora em
+> `infra/drizzle/`, nomeado pela tecnologia. Só o lado do contrato foi
+> renomeado: `infra/providers/` segue como está.
 
 `composition` e `test` são exceções deliberadas: o composition root existe para
 conhecer o concreto, e o teste unitário precisa alcançar o repositório
@@ -29,8 +35,8 @@ in-memory. `test` é isento de **import**, nunca de segredo.
 Camada pura importando pacote de IO (`fastify`, `drizzle-orm`, `pg`, `pino`,
 `jose`, `@node-rs/*`, `node:*`, HTTP clients…) ou `#infra/*` / `#main/*`.
 
-**Corrigir:** declare o contrato em `providers/` ou `repositories/` do módulo (ou
-`#shared/providers/` se for transversal) e implemente o adapter em `infra/`. O
+**Corrigir:** declare o contrato em `ports/` ou `repositories/` do módulo (ou
+`#shared/ports/` se for transversal) e implemente o adapter em `infra/`. O
 container injeta. É o que torna o use case testável em milissegundos, sem banco.
 
 Vale também para `import type`: um tipo importado do infra ainda é a camada pura
@@ -109,8 +115,8 @@ Teste lendo `process.env`. A env da suíte é injetada em `test.env` no
 `new Date()`, `Date.now()`, `Math.random()`, `randomUUID()`, `randomBytes()`,
 `performance.now()`, `process.hrtime` na camada pura.
 
-**Corrigir:** `IClock` (`#shared/providers/clock`) para tempo, `IIdGenerator`
-(`#shared/providers/id-generator`) para identidade. São duas portas de propósito:
+**Corrigir:** `IClock` (`#shared/ports/clock`) para tempo, `IIdGenerator`
+(`#shared/ports/id-generator`) para identidade. São duas portas de propósito:
 id de entidade e segredo criptográfico têm perfis de segurança diferentes.
 
 `new Date(valor)` **com argumento** não dispara — é cópia defensiva, é
@@ -234,6 +240,15 @@ especificadores: quem decide a árvore é a condition (`development` → `src/`,
 que dois apps gerados do mesmo commit resolvem árvores diferentes — e a
 divergência aparece como bug que não reproduz. `savePrefix: ''` já cuida do
 futuro; este check pega o que entrou à mão.
+
+### `MD-LINK` — MÉDIA
+Link relativo quebrado em `.md` versionado. Entra no escopo com `--all` (todo
+`.md` rastreado pelo git) e, nos escopos de diff, quando o próprio arquivo mudou.
+
+É a única forma de "documento que mente" que uma máquina prova. Um move de pasta
+não toca o texto do link: ele continua verde no diff e morto na leitura. Âncora
+pura (`#secao`), URL e caminho absoluto ficam fora — o último depende de uma raiz
+que o script não conhece. Link dentro de bloco cercado não conta.
 
 ### `TEST-ONLY` — MÉDIA
 `.only` commitado silencia o resto da suíte.

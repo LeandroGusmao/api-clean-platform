@@ -42,6 +42,12 @@ export PATH="$HOME/.local/share/fnm/node-versions/v24.19.0/installation/bin:$PAT
 pnpm lint && pnpm typecheck && pnpm test:unit
 ```
 
+**Nunca canalize um portão.** `pnpm lint | tail -1` devolve o status do `tail`,
+que é sempre 0: o `&&` segue por cima de um check vermelho e a auditoria aprova
+o que falhou. Mesma família: `pnpm test:unit -- <filtro>` engole o filtro e roda
+a suíte inteira, então "passou" não quer dizer que o seu caso passou. Rode cada
+portão sozinho e leia o exit code — ou `set -o pipefail`, se precisar do pipe.
+
 Sem o `PATH`, o `pnpm` recusa com `ERR_PNPM_UNSUPPORTED_ENGINE` — o `node` do
 shell é mais velho que o `engines` do projeto, e isso não é achado da auditoria.
 
@@ -63,7 +69,7 @@ textual:
   responde **500**, não 401 — falha de fiação disfarçada de tráfego normal.
 - **Erro novo estende uma das seis categorias** e declara `code` literal, nunca
   derivado do nome da classe (§8).
-- **Use case recebe `IClock`/`IIdGenerator`** em vez de gerar o valor — inclusive
+- **Use case recebe `IClock`/`IIdGenerator`** (`#shared/ports/`) em vez de gerar o valor — inclusive
   quando o valor nasce dentro de uma entidade.
 - **Repositório insere e trata a violação**, nunca consulta-e-insere (corrida), e
   casa a constraint pelo **nome**, não só pelo código `23505` (§6).

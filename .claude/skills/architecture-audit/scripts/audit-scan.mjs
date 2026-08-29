@@ -123,7 +123,9 @@ function resolveScope() {
     return git(['diff', '--name-only', '--diff-filter=ACMR', base])
   }
   if (explicit.length > 0) return explicit.flatMap(expand)
-  if (args.includes('--all')) return SCAN_ROOTS.flatMap(expand)
+  if (args.includes('--all')) {
+    return [...SCAN_ROOTS.flatMap(expand), ...git(['ls-files', '*.md']).filter(Boolean)]
+  }
 
   const changed = [
     ...git(['diff', '--name-only', '--diff-filter=ACMR', 'HEAD']),
@@ -147,8 +149,14 @@ function layerPath(file) {
   return normalized
 }
 
+/**
+ * `ports/`, não `providers/`: contrato e implementação chamavam-se a mesma coisa
+ * — `modules/<m>/providers/` contra `modules/<m>/infra/providers/` — e a árvore
+ * não os distinguia sem expandir os dois. As pastas de IMPLEMENTAÇÃO seguem
+ * `infra/providers/`; só o lado do contrato foi renomeado.
+ */
 const PURE_DIRECTORIES =
-  /^(entities|value-objects|repositories|providers|use-cases|dtos|errors)\//
+  /^(entities|value-objects|repositories|ports|use-cases|dtos|errors)\//
 
 function classify(lp) {
   if (lp.endsWith('.spec.ts') || lp.startsWith('tests/')) return 'test'
@@ -773,6 +781,49 @@ function checkOwnershipParams(file, lp, layer, stripped) {
   }
 }
 
+const MARKDOWN_LINK = /\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g
+const FENCE_DELIMITER = /^\s*(?:```|~~~)/
+const ABSOLUTE_SPECIFIER = /^(?:[a-z][a-z0-9+.-]*:|\/\/|\/)/i
+
+/**
+ * Link relativo quebrado em `.md` versionado. Nasceu de dois casos reais: um
+ * move de pasta deixou quatro links apontando para o nada, e a documentação
+ * seguiu descrevendo um caminho que já não existia. É a única forma de
+ * "documento que mente" que uma máquina consegue provar.
+ */
+function checkMarkdownLinks(file) {
+  const directory = path.dirname(file)
+  let insideFence = false
+
+  readFileSync(file, 'utf8')
+    .split('\n')
+    .forEach((text, index) => {
+      if (FENCE_DELIMITER.test(text)) {
+        insideFence = !insideFence
+        return
+      }
+      if (insideFence) return
+
+      for (const match of text.matchAll(MARKDOWN_LINK)) {
+        // Âncora pura (`#secao`) e destino absoluto ficam fora: o primeiro não é
+        // caminho, e o segundo depende de uma raiz que este script não conhece.
+        const [target] = match[1].split('#')
+        if (target === '' || ABSOLUTE_SPECIFIER.test(target)) continue
+        if (existsSync(path.resolve(directory, target))) continue
+
+        addFinding(
+          MEDIUM,
+          'MD-LINK',
+          file,
+          index + 1,
+          'Documentação versionada aponta para arquivo que existe',
+          `Link relativo quebrado: '${target}'. Depois de mover um arquivo, o link fica verde no diff e morto na leitura.`,
+          text,
+        )
+      }
+    })
+}
+
 function checkPackageJson(file) {
   const content = readFileSync(file, 'utf8')
   content.split('\n').forEach((text, index) => {
@@ -798,6 +849,11 @@ const scanned = []
 for (const file of scope) {
   if (path.basename(file) === 'package.json' && existsSync(file)) {
     checkPackageJson(file)
+    scanned.push(file)
+    continue
+  }
+  if (file.endsWith('.md') && existsSync(file)) {
+    checkMarkdownLinks(file)
     scanned.push(file)
     continue
   }

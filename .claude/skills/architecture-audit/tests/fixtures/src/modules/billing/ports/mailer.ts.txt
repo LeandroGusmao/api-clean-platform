@@ -1,0 +1,10 @@
+import { createTransport } from 'nodemailer'
+
+/**
+ * Contrato — `ports/` é camada pura. Importar a lib concreta aqui é PURE-IO,
+ * e o arquivo NÃO pode ser reportado como fora do mapa de fronteira.
+ */
+export interface IMailer {
+  send(to: string, body: string): Promise<void>
+  transport: ReturnType<typeof createTransport>
+}
