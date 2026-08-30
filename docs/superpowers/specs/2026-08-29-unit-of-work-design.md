@@ -611,8 +611,12 @@ Postgres real, `truncate` entre casos, como as demais suítes de integração.
    lançado por `users.save` dentro do UoW sai como ele mesmo, e a escrita
    anterior do mesmo callback não sobrevive.
 
-O teste 3 é o que separa "usei o UoW" de "achei que usei": um `buildRepos` que
-ignorasse o `tx` e usasse o pool passaria em 1, 2 e 4, e só falharia aqui.
+Os testes 2 e 3 pegam, os dois, um `buildRepos` que ignorasse o `tx` e
+escrevesse pelo pool — o 2 porque a escrita sobreviveria ao rollback, o 3 porque
+ela ficaria visível de fora antes do commit. O 3 existe além disso para fixar o
+**isolamento em si**: é dele que a rotação da decisão 11 depende quando segura
+uma linha com `SELECT ... FOR UPDATE` e conta que ninguém leia o estado
+intermediário.
 
 **Não testado:** o travamento do §4.2 contra Postgres real. Reproduzi-lo exigiria
 `statement_timeout` e um teste que espera um impasse acontecer; a guarda torna o
