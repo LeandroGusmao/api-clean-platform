@@ -694,10 +694,13 @@ describe('unit of work (integration — real Postgres)', () => {
 - [ ] **Step 2: Rodar e confirmar que passa**
 
 ```bash
-pnpm test:integration -- unit-of-work
+pnpm exec vitest run --project integration tests/integration/unit-of-work.spec.ts
 ```
 
 Esperado: **4 passed**.
+
+> `pnpm test:integration -- unit-of-work` **não** filtra — roda os 7 arquivos do projeto
+> de integração. Verificado durante a execução da fatia.
 
 - [ ] **Step 3: Falsificar — o passo que substitui a fase vermelha**
 

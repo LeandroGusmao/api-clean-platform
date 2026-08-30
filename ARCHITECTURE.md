@@ -37,7 +37,9 @@ src/
 │   │   └── env.spec.ts             # unitário colocado
 │   ├── database/
 │   │   ├── client.ts               # pool pg + instância Drizzle
-│   │   └── driver-error.ts         # converte erro do driver antes de sair do infra/
+│   │   ├── driver-error.ts         # converte erro do driver antes de sair do infra/
+│   │   ├── transaction-runner.ts   # abre a transação, faz commit/rollback e recusa aninhamento
+│   │   └── unit-of-work.ts         # createUnitOfWork(runner, buildRepos) — casca genérica (decisão 22)
 │   ├── health/
 │   │   └── checks/
 │   │       └── database-check.ts   # um arquivo por dependência checada
@@ -77,7 +79,8 @@ src/
 │           ├── drizzle/
 │           │   ├── schema/users.ts  # um arquivo por tabela, nomeado pela tabela
 │           │   ├── user-mapper.ts   # entidade -> row (decisão 20)
-│           │   └── drizzle-users-repository.ts
+│           │   ├── drizzle-users-repository.ts
+│           │   └── auth-repositories.ts    # monta AuthRepos — único lugar que instancia os repositórios do módulo
 │           ├── in-memory/           # repositório de teste (decisão 09)
 │           ├── providers/           # adapters dos contratos de ports/ — argon2, jose
 │           └── http/
@@ -92,7 +95,8 @@ src/
 │   │   └── app-error.ts            # taxonomia: AppError + as 6 categorias
 │   └── ports/                       # contratos transversais
 │       ├── clock.ts                 # IClock — tempo entra por aqui (R7)
-│       └── id-generator.ts          # IIdGenerator — identidade entra por aqui (R7)
+│       ├── id-generator.ts          # IIdGenerator — identidade entra por aqui (R7)
+│       └── unit-of-work.ts          # IUnitOfWork<TRepos> — contrato genérico e transversal (decisão 22)
 └── main/
     ├── container.ts                 # composition root: junta os módulos
     ├── app.ts                      # compõe a aplicação: docs + rotas + deps, SEM escutar
@@ -150,6 +154,23 @@ não documentada" e esvazia a regra.
 
 A linha `module-infra` também resolve o cruzamento entre módulos: o `infra/` de
 um módulo não alcança o `infra/` de outro.
+
+**Duas regras do Unit of Work (decisão 22) que nem o compilador nem o lint
+alcançam** — a tabela acima classifica arquivo por caminho, e as duas a seguir
+dependem do que o código faz dentro dele:
+
+- **Use case que recebe o Unit of Work não recebe também um repositório
+  direto.** O repositório injetado como singleton no container escreve numa
+  conexão autocommit; chamá-lo dentro do callback do `uow` compila, passa no
+  teste unitário contra um dublê e só quebra a atomicidade em produção. Tudo
+  que o callback escreve tem que vir do `repos` que ele recebe como parâmetro.
+- **Três coisas não podem entrar no callback do `uow`,** porque a transação
+  fica aberta pela duração inteira dele: I/O externo (e-mail, HTTP — persiste
+  dentro, envia depois do commit), trabalho pesado de CPU (argon2 — calcula
+  antes e passa o resultado pronto) e qualquer escrita que precise sobreviver a
+  uma falha (um contador de tentativas de força bruta é autocommit de
+  propósito; um rollback apagaria o próprio registro da falha que ele existe
+  para guardar).
 
 #### E quem pode importar `composition`?
 

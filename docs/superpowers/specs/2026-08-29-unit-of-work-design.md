@@ -221,16 +221,26 @@ requests diferentes. Detecção de aninhamento é intrinsecamente uma pergunta
 sobre o **contexto assíncrono atual**, e o ALS é o mecanismo que responde isso.
 
 ```ts
-const insideTransaction = new AsyncLocalStorage<true>()
+const insideTransaction = new AsyncLocalStorage<{ open: boolean }>()
 ```
+
+O storage carrega uma caixa mutável, não um `true` fixo, porque o contexto
+aberto por `insideTransaction.run` sobrevive ao fim de `work`: qualquer recurso
+assíncrono criado dentro dela — um `setTimeout`, um flush de outbox — herda o
+mesmo contexto. Uma flag que nunca fecha leria esse contexto como "ainda dentro
+de uma transação" para sempre, e rejeitaria esse trabalho legítimo — agendado
+dentro do callback, mas executado depois do commit — com um
+`NestedTransactionError` falso. A caixa é fechada (`open = false`) num
+`finally` quando a transação se resolve, o que distingue esse trabalho tardio
+de um aninhamento genuíno, feito enquanto a transação ainda está aberta.
 
 **Este é o segundo uso de ALS no projeto, e a decisão 15 o aceitou como exceção
 única e consciente.** A diferença que sustenta a emenda: a decisão 22 rejeitou
 ALS para **propagar a transação**, porque ela sumiria da assinatura e o
 repositório resolveria a conexão a partir de estado ambiente. Aqui o storage
-carrega um `true`, os repositórios nunca o leem, e a transação continua explícita
-no parâmetro `repos`. É detecção, não propagação — e o único efeito possível
-dele é lançar.
+carrega uma caixa de controle interno, os repositórios nunca o leem, e a
+transação continua explícita no parâmetro `repos`. É detecção, não
+propagação — e o único efeito possível dele é lançar.
 
 O erro **não** é `AppError`, pela mesma razão que `PersistenceError` não é
 ([`driver-error.ts`](../../../src/infra/database/driver-error.ts)): aninhar é
@@ -376,49 +386,77 @@ import type { Database } from './client.js'
 
 /**
  * The context-free half of the Unit of Work: it knows how to open a transaction
- * and nothing about repositories. Build one per process in the composition root
- * and share it with every module's Unit of Work.
+ * and nothing about repositories. Build ONE per process, in the composition
+ * root, and share it with every module's Unit of Work.
  */
-export interface TransactionRunner {
-  <T>(work: (tx: Database) => Promise<T>): Promise<T>
-}
+export type TransactionRunner = <T>(work: (tx: Database) => Promise<T>) => Promise<T>
 
+const NESTED_TRANSACTION_ERROR_NAME = 'NestedTransactionError'
 const NESTED_TRANSACTION_MESSAGE =
   'a transaction is already open on this async context: open it once at the ' +
   'use case boundary and reuse the transaction-bound repositories'
 
 /**
- * Deliberately NOT an `AppError`. Nesting is a programming defect, not one of
- * the six semantic categories of decision 13, so it falls through to the error
- * handler's generic branch and answers 500 — same reasoning as
- * `PersistenceError`.
+ * Deliberately NOT an `AppError`, for the same reason `PersistenceError` is not:
+ * nesting is a programming defect, not one of the six semantic categories of
+ * decision 13. It falls through to the error handler's generic branch and
+ * answers 500 — which is what it is.
  */
 export class NestedTransactionError extends Error {
   constructor() {
     super(NESTED_TRANSACTION_MESSAGE)
-    this.name = 'NestedTransactionError'
+    this.name = NESTED_TRANSACTION_ERROR_NAME
   }
 }
 
 /**
  * Tracks whether the current async context already holds an open transaction.
- * Read ONLY by the guard below: repositories never touch it, and it carries a
- * boolean rather than the transaction handle. That is what separates it from
- * the ambient-transaction pattern decision 22 rejected — the transaction stays
- * explicit in `work`'s parameter; this flag can only throw.
+ * Read ONLY by the guard below: repositories never touch it, and the only
+ * thing a positive read can do is throw.
+ *
+ * The store holds a mutable box rather than a bare `true` because the context
+ * entered by `insideTransaction.run` outlives the transaction: any async
+ * resource created inside `work` (a `setTimeout`, a detached retry, an outbox
+ * flush) inherits the same context and would otherwise read the store as
+ * "still inside a transaction" forever, long after the connection returned to
+ * the pool. Closing the box in `finally` — rather than never closing it —
+ * means that work is allowed once the transaction has settled, while a
+ * genuine nested call made DURING the transaction (still `open: true`) is
+ * still blocked.
+ *
+ * That is what separates it from the ambient-transaction pattern decision 22
+ * rejected — the transaction stays explicit in `work`'s parameter, and the
+ * only thing this flag can do is throw. It is the project's second use of
+ * `AsyncLocalStorage`, which decision 15 had accepted as a one-off; the
+ * amendment records why detection is not propagation.
  */
-const insideTransaction = new AsyncLocalStorage<true>()
+const insideTransaction = new AsyncLocalStorage<{ open: boolean }>()
 
 export function createTransactionRunner(db: Database): TransactionRunner {
-  return <T>(work: (tx: Database) => Promise<T>): Promise<T> => {
+  return async <T>(work: (tx: Database) => Promise<T>): Promise<T> => {
     // A second call would take ANOTHER pooled connection and open an
     // independent transaction — not a savepoint. It would commit on its own
     // while the outer one rolls back, and deadlock outright whenever the outer
     // holds a row lock the inner asks for. Postgres cannot break that one: the
     // outer transaction is not waiting on a lock, it is waiting on JavaScript.
-    if (insideTransaction.getStore() !== undefined) throw new NestedTransactionError()
+    //
+    // The read happens synchronously, before the first `await`, so it runs in
+    // the CALLER's async context regardless of `createTransactionRunner`
+    // itself now being `async` — the guard's semantics are unchanged. Making
+    // the function `async` only changes what happens when the guard fires:
+    // the `throw` below becomes a rejection of the returned promise instead of
+    // a synchronous throw out of a function typed `Promise<T>`, which is what
+    // let it surface as an uncaught exception in a detached caller that has no
+    // enclosing `try` and no `.catch()` attached yet.
+    if (insideTransaction.getStore()?.open === true) throw new NestedTransactionError()
 
-    return insideTransaction.run(true, () => db.transaction((tx) => work(tx)))
+    const state = { open: true }
+
+    try {
+      return await insideTransaction.run(state, () => db.transaction((tx) => work(tx)))
+    } finally {
+      state.open = false
+    }
   }
 }
 ```
@@ -551,6 +589,41 @@ não caminho. Levantado enquanto o desenho ainda previa um fake em arquivo; fico
 sem uso quando o §5.5 eliminou o arquivo, mas vale registrado: a convenção
 generaliza para qualquer módulo futuro sem tocar no build.
 
+### `BEGIN` roda fora do `try…finally` que libera o cliente
+
+```js
+// node-postgres/session.js:54-62
+await tx.execute(sql`begin${...}`)
+try {
+  const result = await transaction(tx)
+  await tx.execute(sql`commit`)
+  return result
+} catch (error) {
+  await tx.execute(sql`rollback`)
+  throw error
+} finally {
+  if (isPool) session.client.release()
+}
+```
+
+O `BEGIN` (linha 54) roda **antes** do `try` (linha 55), e é o `finally` desse
+`try` (linha 62) que libera o cliente de volta ao pool. Se o `BEGIN` falhar numa
+conexão que morreu entre o checkout do pool e o `BEGIN` — a janela é estreita,
+mas existe — aquele cliente nunca é liberado. Borda rara, sem workaround local;
+registrado porque esta fatia é a que torna `db.transaction` alcançável pela
+primeira vez.
+
+### `client.ts` não limita `max`, `statement_timeout` nem `idle_in_transaction_session_timeout`
+
+[`src/infra/database/client.ts`](../../../src/infra/database/client.ts) só
+configura `connectionTimeoutMillis` no `Pool`. Enquanto só havia autocommit, um
+`statement` preso segurava no máximo uma conexão por request. Com transação em
+jogo, um callback pendurado — o cenário do §4.2, uma transação que não trava
+mas também nunca solta — segura uma conexão indefinidamente, e sem
+`statement_timeout` nem `idle_in_transaction_session_timeout` o Postgres não a
+derruba sozinho. Não corrigido nesta fatia; registrado para que a omissão seja
+uma decisão deliberada, não um esquecimento.
+
 ## 11. Custos aceitos
 
 ### 11.1 — Uma chave não consumida no container por uma fatia
@@ -562,9 +635,9 @@ rotação.
 ### 11.2 — Segundo ponto de contexto implícito no projeto
 
 O ALS da guarda. A decisão 15 aceitou o primeiro como exceção única; este é o
-segundo. Mitigado por escopo — carrega um booleano, é lido num único `if`, e
-nenhum repositório o alcança — mas é honesto registrar que a exceção deixou de
-ser única.
+segundo. Mitigado por escopo — carrega uma caixa de controle interno, é lida
+num único `if`, e nenhum repositório a alcança — mas é honesto registrar que a
+exceção deixou de ser única.
 
 ### 11.3 — O teste unitário do runner precisa de um dublê com cast
 
@@ -594,6 +667,19 @@ o callback.
 5. **duas execuções sequenciais não disparam a guarda** — o contexto é
    desmontado ao fim de cada uma. Sem este teste, um ALS mal escrito passa nos
    quatro anteriores e trava a segunda requisição de cada processo.
+6. **duas execuções que se sobrepõem não disparam a guarda** — a segunda
+   começa antes de a primeira terminar, e ambas resolvem. É o teste que mata o
+   contador de instância que o §5.4 rejeita: um `#depth` veria duas requisições
+   concorrentes pelo mesmo runner singleton como aninhamento, porque conta
+   execuções em voo em vez de perguntar pelo contexto assíncrono atual.
+7. **trabalho agendado dentro do callback, mas executado depois do commit, não
+   dispara a guarda** — um `setTimeout` desanexado, criado dentro de `work`,
+   chama o runner de novo depois que a transação já committou. É o teste que
+   reproduz o falso positivo corrigido no commit `bdaf517`: um storage que
+   carrega um `true` fixo e nunca fecha leria esse contexto como "ainda dentro
+   de uma transação" para sempre, e rejeitaria essa chamada legítima com um
+   `NestedTransactionError` — de dentro de uma função tipada `Promise<T>`, o
+   que a fazia escapar como `uncaughtException` num chamador desanexado.
 
 ### Integração — `tests/integration/unit-of-work.spec.ts`
 
