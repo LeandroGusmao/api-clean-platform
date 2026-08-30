@@ -1,36 +1,13 @@
 import { Writable } from 'node:stream'
 import type { FastifyInstance } from 'fastify'
 import { afterEach, describe, expect, it } from 'vitest'
-import {
-  DEFAULT_HOST,
-  DEFAULT_LOG_LEVEL,
-  DEFAULT_PORT,
-  type Env,
-  NODE_ENV_TEST,
-} from '#infra/config/env'
+import { TEST_ENV } from '#infra/config/fixtures/test-env'
 import {
   getPrincipal,
   makeAuthGuard,
   type VerifyAccessToken,
 } from '#infra/http/auth-guard'
 import { buildServer } from '#infra/http/server'
-import { DEFAULT_ACCESS_TOKEN_TTL_SECONDS } from '#modules/auth/config'
-
-// Duplicated from server.spec.ts and error-handler.spec.ts on purpose: it is a
-// fixture, not a shared constant, and it is built from the same exported
-// defaults, so the values cannot drift. A shared fixture module under `src/`
-// would be compiled into `dist/` — `tsconfig.build.json` excludes only
-// `*.spec.ts` — so extracting it is not free the way it looks; this is the
-// third spec to carry the duplicate, and the duplication stays on purpose.
-const testEnv: Env = {
-  NODE_ENV: NODE_ENV_TEST,
-  HOST: DEFAULT_HOST,
-  PORT: DEFAULT_PORT,
-  LOG_LEVEL: DEFAULT_LOG_LEVEL,
-  DATABASE_URL: 'postgres://user:pass@localhost:5432/app',
-  JWT_SECRET: 'a-test-secret-with-at-least-32-chars',
-  ACCESS_TOKEN_TTL_SECONDS: DEFAULT_ACCESS_TOKEN_TTL_SECONDS,
-}
 
 const GUARDED_PATH = '/probe/guarded'
 const UNGUARDED_PATH = '/probe/unguarded'
@@ -62,7 +39,7 @@ function buildApp(verify: VerifyAccessToken): FastifyInstance {
     },
   })
 
-  const instance = buildServer(testEnv, { logStream })
+  const instance = buildServer(TEST_ENV, { logStream })
   instance.get(GUARDED_PATH, { preHandler: makeAuthGuard(verify) }, async (request) => ({
     id: getPrincipal(request).id,
   }))

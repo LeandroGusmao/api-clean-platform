@@ -1,0 +1,44 @@
+import type { Env } from '#infra/config/env'
+import {
+  DEFAULT_DATABASE_CONNECTION_TIMEOUT_MS,
+  DEFAULT_DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS,
+  DEFAULT_DATABASE_LOCK_TIMEOUT_MS,
+  DEFAULT_DATABASE_POOL_MAX,
+  DEFAULT_DATABASE_STATEMENT_TIMEOUT_MS,
+  DEFAULT_HOST,
+  DEFAULT_LOG_LEVEL,
+  DEFAULT_PORT,
+  NODE_ENV_TEST,
+} from '#infra/config/env'
+import { DEFAULT_ACCESS_TOKEN_TTL_SECONDS } from '#modules/auth/config'
+
+/**
+ * A complete, valid `Env` for the specs that build a server without going
+ * through `parseEnv`.
+ *
+ * It lives under `fixtures/`, which `tsconfig.build.json` excludes by glob for
+ * the same reason it excludes `in-memory/`: this is a test double, and shipping
+ * it would put a hardcoded JWT secret one import away from a container.
+ *
+ * Every value comes from the exported defaults rather than being spelled out,
+ * so a changed default cannot leave the fixture behind. Specs needing a variant
+ * spread it — `{ ...TEST_ENV, NODE_ENV: NODE_ENV_DEVELOPMENT }`.
+ *
+ * The import from `#modules/auth/config` mirrors `env.ts` itself, which merges
+ * the module's schema for the same reason (decision 14).
+ */
+export const TEST_ENV: Env = {
+  NODE_ENV: NODE_ENV_TEST,
+  HOST: DEFAULT_HOST,
+  PORT: DEFAULT_PORT,
+  LOG_LEVEL: DEFAULT_LOG_LEVEL,
+  DATABASE_URL: 'postgres://user:pass@localhost:5432/app',
+  JWT_SECRET: 'a-test-secret-with-at-least-32-chars',
+  ACCESS_TOKEN_TTL_SECONDS: DEFAULT_ACCESS_TOKEN_TTL_SECONDS,
+  DATABASE_POOL_MAX: DEFAULT_DATABASE_POOL_MAX,
+  DATABASE_CONNECTION_TIMEOUT_MS: DEFAULT_DATABASE_CONNECTION_TIMEOUT_MS,
+  DATABASE_STATEMENT_TIMEOUT_MS: DEFAULT_DATABASE_STATEMENT_TIMEOUT_MS,
+  DATABASE_LOCK_TIMEOUT_MS: DEFAULT_DATABASE_LOCK_TIMEOUT_MS,
+  DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS:
+    DEFAULT_DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS,
+}

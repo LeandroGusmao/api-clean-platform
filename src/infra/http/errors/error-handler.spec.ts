@@ -3,19 +3,12 @@ import type { FastifyInstance, LightMyRequestResponse } from 'fastify'
 import type { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { afterEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import {
-  DEFAULT_HOST,
-  DEFAULT_LOG_LEVEL,
-  DEFAULT_PORT,
-  type Env,
-  NODE_ENV_DEVELOPMENT,
-  NODE_ENV_TEST,
-} from '#infra/config/env'
+import { type Env, NODE_ENV_DEVELOPMENT } from '#infra/config/env'
+import { TEST_ENV } from '#infra/config/fixtures/test-env'
 import { errorResponseSchema } from '#infra/http/errors/error-response'
 import type { ValidationDetail } from '#infra/http/errors/validation-issues'
 import { DOCS_ROUTE_PREFIX, registerOpenApi } from '#infra/http/openapi'
 import { buildServer } from '#infra/http/server'
-import { DEFAULT_ACCESS_TOKEN_TTL_SECONDS } from '#modules/auth/config'
 import {
   AppError,
   BusinessRuleError,
@@ -25,20 +18,6 @@ import {
   UnauthorizedError,
   ValidationError,
 } from '#shared/errors/app-error'
-
-// Duplicated from server.spec.ts on purpose: it is a fixture, not a shared
-// constant, and it is built from the same exported defaults, so the values
-// cannot drift. Extract it to a fixture module when a third spec needs it.
-const TEST_DATABASE_URL = 'postgres://user:pass@localhost:5432/app'
-const testEnv: Env = {
-  NODE_ENV: NODE_ENV_TEST,
-  HOST: DEFAULT_HOST,
-  PORT: DEFAULT_PORT,
-  LOG_LEVEL: DEFAULT_LOG_LEVEL,
-  DATABASE_URL: TEST_DATABASE_URL,
-  JWT_SECRET: 'a-test-secret-with-at-least-32-chars',
-  ACCESS_TOKEN_TTL_SECONDS: DEFAULT_ACCESS_TOKEN_TTL_SECONDS,
-}
 
 const THROW_PATH = '/probe/throw'
 const GET_METHOD = 'GET'
@@ -148,7 +127,7 @@ function createApp(): { app: FastifyInstance; lines: string[] } {
       callback()
     },
   })
-  const app = buildServer(testEnv, { logStream: stream })
+  const app = buildServer(TEST_ENV, { logStream: stream })
   openApps.push(app)
 
   return { app, lines }
@@ -366,7 +345,7 @@ describe('error handler — framework errors', () => {
   it('leaves the OpenAPI document reachable', async () => {
     // The one open question from the design spec: a custom not-found handler
     // installed on the root instance could plausibly shadow the docs routes.
-    const developmentEnv: Env = { ...testEnv, NODE_ENV: NODE_ENV_DEVELOPMENT }
+    const developmentEnv: Env = { ...TEST_ENV, NODE_ENV: NODE_ENV_DEVELOPMENT }
     const { app } = createApp()
 
     await registerOpenApi(app, developmentEnv)

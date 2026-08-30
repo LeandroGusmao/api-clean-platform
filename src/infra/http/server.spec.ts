@@ -2,16 +2,9 @@ import { Writable } from 'node:stream'
 import { DrizzleQueryError } from 'drizzle-orm/errors'
 import type { FastifyInstance } from 'fastify'
 import { afterEach, describe, expect, it } from 'vitest'
-import {
-  DEFAULT_HOST,
-  DEFAULT_LOG_LEVEL,
-  DEFAULT_PORT,
-  type Env,
-  NODE_ENV_TEST,
-} from '#infra/config/env'
+import { TEST_ENV } from '#infra/config/fixtures/test-env'
 import { buildServer, REDACTED_CENSOR } from '#infra/http/server'
 import { getTraceId } from '#infra/observability/request-context'
-import { DEFAULT_ACCESS_TOKEN_TTL_SECONDS } from '#modules/auth/config'
 
 const SECRET_VALUE = 'super-secret'
 const LOG_MESSAGE = 'log line under test'
@@ -20,16 +13,6 @@ const NO_LOG_LINE_MESSAGE = 'the logger wrote nothing'
 const TRACE_PROBE_PATH = '/trace-probe'
 const GET_METHOD = 'GET'
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
-
-const testEnv: Env = {
-  NODE_ENV: NODE_ENV_TEST,
-  HOST: DEFAULT_HOST,
-  PORT: DEFAULT_PORT,
-  LOG_LEVEL: DEFAULT_LOG_LEVEL,
-  DATABASE_URL: 'postgres://user:pass@localhost:5432/app',
-  JWT_SECRET: 'a-test-secret-with-at-least-32-chars',
-  ACCESS_TOKEN_TTL_SECONDS: DEFAULT_ACCESS_TOKEN_TTL_SECONDS,
-}
 
 function createLogCollector() {
   const lines: string[] = []
@@ -65,7 +48,7 @@ afterEach(async () => {
 
 async function logAndCapture(payload: Record<string, unknown>) {
   const { lines, stream } = createLogCollector()
-  const app = buildServer(testEnv, { logStream: stream })
+  const app = buildServer(TEST_ENV, { logStream: stream })
   close = () => app.close()
 
   app.log.info(payload, LOG_MESSAGE)
@@ -84,7 +67,7 @@ async function logAndCapture(payload: Record<string, unknown>) {
  */
 async function logErrorAndCapture(err: unknown) {
   const { lines, stream } = createLogCollector()
-  const app = buildServer(testEnv, { logStream: stream })
+  const app = buildServer(TEST_ENV, { logStream: stream })
   close = () => app.close()
 
   app.log.error({ err }, LOG_MESSAGE)
@@ -198,7 +181,7 @@ describe('buildServer request correlation', () => {
     logged: LogLine[]
   }> {
     const { lines, stream } = createLogCollector()
-    const app: FastifyInstance = buildServer(testEnv, { logStream: stream })
+    const app: FastifyInstance = buildServer(TEST_ENV, { logStream: stream })
     close = () => app.close()
 
     app.get(TRACE_PROBE_PATH, async () => ({ traceId: getTraceId() }))

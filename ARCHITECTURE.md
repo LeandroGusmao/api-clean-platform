@@ -468,6 +468,45 @@ export type Database = NodePgDatabase | NodePgTransaction<EmptyRelations>
 `DATABASE_URL` é validada em `env.ts` (§5), sem valor default — o boot falha
 se faltar, mesma regra das demais variáveis.
 
+### Limites de conexão, e por que subir o pool é a alavanca errada
+
+Cinco variáveis governam o pool e os timeouts, todas com default em `env.ts`:
+`DATABASE_POOL_MAX` (10), `DATABASE_CONNECTION_TIMEOUT_MS` (5000),
+`DATABASE_STATEMENT_TIMEOUT_MS` (10000), `DATABASE_LOCK_TIMEOUT_MS` (5000) e
+`DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS` (10000). Elas passaram a importar
+quando o Unit of Work nasceu: uma conexão deixou de ser retida pela duração de
+uma **query** e passou a ser retida pela duração de um **callback**.
+
+O instinto ao ver um pool de 10 é aumentá-lo. Num sistema com várias réplicas
+isso é a alavanca errada, porque o custo é multiplicativo:
+
+```
+instâncias × DATABASE_POOL_MAX  ≤  max_connections − reserva
+```
+
+Com os defaults do Postgres (`max_connections` 100, 3 reservadas), **9
+instâncias × 10 já encosta no teto**. Conexão do Postgres não é thread: cada uma
+é um processo backend com memória própria. Passado o ponto em que os cores do
+banco saturam, pool maior só troca fila no app por contenção no banco — pior,
+porque o banco é compartilhado e a fila é local.
+
+Quando `instâncias × max` encosta no teto, a resposta é um **pooler em
+transaction mode** (PgBouncer, RDS Proxy, Supavisor) na frente. O boilerplate já
+é compatível: o Drizzle manda prepared statements **anônimos** por default.
+**Chamar `.prepare()` numa query quebra essa compatibilidade**, e a falha
+aparece longe da causa.
+
+Duas armadilhas registradas:
+
+- **`0` num timeout não desliga.** O `pg` envia os três sob `if (params.x)`, então
+  um zero simplesmente não é enviado e vale o que o servidor tiver — que num
+  Postgres gerenciado pode ser um valor de parameter group.
+- **Valor em branco é recusado no boot.** Sem isso, `VAR=` viraria `0` pela
+  coerção e desligaria a proteção em silêncio — falha aberta.
+
+Desenho completo em
+[`specs/2026-08-30-connection-limits-design.md`](docs/superpowers/specs/2026-08-30-connection-limits-design.md).
+
 Localmente, o Postgres sobe via `docker-compose.yml` (`postgres:18.4-alpine3.24`),
 infra apenas — a aplicação roda no host:
 
