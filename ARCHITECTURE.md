@@ -146,12 +146,20 @@ escrita antes, não depois.
 | `module-infra` | `src/modules/*/infra/**` | `pure` · `global-infra` · o `module-infra` **do próprio módulo** |
 | `global-infra` | `src/infra/**` | `pure` · `global-infra` |
 | `composition` | `src/modules/*/container.ts` · `src/main/**` | tudo |
-| `test` | `**/*.spec.ts` · `tests/**` | tudo |
+| `test` | `**/*.spec.ts` · `tests/**` · `**/fixtures/**` · `**/in-memory/**` | tudo |
 
 **`composition` e `test` são exceções deliberadas, não brechas.** O composition
 root existe justamente para conhecer o concreto, e o teste unitário precisa
 alcançar o repositório in-memory. Deixá-las implícitas é o que produz "exceção
 não documentada" e esvazia a regra.
+
+`fixtures/` e `in-memory/` entram em `test` **pelo nome da pasta**, não pelo
+caminho: os dois vivem sob `src/`, e sem esta linha a tabela os classificaria
+como código de produção — `src/infra/config/fixtures/` como `global-infra`,
+`src/modules/*/infra/in-memory/` como `module-infra`. São os mesmos dois globs
+que o `tsconfig.build.json` já exclui do build, e pela mesma razão: são dublês,
+e um deles carrega um `JWT_SECRET` fixo. Classificá-los como produção faria o
+lint de fronteira aprovar exatamente o import que deveria barrar.
 
 A linha `module-infra` também resolve o cruzamento entre módulos: o `infra/` de
 um módulo não alcança o `infra/` de outro.
