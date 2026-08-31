@@ -5,6 +5,7 @@ import { makeAuthGuard } from '#infra/http/auth-guard'
 import { healthRoute } from '#infra/http/endpoints/health'
 import { registerOpenApi } from '#infra/http/openapi'
 import { type BuildServerOptions, buildServer } from '#infra/http/server'
+import { createLogger } from '#infra/observability/logger'
 import { authRoutes } from '#modules/auth/infra/http/routes'
 import { makeContainer } from './container.js'
 
@@ -22,7 +23,12 @@ export async function buildApp(
   env: Env,
   options: BuildServerOptions = {},
 ): Promise<FastifyInstance> {
-  const app = buildServer(env, options)
+  // One logger for the whole process, handed to both halves. Without this the
+  // container would have to build its own, and a worker or cron entrypoint
+  // (decision 10) would rebuild `redact` alongside it — the list that keeps a
+  // password hash out of the logs is not something to have two copies of.
+  const logger = createLogger(env, { stream: options.logStream })
+  const app = buildServer(env, { ...options, logger })
 
   const { db, pool } = createDatabase(env)
   // Makes `app.close()` the single teardown: callers never end the pool by hand.
@@ -36,7 +42,7 @@ export async function buildApp(
 
   // The graph is built here, not in `http.ts`: `buildApp` is the composition
   // root the suites exercise, so anything wired here reaches the tests too.
-  const container = makeContainer(db, env)
+  const container = makeContainer(db, env, logger)
 
   // Built here, from the auth module's verifier, and handed to whichever module
   // needs it. The guard itself knows nothing about auth, so protecting a route

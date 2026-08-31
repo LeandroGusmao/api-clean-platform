@@ -7,6 +7,7 @@ import {
   ConflictError,
   ForbiddenError,
   NotFoundError,
+  TransientError,
   UnauthorizedError,
   ValidationError,
 } from '#shared/errors/app-error'
@@ -28,6 +29,7 @@ const FORBIDDEN_STATUS = 403
 const NOT_FOUND_STATUS = 404
 const CONFLICT_STATUS = 409
 const UNPROCESSABLE_ENTITY_STATUS = 422
+const SERVICE_UNAVAILABLE_STATUS = 503
 const INTERNAL_SERVER_ERROR_STATUS = 500
 
 const CLIENT_ERROR_MIN_STATUS = 400
@@ -35,12 +37,21 @@ const CLIENT_ERROR_MAX_STATUS = 499
 
 const UNHANDLED_ERROR_LOG_MESSAGE = 'unhandled error'
 
+const RETRY_AFTER_HEADER = 'retry-after'
+/**
+ * Seconds. Deliberately a constant: a value derived from real load would have
+ * to measure the load, and nothing consumes that yet. One second is long enough
+ * for a lock holder to finish and short enough that a client honouring it feels
+ * responsive.
+ */
+const RETRY_AFTER_SECONDS = 1
+
 /**
  * The only HTTP mapping in the system. It does not grow with the number of
- * domain errors — a hundred of them still land in these six categories.
+ * domain errors — a hundred of them still land in these seven categories.
  *
- * The six are siblings: each extends `AppError` directly. If one ever extended
- * another, this table would silently start depending on row order.
+ * The seven are siblings: each extends `AppError` directly. If one ever
+ * extended another, this table would silently start depending on row order.
  */
 const STATUS_BY_CATEGORY: ReadonlyArray<
   [abstract new (...args: never[]) => AppError, number]
@@ -51,6 +62,7 @@ const STATUS_BY_CATEGORY: ReadonlyArray<
   [ForbiddenError, FORBIDDEN_STATUS],
   [ValidationError, BAD_REQUEST_STATUS],
   [BusinessRuleError, UNPROCESSABLE_ENTITY_STATUS],
+  [TransientError, SERVICE_UNAVAILABLE_STATUS],
 ]
 
 function statusForCategory(error: AppError): number | undefined {
@@ -118,6 +130,14 @@ function handleError(error: FastifyError, request: FastifyRequest, reply: Fastif
     const status = statusForCategory(error)
 
     if (status !== undefined) {
+      // The one category that says anything beyond the status: a 503 without
+      // `Retry-After` tells the client it may try again but not when, which
+      // invites a tight loop against a database already under contention. No
+      // other category gets one — repeating a 409 will not resolve it.
+      if (error instanceof TransientError) {
+        reply.header(RETRY_AFTER_HEADER, String(RETRY_AFTER_SECONDS))
+      }
+
       return reply
         .status(status)
         .send(buildErrorResponse(error.code, error.message, traceId))

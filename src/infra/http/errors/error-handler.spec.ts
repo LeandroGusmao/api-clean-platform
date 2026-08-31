@@ -15,6 +15,7 @@ import {
   ConflictError,
   ForbiddenError,
   NotFoundError,
+  TransientError,
   UnauthorizedError,
   ValidationError,
 } from '#shared/errors/app-error'
@@ -61,6 +62,8 @@ const CONTENT_TYPE_HEADER = 'content-type'
 const UNSUPPORTED_PAYLOAD = '<request/>'
 const UNSUPPORTED_MEDIA_TYPE_STATUS = 415
 const SERVICE_UNAVAILABLE_STATUS = 503
+const RETRY_AFTER_HEADER = 'retry-after'
+const RETRY_AFTER_SECONDS = 1
 const OK_STATUS = 200
 const DOCS_JSON_PATH = `${DOCS_ROUTE_PREFIX}/json`
 
@@ -104,6 +107,12 @@ class ProbeBusinessRuleError extends BusinessRuleError {
     super(PROBE_ERROR_MESSAGE)
   }
 }
+class ProbeTransientError extends TransientError {
+  readonly code = PROBE_ERROR_CODE
+  constructor() {
+    super(PROBE_ERROR_MESSAGE)
+  }
+}
 /** Extends the base directly, skipping the taxonomy: a programming mistake. */
 class RogueAppError extends AppError {
   readonly code = PROBE_ERROR_CODE
@@ -137,6 +146,7 @@ async function injectThrow(error: unknown): Promise<{
   statusCode: number
   body: string
   json: () => unknown
+  headers: Record<string, unknown>
   log: string
 }> {
   const { app, lines } = createApp()
@@ -151,6 +161,7 @@ async function injectThrow(error: unknown): Promise<{
     statusCode: response.statusCode,
     body: response.body,
     json: () => response.json(),
+    headers: response.headers,
     log: lines.join(''),
   }
 }
@@ -168,6 +179,7 @@ describe('error handler — taxonomy', () => {
       UNPROCESSABLE_ENTITY_STATUS,
       () => new ProbeBusinessRuleError(),
     ],
+    ['TransientError', SERVICE_UNAVAILABLE_STATUS, () => new ProbeTransientError()],
   ]
 
   it.each(STATUS_TABLE)('answers %s with %i', async (_name, expectedStatus, create) => {
@@ -194,6 +206,23 @@ describe('error handler — taxonomy', () => {
     const result = await injectThrow(new ProbeNotFoundError())
 
     expect(errorResponseSchema.safeParse(result.json()).success).toBe(true)
+  })
+
+  // The header is what makes 503 actionable: without it the client knows the
+  // request may be retried but not when, and a tight retry loop against a
+  // database already under contention is worse than not retrying at all.
+  it('tells the client when to come back on a transient failure', async () => {
+    const result = await injectThrow(new ProbeTransientError())
+
+    expect(result.headers[RETRY_AFTER_HEADER]).toBe(String(RETRY_AFTER_SECONDS))
+  })
+
+  // Every other category answers without one: a 409 is not going to resolve
+  // itself, and a Retry-After there would invite a pointless retry.
+  it('sends no Retry-After on a failure that repeating cannot fix', async () => {
+    const result = await injectThrow(new ProbeConflictError())
+
+    expect(result.headers[RETRY_AFTER_HEADER]).toBeUndefined()
   })
 })
 

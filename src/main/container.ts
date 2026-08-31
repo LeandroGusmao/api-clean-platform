@@ -1,6 +1,7 @@
 import type { Env } from '#infra/config/env'
 import type { Database } from '#infra/database/client'
 import { createTransactionRunner } from '#infra/database/transaction-runner'
+import type { AppLogger } from '#infra/observability/logger'
 import { makeAuthContainer } from '#modules/auth/container'
 
 /**
@@ -13,7 +14,7 @@ import { makeAuthContainer } from '#modules/auth/container'
  * `DATABASE_URL`. Structural typing gives decision 23's rule for free, with no
  * slicing code.
  */
-export function makeContainer(db: Database, env: Env) {
+export function makeContainer(db: Database, env: Env, logger: AppLogger) {
   // One per process, shared by every module's unit of work. The nesting guard
   // lives in module-level storage inside transaction-runner.ts, not on this
   // instance, so every runner already shares it regardless of how many get
@@ -25,7 +26,7 @@ export function makeContainer(db: Database, env: Env) {
   // connection would falsely block a call on the other datasource that is
   // nested inside the first one's async context — not a merely concurrent,
   // independent transaction on the other, which runs in its own context.
-  const runner = createTransactionRunner(db)
+  const runner = createTransactionRunner(db, logger)
 
   return { auth: makeAuthContainer(db, env, runner) }
 }

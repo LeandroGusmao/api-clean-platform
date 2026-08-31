@@ -1,7 +1,9 @@
+import { Writable } from 'node:stream'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { env } from '#infra/config/env'
 import { createDatabase, type Database } from '#infra/database/client'
+import { createLogger } from '#infra/observability/logger'
 import { makeContainer } from '#main/container'
 import { User } from '#modules/auth/entities/user'
 import { EmailAlreadyInUseError } from '#modules/auth/errors/email-already-in-use-error'
@@ -36,7 +38,17 @@ beforeAll(() => {
   // ignores the `tx` it is given — would type-check and pass every assertion
   // below if this spec built its own `IUnitOfWork` instead of exercising the
   // one production actually wires up.
-  unitOfWork = makeContainer(db, env).auth.uow
+  // A real logger over a sink: the container demands one, and nothing here is
+  // expected to log — a line appearing on stdout during this suite would mean a
+  // transaction retried, which these cases never provoke.
+  const silentStream = new Writable({
+    write(_chunk, _encoding, callback) {
+      callback()
+    },
+  })
+
+  unitOfWork = makeContainer(db, env, createLogger(env, { stream: silentStream })).auth
+    .uow
   autocommit = authRepositories(db)
 })
 

@@ -63,6 +63,7 @@ src/
 │   │   └── uuid-id-generator.spec.ts
 │   └── observability/
 │       ├── error-serializer.ts     # serializer do err do pino (sanitiza params)
+│       ├── logger.ts               # createLogger: o pino que todo entrypoint usa
 │       ├── redact-paths.ts         # paths redigidos pelo logger
 │       └── request-context.ts      # AsyncLocalStorage do traceId
 ├── modules/
@@ -433,7 +434,15 @@ Variáveis de ambiente inválidas:
 exit=1
 ```
 
-O logger é o pino que já vem no Fastify. Três configurações merecem nota:
+O logger é um **pino próprio**, criado por `createLogger` em
+`infra/observability/logger.ts` e entregue ao Fastify por `loggerInstance`. Ele
+saiu de dentro do `server.ts` quando a transação passou a poder registrar
+tentativas de retry: o composition root é compartilhado por `http`, `worker` e
+`cron` (decisão 10), e um worker que montasse o próprio pino duplicaria o
+`REDACT_PATHS` — a lista que mantém hash de senha e token fora do log. `buildApp`
+cria um só e o passa aos dois lados.
+
+Três configurações merecem nota:
 
 - **`genReqId: () => randomUUID()`** — o padrão do Fastify é um **contador por
   processo** (`req-1`, `req-2`). Com duas réplicas as duas emitem `req-1`, e um
@@ -794,7 +803,8 @@ export abstract class AppError extends Error {
   abstract readonly code: string
 }
 export abstract class NotFoundError extends AppError {}
-// ConflictError, UnauthorizedError, ForbiddenError, ValidationError, BusinessRuleError
+// ConflictError, UnauthorizedError, ForbiddenError, ValidationError,
+// BusinessRuleError, TransientError
 ```
 
 O `code` é **declarado**, nunca derivado do nome da classe. Derivar faria o nome
@@ -817,9 +827,15 @@ continuam caindo nestas seis linhas:
 | `NotFoundError` | 404 |
 | `ConflictError` | 409 |
 | `BusinessRuleError` | 422 |
+| `TransientError` | 503 |
 
-As seis são **irmãs** — todas estendem `AppError` direto. Se alguma passar a
+As sete são **irmãs** — todas estendem `AppError` direto. Se alguma passar a
 estender outra, o mapa começa a depender da ordem das linhas.
+
+`TransientError` é a única que acrescenta um header: o `503` sai com
+`Retry-After`. Sem ele o cliente sabe que pode repetir mas não quando, e um laço
+apertado contra um banco já em contenção é pior que não repetir. Nenhuma das
+outras leva o header — repetir um 409 não o resolve.
 
 O use case só faz `throw`; o endpoint não tem `try/catch`.
 

@@ -93,9 +93,12 @@ construído porque, até aqui, só o Fastify precisava logar.
 ```ts
 // src/infra/observability/logger.ts
 export const REDACTED_CENSOR = '[REDACTED]'
-export type AppLogger = ReturnType<typeof createLogger>
+export type AppLogger = Logger
+export interface WarnLogger {
+  warn(details: Record<string, unknown>, message: string): void
+}
 
-export function createLogger(env: Env, options?: { stream?: Writable }): Logger
+export function createLogger(env: Env, options?: CreateLoggerOptions): AppLogger
 ```
 
 `redact`, `serializers: { err: serializeError }` e o transport `pino-pretty` de
@@ -140,9 +143,15 @@ do mesmo deadlock voltem em lockstep e colidam de novo.
 aninhamento fecha no `finally` de cada tentativa, e a seguinte abre a sua — do
 contrário a segunda tentativa veria o contexto aberto e se recusaria a si mesma.
 
-**Logging:** um `warn` por tentativa, com o SQLSTATE e o número. O runner recebe
-`Pick<AppLogger, 'warn'>` — não conhece pino, e a assinatura documenta que ele
-não loga mais nada.
+**Logging:** um `warn` por tentativa, com o SQLSTATE e o número.
+
+> **Corrigido durante a implementação.** O desenho dizia
+> `Pick<AppLogger, 'warn'>`, e isso não compila contra um dublê: o `warn` do pino
+> é uma `LogFn` sobrecarregada, então o `Pick` arrasta todas as sobrecargas e
+> nenhum dublê escrito à mão as satisfaz — o runner ficaria intestável sem uma
+> instância real de pino. O contrato passou a ser um tipo próprio,
+> `WarnLogger { warn(details, message): void }`, que é o que o runner de fato
+> depende e que o `AppLogger` satisfaz estruturalmente.
 
 **Detecção:** `findDriverError(error)` de `driver-error.ts`, que já existe e já
 alcança o erro do driver por baixo do embrulho do Drizzle. Nenhum código de

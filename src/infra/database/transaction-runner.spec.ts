@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import type { Database } from '#infra/database/client'
 import {
   createTransactionRunner,
   NestedTransactionError,
+  TransactionConflictError,
 } from '#infra/database/transaction-runner'
 
 const WORK_RESULT = 'work-result'
@@ -22,9 +23,57 @@ const db = {
     work(TRANSACTION_HANDLE),
 } as unknown as Database
 
+// Wire contract, spelled out rather than imported: these ARE what the retry
+// policy is asserted against, and importing them would make it tautological.
+const DEADLOCK_DETECTED = '40P01'
+const SERIALIZATION_FAILURE = '40001'
+const LOCK_NOT_AVAILABLE = '55P03'
+const MAX_ATTEMPTS = 3
+
+const RETRY_LOG_MESSAGE = 'retrying transaction after a transient failure'
+
+interface WarnCall {
+  details: Record<string, unknown>
+  message: string
+}
+
+let warnings: WarnCall[]
+
+const logger = {
+  warn: (details: Record<string, unknown>, message: string) => {
+    warnings.push({ details, message })
+  },
+}
+
+beforeEach(() => {
+  warnings = []
+})
+
+/**
+ * Shaped like what the driver actually throws: `findDriverError` walks the
+ * `cause` chain looking for a `code`, so the retry policy reads this exactly as
+ * it would read a real `pg` failure.
+ */
+function driverError(code: string): Error {
+  return Object.assign(new Error(`postgres said ${code}`), { code })
+}
+
+/** Fails the first `failures` attempts, then succeeds. Counts every attempt. */
+function workFailing(failures: number, code: string) {
+  const state = { attempts: 0 }
+  const work = async (): Promise<string> => {
+    state.attempts += 1
+    if (state.attempts <= failures) throw driverError(code)
+
+    return WORK_RESULT
+  }
+
+  return { work, state }
+}
+
 describe('createTransactionRunner', () => {
   it('hands the transaction handle to the work and returns its result', async () => {
-    const runner = createTransactionRunner(db)
+    const runner = createTransactionRunner(db, logger)
     let received: Database | undefined
 
     const result = await runner(async (tx) => {
@@ -37,7 +86,7 @@ describe('createTransactionRunner', () => {
   })
 
   it('propagates the error the work throws, unwrapped', async () => {
-    const runner = createTransactionRunner(db)
+    const runner = createTransactionRunner(db, logger)
     const boom = new Error(BOOM_MESSAGE)
 
     // `toBe`, not `toThrow`: identity is the contract. A wrapped error would
@@ -52,7 +101,7 @@ describe('createTransactionRunner', () => {
   })
 
   it('throws when a runner is called inside another runner', async () => {
-    const runner = createTransactionRunner(db)
+    const runner = createTransactionRunner(db, logger)
 
     await expect(
       runner(async () => runner(async () => WORK_RESULT)),
@@ -60,7 +109,7 @@ describe('createTransactionRunner', () => {
   })
 
   it('throws when the nesting comes from a collaborator, across an await', async () => {
-    const runner = createTransactionRunner(db)
+    const runner = createTransactionRunner(db, logger)
 
     const collaborator = async (): Promise<string> => {
       // Crossing a microtask boundary is the point: the flag has to survive it.
@@ -77,7 +126,7 @@ describe('createTransactionRunner', () => {
   })
 
   it('does not trip the guard on a second, sequential run', async () => {
-    const runner = createTransactionRunner(db)
+    const runner = createTransactionRunner(db, logger)
 
     await runner(async () => WORK_RESULT)
 
@@ -87,7 +136,7 @@ describe('createTransactionRunner', () => {
   })
 
   it('does not trip the guard on runs that overlap', async () => {
-    const runner = createTransactionRunner(db)
+    const runner = createTransactionRunner(db, logger)
     let release: (() => void) | undefined
     const barrier = new Promise<void>((resolve) => {
       release = resolve
@@ -112,7 +161,7 @@ describe('createTransactionRunner', () => {
   })
 
   it('allows work scheduled after the transaction has already committed', async () => {
-    const runner = createTransactionRunner(db)
+    const runner = createTransactionRunner(db, logger)
     let deferred: Promise<string> | undefined
 
     await runner(async () => {
@@ -134,5 +183,89 @@ describe('createTransactionRunner', () => {
     })
 
     await expect(deferred).resolves.toBe(COLLABORATOR_RESULT)
+  })
+
+  it('retries a deadlock and succeeds on the next attempt', async () => {
+    const runner = createTransactionRunner(db, logger)
+    const { work, state } = workFailing(1, DEADLOCK_DETECTED)
+
+    await expect(runner(work)).resolves.toBe(WORK_RESULT)
+    expect(state.attempts).toBe(2)
+  })
+
+  it('retries a serialization failure the same way', async () => {
+    const runner = createTransactionRunner(db, logger)
+    const { work, state } = workFailing(1, SERIALIZATION_FAILURE)
+
+    await expect(runner(work)).resolves.toBe(WORK_RESULT)
+    expect(state.attempts).toBe(2)
+  })
+
+  // The lock holder is still there, so a retry means waiting another full
+  // `lock_timeout` to fail again while holding a pooled connection. Transient
+  // for the client, not worth insisting on from the server.
+  it('does not retry a lock timeout, but still reports it as transient', async () => {
+    const runner = createTransactionRunner(db, logger)
+    const { work, state } = workFailing(MAX_ATTEMPTS, LOCK_NOT_AVAILABLE)
+
+    await expect(runner(work)).rejects.toBeInstanceOf(TransactionConflictError)
+    expect(state.attempts).toBe(1)
+  })
+
+  it('does not retry a failure that is not transient', async () => {
+    const runner = createTransactionRunner(db, logger)
+    const boom = new Error(BOOM_MESSAGE)
+    let attempts = 0
+
+    await expect(
+      runner(async () => {
+        attempts += 1
+        throw boom
+      }),
+    ).rejects.toBe(boom)
+    expect(attempts).toBe(1)
+  })
+
+  it('gives up after the attempt cap and reports the conflict', async () => {
+    const runner = createTransactionRunner(db, logger)
+    const { work, state } = workFailing(MAX_ATTEMPTS, DEADLOCK_DETECTED)
+
+    await expect(runner(work)).rejects.toBeInstanceOf(TransactionConflictError)
+    expect(state.attempts).toBe(MAX_ATTEMPTS)
+  })
+
+  // A retry that resolves the deadlock leaves no trace in any error metric, so
+  // without this line an epidemic of contention is invisible until it is bad
+  // enough to exhaust the retries.
+  it('logs every retry with the SQLSTATE that caused it', async () => {
+    const runner = createTransactionRunner(db, logger)
+    const { work } = workFailing(1, DEADLOCK_DETECTED)
+
+    await runner(work)
+
+    expect(warnings).toEqual([
+      {
+        details: { sqlstate: DEADLOCK_DETECTED, attempt: 1 },
+        message: RETRY_LOG_MESSAGE,
+      },
+    ])
+  })
+
+  // Each attempt needs its own box. Sharing one across the loop would leave it
+  // open during the backoff, and reusing a closed one would let a genuine
+  // nested call through on attempt two.
+  it('keeps the nesting guard armed on every attempt', async () => {
+    const runner = createTransactionRunner(db, logger)
+    let attempts = 0
+
+    await expect(
+      runner(async () => {
+        attempts += 1
+        if (attempts === 1) throw driverError(DEADLOCK_DETECTED)
+
+        return runner(async () => WORK_RESULT)
+      }),
+    ).rejects.toBeInstanceOf(NestedTransactionError)
+    expect(attempts).toBe(2)
   })
 })

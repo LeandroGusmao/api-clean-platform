@@ -20,3 +20,15 @@ export abstract class UnauthorizedError extends AppError {}
 export abstract class ForbiddenError extends AppError {}
 export abstract class ValidationError extends AppError {}
 export abstract class BusinessRuleError extends AppError {}
+
+/**
+ * A failure that repeating may resolve on its own: nothing about the request is
+ * wrong, and the same operation attempted again will probably succeed. A
+ * database deadlock is the canonical case — Postgres kills one of two
+ * transactions precisely so the other can proceed.
+ *
+ * It is a category rather than a 500 because the distinction is the client's to
+ * act on: "come back in a moment" and "this request has a defect" call for
+ * opposite behaviour, and only the first is worth retrying.
+ */
+export abstract class TransientError extends AppError {}

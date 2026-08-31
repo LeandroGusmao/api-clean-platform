@@ -1,24 +1,28 @@
 import { randomUUID } from 'node:crypto'
 import type { Writable } from 'node:stream'
-import Fastify, { type FastifyInstance, LogController } from 'fastify'
+import Fastify, {
+  type FastifyBaseLogger,
+  type FastifyInstance,
+  LogController,
+} from 'fastify'
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod'
-import { type Env, NODE_ENV_DEVELOPMENT } from '#infra/config/env'
-import { serializeError } from '#infra/observability/error-serializer'
-import { REDACT_PATHS } from '#infra/observability/redact-paths'
+import type { Env } from '#infra/config/env'
+import { type AppLogger, createLogger } from '#infra/observability/logger'
 import { runWithRequestContext } from '#infra/observability/request-context'
 import { registerErrorHandling } from './errors/error-handler.js'
 
 const TRACE_ID_LOG_LABEL = 'traceId'
-export const REDACTED_CENSOR = '[REDACTED]'
-const PRETTY_TRANSPORT_TARGET = 'pino-pretty'
 
 export interface BuildServerOptions {
-  /**
-   * Where the logger writes. The destination is external world, so it enters by
-   * contract like everything else. Left out, pino keeps its default (stdout).
-   * Mutually exclusive with the pretty transport, which is development-only.
-   */
+  /** Where the logger writes, when this function builds the logger itself. */
   logStream?: Writable
+  /**
+   * The process-wide logger. `buildApp` passes the one it shares with the
+   * container, so a transaction retry and a request land in the same stream
+   * with the same redaction. Left out — as the specs that exercise this
+   * function alone do — one is built here from `env`.
+   */
+  logger?: AppLogger
 }
 
 /**
@@ -26,6 +30,12 @@ export interface BuildServerOptions {
  * `main/http.ts` is responsible for registering module plugins and their prefixes.
  */
 export function buildServer(env: Env, options: BuildServerOptions = {}): FastifyInstance {
+  // Annotated rather than inlined: Fastify infers the instance's logger generic
+  // from this value, and a `pino.Logger` would specialise `FastifyInstance` into
+  // a type no longer assignable to the one this function declares.
+  const logger: FastifyBaseLogger =
+    options.logger ?? createLogger(env, { stream: options.logStream })
+
   const app = Fastify({
     // Fastify's default is a per-process counter (`req-1`): two replicas emit
     // the same id and a restart resets it, so a traceId cannot correlate
@@ -34,20 +44,7 @@ export function buildServer(env: Env, options: BuildServerOptions = {}): Fastify
     // Aligns the Fastify log field with the `traceId` from the error body.
     // New form: the top-level `requestIdLogLabel` option ships in Fastify 6.
     logController: new LogController({ requestIdLogLabel: TRACE_ID_LOG_LABEL }),
-    logger: {
-      level: env.LOG_LEVEL,
-      redact: {
-        paths: [...REDACT_PATHS],
-        censor: REDACTED_CENSOR,
-      },
-      serializers: { err: serializeError },
-      ...(options.logStream ? { stream: options.logStream } : {}),
-      ...(env.NODE_ENV === NODE_ENV_DEVELOPMENT
-        ? {
-            transport: { target: PRETTY_TRANSPORT_TARGET, options: { singleLine: true } },
-          }
-        : {}),
-    },
+    loggerInstance: logger,
   })
 
   // Required for any endpoint declaring a raw Zod schema: without these
