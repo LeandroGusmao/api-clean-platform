@@ -3683,6 +3683,13 @@ git commit -m "feat: end a session, and end all of them"
 autoridade, então emenda não é acessório: uma decisão que descreve um desenho
 que o código não tem mais é pior que documentação nenhuma, porque será citada.
 
+> ⚠️ **`docs/DECISIONS.md` NÃO é rastreado pelo git** — está no `.gitignore`
+> (linha 146), junto de `OLD_ARCHITECTURE.md`, `STRUCTURE.md` e `TODO.md`, sob
+> o cabeçalho "Local docs for reference". **Edite-o mesmo assim**: ele continua
+> sendo a autoridade das decisões, e as fatias anteriores o emendaram. O que
+> muda é só o `git add` do último passo, que leva **apenas** o
+> `ARCHITECTURE.md`. Um `git add docs/DECISIONS.md` seria recusado pelo ignore.
+
 - [ ] **Step 1: Emendar a decisão 11**
 
 Acrescente um bloco `> **Emendada em 2026-08-31**` no topo da decisão 11,
@@ -3736,7 +3743,8 @@ registrando a mecânica que a implementação fechou:
 
 ```bash
 pnpm lint && pnpm typecheck && pnpm test
-git add docs/DECISIONS.md ARCHITECTURE.md
+# DECISIONS.md is gitignored on purpose — edited, never committed.
+git add ARCHITECTURE.md
 git commit -m "docs: record what the refresh token slice amended"
 ```
 
