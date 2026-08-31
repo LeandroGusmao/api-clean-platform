@@ -1058,6 +1058,33 @@ Sozinho, `engines` só **avisa** e sai com exit 0. É o `engineStrict` no
 > Instalá-lo sobre o Node 24 faz o compilador aceitar APIs que não existem em
 > runtime. Rodamos Node 24, logo `@types/node` é 24.x.
 
+### Bibliotecas que falham em silêncio
+
+Três armadilhas que já custaram tempo uma vez cada. O que as une não é a
+biblioteca, é o modo de falha: **o código parece certo, compila ou passa, e faz
+outra coisa.**
+
+> **O `.default()` do Zod 4 curto-circuita — ele não parseia o valor.** Num
+> schema cuja entrada é string e a saída número, `.default('5000')` devolve a
+> **string** `"5000"`, não `5000`. O default é do tipo de **saída**, então
+> escreva `.default(5000)`. Descoberto porque um teste comparava o objeto de
+> config inteiro com `toEqual`; com asserção campo a campo teria passado, e o
+> pool receberia uma string onde espera número.
+
+> **`.pipe(z.coerce.number())` depois de `z.string()` não compila — e o estrago
+> não fica no lugar do erro.** O schema coagido declara entrada `unknown`, que
+> não encaixa a jusante de um schema de string. O `tsc` reporta a linha do
+> `pipe`, mas o efeito é o tipo inferido do objeto **inteiro** degradar para
+> `any`, e aí todo consumidor dele para de ser verificado. Use
+> `.transform(Number).pipe(z.number())`. Vale a lição geral: um erro dentro de um
+> `z.object` grande apaga a tipagem de tudo que depende dele.
+
+> **`loggerInstance` do Fastify especializa o genérico da instância.** Passar um
+> `pino.Logger` faz o `FastifyInstance` devolvido carregar aquele tipo de logger,
+> e ele deixa de ser atribuível ao `FastifyInstance` que a função declara
+> devolver. A correção não é cast: anote o valor como `FastifyBaseLogger` antes
+> de passá-lo, e o genérico fica fixo.
+
 ---
 
 ## 12. Decisões travadas
