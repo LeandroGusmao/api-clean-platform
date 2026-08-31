@@ -284,14 +284,27 @@ txn 2: SELECT A FOR UPDATE  ──▶ espera o lock
                                 ──▶ janela de graça, emite par novo
 ```
 
-Sem o lock, os dois leem `revoked_at IS NULL`, os dois rotacionam, e a família
-ganha duas cadeias paralelas — **a detecção de reuso nunca dispara em lugar
-nenhum, para sempre**. O índice único em `token_hash` não pega isso: os dois
-sucessores têm hashes diferentes.
+Sem o lock, os dois leem `revoked_at IS NULL` e os dois tomam o ramo de
+**rotação**: o segundo pedido gasta um token já gasto sem que nada registre que
+aquilo aconteceu. O índice único em `token_hash` não pega: os dois sucessores
+têm hashes diferentes.
 
-É o defeito mais caro que esta fatia pode produzir, e é invisível: o caminho
-feliz passa nos dois casos. Por isso o teste de concorrência do §8 é o que
-recebe o tratamento de falsificação.
+> ⚠️ **E aqui há uma consequência incômoda, descoberta ao planejar os testes:
+> com a janela de graça ligada, esse defeito é INVISÍVEL pelo HTTP.** Ramo de
+> rotação e ramo de graça produzem o mesmo efeito externo — 200, par novo, mesma
+> família — então dois refreshes simultâneos respondem igual com e sem o lock.
+> Um teste de ponta a ponta que os dispare fica verde nos dois mundos, e
+> portanto **não prova o lock**.
+
+Por isso a falsificação do `FOR UPDATE` é feita **no nível do repositório**, onde
+a diferença é observável e determinística: duas transações sobre a mesma linha,
+a primeira travando e atualizando, a segunda obrigada a esperar o commit e a ler
+o valor **novo**. Sem `.for('update')` a segunda lê a versão antiga na hora, e o
+teste fica vermelho.
+
+O teste HTTP de concorrência continua existindo, e continua valendo — ele prova
+que dois refreshes simultâneos **não** produzem falso positivo de reuso, que é
+uma propriedade de produto. Só não é ele que defende o lock.
 
 **`SET LOCAL lock_timeout`** abre a transação, numa constante nomeada do
 repositório — `ROTATION_LOCK_TIMEOUT_MS = 1_000` — e não em variável de
@@ -577,8 +590,8 @@ O fluxo real, pelo HTTP:
 3. o refresh antigo **fora** da janela revoga a família: o token que estava
    ativo para de funcionar, e a resposta é `REFRESH_TOKEN_REUSED`
 4. **concorrência** — dois `POST /auth/refresh` simultâneos com o mesmo token:
-   os dois respondem 200, a família continua com tokens ativos, e a detecção de
-   reuso **não** dispara
+   os dois respondem 200, a família continua uma só, e a detecção de reuso
+   **não** dispara. Prova a ausência de falso positivo, **não** o lock — §4.3
 5. `logout` revoga a família; o refresh depois dele responde 401
 6. `logout` com token desconhecido responde 204; sem credencial nenhuma, 401
 7. `logout-all` mata as famílias de dois logins distintos do mesmo usuário, e
@@ -588,11 +601,28 @@ O fluxo real, pelo HTTP:
    `Path=/auth`; o refresh subsequente funciona **só com o cookie**
 9. o token em claro nunca aparece no corpo de erro nem em linha de log
 
-**O teste 4 é o que recebe falsificação obrigatória.** Tiro o `FOR UPDATE` do
-repositório, confirmo que ele fica vermelho, restauro. Se ele passar sem o
-lock, ele não está provando nada — e o §4.3 explica que este é o defeito mais
-caro e mais silencioso que a fatia pode produzir. O mesmo tratamento vale para o
-teste 7 da unidade: quebro a guarda `replaced_by` e confirmo o vermelho.
+### Integração — `tests/integration/drizzle-refresh-tokens-repository.spec.ts`
+
+Além do ida-e-volta dos cinco métodos, **o teste que defende o `FOR UPDATE`**:
+duas transações sobre a mesma linha, a primeira travando e marcando rotação, a
+segunda obrigada a esperar o commit e a ler `revoked_at` **preenchido**. Sem
+`.for('update')` ela lê `null` na hora, e o teste fica vermelho — que é a
+falsificação que o teste HTTP não consegue dar (§4.3).
+
+Também prova que `revokeFamily` **não** empurra um token já revogado para
+frente: sem o `IS NULL` no `WHERE`, a janela de graça deslizaria a cada
+revogação.
+
+### Falsificação obrigatória
+
+Três, e cada uma com o alvo nomeado — um teste que nunca ficou vermelho não
+provou nada:
+
+| Quebre | Fica vermelho em |
+|---|---|
+| remover `.for('update')` | o teste de duas transações do repositório |
+| remover a guarda `replaced_by` de `isWithinGraceWindow` | `refuses a token revoked by LOGOUT` |
+| inverter a ordem revogado/expirado no use case | `lets the grace window WIN over expiry` |
 
 ### Integração — `tests/integration/refresh-tokens-schema.spec.ts`
 
