@@ -6,12 +6,17 @@ import { Sha256TokenDigest } from '#infra/providers/sha256-token-digest'
 import { SystemClock } from '#infra/providers/system-clock'
 import { UuidIdGenerator } from '#infra/providers/uuid-id-generator'
 import type { AuthConfig } from './config.js'
+
+/** The grace window is configured in seconds; the entity compares milliseconds. */
+const MILLISECONDS_PER_SECOND = 1000
+
 import { authRepositories } from './infra/drizzle/auth-repositories.js'
 import { Argon2HashProvider } from './infra/providers/argon2-hash-provider.js'
 import { JwtTokenSigner } from './infra/providers/jwt-token-signer.js'
 import { RefreshTokenIssuer } from './services/refresh-token-issuer.js'
 import { GetUserProfileUseCase } from './use-cases/get-user-profile.js'
 import { LoginUserUseCase } from './use-cases/login-user.js'
+import { RefreshTokenUseCase } from './use-cases/refresh-token.js'
 import { RegisterUserUseCase } from './use-cases/register-user.js'
 
 /**
@@ -37,6 +42,7 @@ export function makeAuthContainer(
   const tokenSigner = new JwtTokenSigner(config, clock)
   const tokenGenerator = new RandomTokenGenerator()
   const tokenDigest = new Sha256TokenDigest()
+  const uow = createUnitOfWork(runner, authRepositories)
   const refreshTokenIssuer = new RefreshTokenIssuer(
     tokenGenerator,
     tokenDigest,
@@ -60,6 +66,14 @@ export function makeAuthContainer(
       clock,
     ),
     getUserProfile: new GetUserProfileUseCase(usersRepository),
+    refreshToken: new RefreshTokenUseCase(
+      uow,
+      refreshTokenIssuer,
+      tokenSigner,
+      tokenDigest,
+      clock,
+      config.REFRESH_TOKEN_GRACE_WINDOW_SECONDS * MILLISECONDS_PER_SECOND,
+    ),
     /**
      * Not a use case: there is nothing to orchestrate. Decision 11 keeps the
      * database out of the authenticated path, so verification is signature
@@ -78,7 +92,7 @@ export function makeAuthContainer(
      * open their transaction through it. `tests/integration/unit-of-work.spec.ts`
      * also reaches for it directly to exercise the primitive on its own.
      */
-    uow: createUnitOfWork(runner, authRepositories),
+    uow,
   }
 }
 
