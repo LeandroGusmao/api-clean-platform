@@ -2124,9 +2124,24 @@ export const refreshTransportSchema = z
   .default(REFRESH_TRANSPORT_BODY)
 
 /**
- * `Secure` is on even in development: browsers treat `localhost` as a trustworthy
- * origin and accept it over plain HTTP there, and a security attribute that
- * depends on `NODE_ENV` is exactly the kind that reaches production wrong.
+ * `Secure` is on in EVERY environment, development included, and deliberately
+ * not keyed on `NODE_ENV`: that variable carries `.default('development')` in
+ * `env.ts`, so a deploy that forgets to set it would ship this cookie without
+ * `Secure` — in silence. A security attribute that fails open on a missing
+ * variable is the wrong trade at any price.
+ *
+ * **The price, and it is a real one.** Over plain HTTP, whether
+ * `http://localhost` counts as a trustworthy origin for a `Secure` cookie is
+ * BROWSER-DEPENDENT. Chromium and Firefox accept it; WebKit has historically
+ * not, and the behaviour has moved between versions. A browser that refuses
+ * simply does not store the cookie — no error, no console warning — and the
+ * next `POST /auth/refresh` arrives with no credential at all and answers 401,
+ * indistinguishable from never having logged in.
+ *
+ * So: if cookie-mode refresh does not work locally, check this first. Use a
+ * Chromium browser for `/docs`, or terminate TLS in front of the API. Mobile
+ * is unaffected — a native client never asks for the cookie (decision 12), it
+ * takes the token in the body and stores it in the Keychain or Keystore.
  */
 const cookieOptions = {
   httpOnly: true,
@@ -3851,9 +3866,23 @@ registrando a mecânica que a implementação fechou:
   `.send(null)` no handler.
 - **§2:** a árvore ganha `services/`, `refresh-cookie.ts`, os dois endpoints
   novos e os arquivos de refresh token.
-- **§11 "Bibliotecas que falham em silêncio":** acrescente **duas** armadilhas
-  novas, que valem o mesmo que as três de lá — `SET LOCAL` não aceita parâmetro
-  ligado (`42601`), e `clearCookie` não herda os atributos de `setCookie`.
+- **§11 "Bibliotecas que falham em silêncio":** acrescente **três** armadilhas
+  novas, que valem o mesmo que as três de lá. A seção já diz que o que une os
+  casos "não é a biblioteca, é o modo de falha", então a terceira cabe mesmo
+  sendo de browser e não de pacote:
+  1. `SET LOCAL` não aceita parâmetro ligado — `42601 syntax error at or near
+     "$1"`. Tem de ser `sql.raw`, e portanto nunca com valor vindo de request.
+  2. `clearCookie` **não herda** os atributos de `setCookie`: só com `{ path }`
+     sai `SameSite=Lax`, sem `HttpOnly` e sem `Secure`.
+  3. **Cookie `Secure` sobre `http://localhost` é dependente de browser.**
+     Chromium e Firefox aceitam; o WebKit historicamente não. O que recusa não
+     guarda o cookie e não avisa — nem erro, nem console —, e o refresh seguinte
+     responde 401 como se nunca tivesse havido login. É desenvolvimento apenas:
+     produção é HTTPS, e mobile não usa cookie. Diga também o que fazer —
+     browser Chromium para o `/docs`, ou TLS na frente da API — e por que
+     condicionar o `Secure` a `NODE_ENV` seria pior: essa variável tem
+     `.default('development')`, então a "correção" mandaria cookie sem `Secure`
+     em qualquer deploy que esquecesse de defini-la.
 - **§13:** corrija o erro que **já existe** — a lista ainda diz que o Unit of
   Work não existe, e a fatia 4 o construiu. Remova também "refresh token" se
   estiver listado, e mantenha o resto.

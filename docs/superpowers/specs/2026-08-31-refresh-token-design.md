@@ -480,11 +480,27 @@ Set-Cookie: refresh_token=<opaco>
   Max-Age=<REFRESH_TOKEN_TTL_SECONDS>
 ```
 
-`Secure` fica ligado inclusive em desenvolvimento: browsers modernos tratam
-`localhost` como origem segura e aceitam o cookie sobre HTTP ali, e um flag de
-segurança que depende de `NODE_ENV` é exatamente o tipo de coisa que viaja para
-produção com o valor errado. O `app.inject` dos testes não aplica política de
-cookie nenhuma, então nada disso atrapalha a suíte.
+`Secure` fica ligado em **todo** ambiente, desenvolvimento incluído, e
+deliberadamente **não** condicionado a `NODE_ENV` — que tem
+`.default('development')` no `env.ts`. Um `secure: env.NODE_ENV !== 'development'`
+faria um deploy que esquecesse a variável mandar o cookie **sem `Secure`**, em
+silêncio. Falha aberta, que é a direção errada para atributo de segurança.
+
+> ⚠️ **O preço, e ele é real: sobre HTTP simples, se `http://localhost` conta
+> como origem confiável para cookie `Secure` é dependente de browser.** Chromium
+> e Firefox aceitam; o WebKit historicamente não, e o comportamento já mudou
+> entre versões. O browser que recusa simplesmente **não guarda** o cookie — sem
+> erro, sem aviso no console — e o `POST /auth/refresh` seguinte chega sem
+> credencial nenhuma e responde 401, indistinguível de nunca ter logado.
+>
+> Quem for depurar "o refresh não funciona no meu ambiente" deve checar isso
+> primeiro: browser Chromium para o `/docs`, ou TLS terminado na frente da API.
+> Vai para o §11 do `ARCHITECTURE.md`, junto das outras falhas silenciosas.
+
+**Isso não alcança mobile nem a suíte.** Cliente nativo nunca pede o cookie —
+`refreshTransport` tem default `body`, e o refresh vai para Keychain/Keystore. E
+o `app.inject` dos testes não aplica política de cookie nenhuma, então a
+verificação dos atributos roda igual.
 
 `clearCookie` precisa repetir `Path=/auth`, ou o browser não apaga.
 
