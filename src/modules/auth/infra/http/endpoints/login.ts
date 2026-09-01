@@ -11,6 +11,11 @@ import {
   OK_STATUS,
   UNAUTHORIZED_STATUS,
 } from '#modules/auth/infra/http/constants'
+import {
+  REFRESH_TRANSPORT_COOKIE,
+  refreshTransportSchema,
+  setRefreshCookie,
+} from '#modules/auth/infra/http/refresh-cookie'
 import { MAX_EMAIL_LENGTH } from '#modules/auth/value-objects/email'
 import { MAX_PASSWORD_LENGTH } from '#modules/auth/value-objects/password'
 
@@ -43,11 +48,23 @@ const bodySchema = z.object({
     .min(MIN_SUBMITTED_PASSWORD_LENGTH)
     .max(MAX_PASSWORD_LENGTH)
     .meta({ examples: [EXAMPLE_PASSWORD] }),
+  /**
+   * Which channel carries the refresh token back. `login` is the one endpoint
+   * with no incoming signal to tell a mobile client from a web one — every
+   * other one learns it from the request that arrived.
+   */
+  refreshTransport: refreshTransportSchema,
 })
 
 const okSchema = z.object({
   accessToken: z.string(),
-  refreshToken: z.string(),
+  /**
+   * Absent in cookie mode. Optional rather than two schemas because declaring a
+   * status makes the serializer VALIDATE the body against it — the §7 warning
+   * of `ARCHITECTURE.md` — and a shape it cannot serialize answers 500 instead
+   * of the intended status.
+   */
+  refreshToken: z.string().optional(),
 })
 
 export const loginRoute: FastifyPluginAsync<{ container: AuthContainer }> = async (
@@ -70,9 +87,17 @@ export const loginRoute: FastifyPluginAsync<{ container: AuthContainer }> = asyn
       },
     },
     async (request, reply) => {
-      const tokens = await container.loginUser.execute(request.body)
+      const { accessToken, refreshToken } = await container.loginUser.execute(
+        request.body,
+      )
 
-      return reply.status(OK_STATUS).send(tokens)
+      if (request.body.refreshTransport === REFRESH_TRANSPORT_COOKIE) {
+        setRefreshCookie(reply, refreshToken, container.refreshTokenTtlSeconds)
+
+        return reply.status(OK_STATUS).send({ accessToken })
+      }
+
+      return reply.status(OK_STATUS).send({ accessToken, refreshToken })
     },
   )
 }
