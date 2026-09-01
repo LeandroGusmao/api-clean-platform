@@ -72,7 +72,16 @@ const refresh = (payload: object) =>
   app.inject({ method: POST_METHOD, url: REFRESH_PATH, payload })
 
 const logout = (payload: object, cookies?: Record<string, string>) =>
-  app.inject({ method: POST_METHOD, url: LOGOUT_PATH, payload, cookies })
+  app.inject({
+    method: POST_METHOD,
+    url: LOGOUT_PATH,
+    payload,
+    // Spread rather than passing `cookies` straight through:
+    // `exactOptionalPropertyTypes` makes an explicit `undefined` invalid for an
+    // optional property, and `inject` then fails overload resolution into an
+    // unusable `void & Promise<Response> & Chain` intersection.
+    ...(cookies === undefined ? {} : { cookies }),
+  })
 
 const logoutAll = (accessToken?: string) =>
   app.inject({
