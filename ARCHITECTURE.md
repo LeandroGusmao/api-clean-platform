@@ -71,24 +71,30 @@ src/
 │       ├── config.ts                # schema Zod das env vars do módulo (decisão 14)
 │       ├── entities/user.ts         # puro — estado em campos `#`
 │       ├── value-objects/           # puro — email.ts, password.ts
-│       ├── repositories/            # SÓ contratos — users-repository.ts
+│       ├── repositories/            # SÓ contratos — users-repository.ts, refresh-tokens-repository.ts
 │       ├── ports/                   # SÓ contratos — hash-provider.ts, token-signer.ts
-│       ├── use-cases/               # puro (+ .spec.ts colocado) — register-user.ts, login-user.ts, get-user-profile.ts
-│       ├── errors/                  # um arquivo por erro do módulo — inclui invalid-credentials-error.ts, user-not-found-error.ts
+│       ├── use-cases/               # puro (+ .spec.ts colocado) — register-user.ts, login-user.ts, get-user-profile.ts, refresh-token.ts, logout.ts, logout-all.ts
+│       ├── services/                # domain service puro — refresh-token-issuer.ts
+│       ├── errors/                  # um arquivo por erro do módulo — inclui invalid-credentials-error.ts, refresh-token-reused-error.ts
 │       ├── container.ts             # factory do container do módulo
 │       └── infra/                   # tudo que toca o mundo externo
 │           ├── drizzle/
 │           │   ├── schema/users.ts  # um arquivo por tabela, nomeado pela tabela
 │           │   ├── user-mapper.ts   # entidade -> row (decisão 20)
 │           │   ├── drizzle-users-repository.ts
+│           │   ├── drizzle-refresh-tokens-repository.ts
 │           │   └── auth-repositories.ts    # monta AuthRepos — único lugar que instancia os repositórios do módulo
 │           ├── in-memory/           # repositório de teste (decisão 09)
 │           ├── providers/           # adapters dos contratos de ports/ — argon2, jose
 │           └── http/
 │               ├── constants.ts     # status HTTP e tag do OpenAPI do módulo
+│               ├── refresh-cookie.ts  # atributos do cookie de refresh, em UM lugar
 │               ├── endpoints/       # 1 arquivo = schema + handler + rota
 │               │   ├── register.ts  # POST /auth/register
 │               │   ├── login.ts     # POST /auth/login
+│               │   ├── refresh.ts   # POST /auth/refresh
+│               │   ├── logout.ts    # POST /auth/logout
+│               │   ├── logout-all.ts # POST /auth/logout-all
 │               │   └── me.ts        # GET /auth/me
 │               └── routes.ts        # agregador fino do módulo
 ├── shared/                         # camada PURA, sem dono de módulo
@@ -109,6 +115,8 @@ tests/
     ├── health.spec.ts              # suíte que precisa de Postgres de pé
     ├── register.spec.ts            # POST /auth/register fim a fim
     ├── login.spec.ts                # POST /auth/login fim a fim
+    ├── refresh-token.spec.ts        # POST /auth/refresh fim a fim
+    ├── logout.spec.ts               # logout e logout-all fim a fim
     ├── me.spec.ts                   # GET /auth/me fim a fim
     ├── setup/
     │   ├── migrate-test-database.ts  # globalSetup: aplica migrations commitadas antes da suíte
@@ -727,7 +735,9 @@ obriga o cliente a descobrir os erros por tentativa.
 
 **"Que ele mesmo produz" é o recorte, e ele importa.** Declara-se o que o handler
 e o schema daquela rota podem gerar — `register.ts` declara `201`, `400` e `409`;
-`health.ts` declara `200` e `503`. **Não** se declara o que o framework produz em
+`health.ts` declara `200` e `503`; `refresh.ts`, `logout.ts` e `logout-all.ts`
+declaram **503** porque abrem transação, e um deadlock que sobrevive ao retry do
+runner sai como `TransactionConflictError`. **Não** se declara o que o framework produz em
 qualquer rota: `500` do handler genérico e `415` de content-type errado são
 universais, e repetir os dois em todo arquivo é ruído que ninguém mantém.
 
@@ -742,6 +752,18 @@ universais, e repetir os dois em todo arquivo é ruído que ninguém mantém.
 > **Medida, não hipotética.** `z.iso.datetime()` rejeita um `Date`: devolver um
 > campo de data cru onde o schema promete essa string responde **500**, sem nada
 > no corpo apontando a causa — é exatamente a consequência acima, aplicada.
+
+> **O type provider dá dente à regra, e isso foi verificado.** Sob o
+> `ZodTypeProvider`, responder um status que o schema **não declara** é **erro de
+> compilação**: `reply.status(204)` num endpoint que declara só `401` falha com
+> *"Argument of type '204' is not assignable to parameter of type '401'"*. A
+> regra desta seção deixou de depender só de revisão para o status do próprio
+> handler.
+>
+> **Um 204 precisa de `z.null()` no schema e `.send(null)` no handler.**
+> `.send()` sem argumento não compila (*"Expected 1 arguments, but got 0"*). O
+> corpo sai com zero bytes e o documento publica a resposta **sem `content`**,
+> que é a forma certa para um 204.
 
 ### Data em resposta: declare `z.date()`, não `z.iso.datetime()`
 
@@ -1079,6 +1101,41 @@ outra coisa.**
 > `.transform(Number).pipe(z.number())`. Vale a lição geral: um erro dentro de um
 > `z.object` grande apaga a tipagem de tudo que depende dele.
 
+> **`SET LOCAL` não aceita parâmetro ligado.** `SET LOCAL lock_timeout = $1` é
+> recusado pelo Postgres com `42601 syntax error at or near "$1"` — `SET` não é
+> uma query parametrizável. Tem de ir por `sql.raw`, e **por isso o valor nunca
+> pode vir de request**. Verificado também que ele reverte no `COMMIT`, então é
+> seguro num pool: dentro da transação vale o valor local, depois volta o da
+> conexão.
+
+> **`clearCookie` não herda os atributos de `setCookie`.** Passando só
+> `{ path }`, o `Set-Cookie` de expiração sai com `SameSite=Lax`, **sem
+> `HttpOnly` e sem `Secure`**. A deleção funciona assim mesmo — o browser casa
+> por nome, domínio e path —, mas o cookie emitido é mais fraco que o original.
+> Passe o conjunto completo de atributos.
+
+> **Cookie `Secure` sobre `http://localhost` é recusado pelo Safari.** Medido em
+> 2026-09-01: Chrome e Firefox aceitam, o WebKit não — em macOS e em iOS. O
+> browser que recusa **não guarda o cookie e não avisa**, nem erro nem console,
+> e o refresh seguinte responde 401 como se nunca tivesse havido login.
+> Consequência concreta: **o modo cookie não pode ser exercitado pelo `/docs` no
+> Safari**; use um browser Chromium, ou termine TLS na frente da API. Testar de
+> aparelho real por IP de LAN falha igual em **todo** browser, porque endereço
+> de LAN cru nunca é origem confiável.
+>
+> A correção óbvia — condicionar o `Secure` a `NODE_ENV` — é pior: essa variável
+> tem `.default('development')` no `env.ts`, então qualquer deploy que esquecesse
+> de defini-la mandaria o cookie **sem `Secure`**, em silêncio. Falha aberta em
+> produção é pior que caça ao fantasma num laptop.
+
+> **`exactOptionalPropertyTypes` transforma um parâmetro opcional repassado em
+> erro a três linhas de distância.** Encaminhar `cookies?: Record<string,string>`
+> direto para as opções do `app.inject` passa um `undefined` explícito, que é
+> inválido para propriedade opcional; o `inject` então falha a resolução de
+> overload e reporta o retorno como `void & Promise<Response> & Chain`, de modo
+> que o erro aparece como *"statusCode does not exist"*. Espalhe
+> condicionalmente em vez de repassar.
+
 > **`loggerInstance` do Fastify especializa o genérico da instância.** Passar um
 > `pino.Logger` faz o `FastifyInstance` devolvido carregar aquele tipo de logger,
 > e ele deixa de ser atribuível ao `FastifyInstance` que a função declara
@@ -1154,5 +1211,9 @@ do mesmo pacote.
 
 Listado para não ser confundido com omissão, sem detalhar o que não foi construído:
 
-verificação de e-mail · módulos de negócio · Unit of Work · entrypoints
-`worker.ts` e `cron.ts` · rate limiting · regra de fronteira no lint · Docker
+verificação de e-mail · troca de senha · módulos de negócio · entrypoints
+`worker.ts` e `cron.ts` · poda de `refresh_tokens` expirados · rate limiting ·
+CORS · regra de fronteira no lint · Docker
+
+> **Corrigido em 2026-09-01:** esta lista dizia que o Unit of Work não existia,
+> e a fatia 4 o construiu em 2026-08-29. Ele saiu daqui.

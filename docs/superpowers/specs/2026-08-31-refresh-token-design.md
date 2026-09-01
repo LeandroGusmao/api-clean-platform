@@ -1,6 +1,9 @@
 # Fatia 7 — Refresh token rotativo: rotação, janela de graça e detecção de reuso
 
-> **Status:** desenho aprovado em 2026-08-31, pronto para implementação.
+> **Status:** implementado em 2026-09-01. **Uma correção de segurança foi feita
+> durante a execução** e está registrada no §4.2 — a versão aprovada revogava a
+> família e lançava de dentro do callback, o que fazia o rollback desfazer a
+> revogação.
 > **Fatia anterior:** [`2026-08-30-transient-failures-design.md`](2026-08-30-transient-failures-design.md)
 > **Consome as decisões:** 11 (auth), 12 (transporte), 13 (taxonomia), 14 (env), 15 (logging), 21 (ports), 22 (atomicidade), 23 (fatia do container), 24 (posse de tabela)
 > **Emenda as decisões:** 11 (mecânica da janela de graça), 12 (`Path` do cookie e o campo de transporte), 21 (`ITokenGenerator` e `ITokenDigest` nascem), 22 (segunda razão legítima para usar o UoW)
@@ -238,7 +241,9 @@ SELECT ... WHERE token_hash = :h FOR UPDATE
    │     │
    │     └─ senão ──────────────────────────────► REUSO
    │           revokeFamily(A.family_id, now)
-   │           401 REFRESH_TOKEN_REUSED
+   │           RETORNA "reuso"  ← não lança aqui; ver §4.2
+   │
+   │  ... após o COMMIT: 401 REFRESH_TOKEN_REUSED
    │
    ├─ expires_at <= now ─────────────────────────► 401 INVALID_REFRESH_TOKEN
    │     expirar não é ataque: NÃO revoga a família
@@ -266,7 +271,26 @@ A expiração continua sendo checada, e continua **não** revogando a família:
 token que expirou sem nunca ter sido usado é um cliente que ficou offline tempo
 demais, não um vazamento.
 
-### 4.2 — Quatro propriedades que decidem correção
+### 4.2 — Cinco propriedades que decidem correção
+
+**O reuso sai da transação como DADO, e o erro é lançado depois do commit.**
+Esta é uma **correção de segurança feita durante a implementação**, e a versão
+aprovada desta spec estava errada: ela revogava a família e lançava de dentro do
+callback do `uow`.
+
+> Lançar ali dá **rollback**, e o rollback desfaz a revogação que a detecção
+> acabou de fazer. O resultado é o pior possível: a detecção dispara, o cliente
+> recebe 401, e **a família roubada continua viva** pelo resto dos 60 dias — o
+> oposto exato do que ela existe para fazer.
+
+Os dois ramos que legitimamente lançam de dentro — token desconhecido e token
+expirado — continuam lançando, porque **nenhum dos dois escreve nada**, então
+o rollback ali é correto e irrelevante.
+
+O defeito é **invisível ao fake passthrough** do UoW, que por decisão da fatia 4
+não modela rollback (§5.5 daquela spec). Quem o pegou foi o teste de integração.
+A cobertura unitária existe agora, com um dublê **local** que modela rollback,
+usado por um teste só — o resto do arquivo segue usando o fake.
 
 **`replaced_by IS NOT NULL` é a guarda da janela.** Sem ela, um token revogado
 por **logout** que chegasse dentro dos 30 segundos cairia na graça e emitiria
@@ -679,8 +703,15 @@ provou nada:
 | Quebre | Fica vermelho em |
 |---|---|
 | remover `.for('update')` | o teste de duas transações do repositório |
+| remover o `IS NULL` do `revokeFamily` | `revokeFamily does NOT push an already-revoked token forward` |
 | remover a guarda `replaced_by` de `isWithinGraceWindow` | `refuses a token revoked by LOGOUT` |
-| inverter a ordem revogado/expirado no use case | `lets the grace window WIN over expiry` |
+| inverter a ordem revogado/expirado no use case | `lets the grace window WIN over expiry` **e** `treats a rotated token that resurfaces after expiry as reuse` |
+| voltar o `throw` para dentro do callback no ramo de reuso | `COMMITS the family revocation instead of rolling it back` **e** o de integração |
+| trocar `revokeFamily` por revogar só a linha, no logout | dois unitários **e** dois de integração |
+| `httpOnly: false` no cookie | `sets the cookie with every attribute decision 12 requires` |
+
+**Todas as sete foram executadas**, cada uma produziu vermelho no alvo previsto
+e em nenhum outro, e cada uma foi restaurada em seguida.
 
 ### Integração — `tests/integration/refresh-tokens-schema.spec.ts`
 
