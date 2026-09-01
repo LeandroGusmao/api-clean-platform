@@ -21,6 +21,17 @@ export interface RefreshTokenResult {
 }
 
 /**
+ * What the transaction decided. Reuse is DATA on the way out and not an
+ * exception, and that distinction is load-bearing — see the comment on the
+ * branch that returns it.
+ */
+type RotationOutcome =
+  | { readonly reused: true }
+  | { readonly reused: false; readonly issued: IssuedRefreshToken }
+
+const REUSE_DETECTED: RotationOutcome = { reused: true }
+
+/**
  * Rotates a refresh token (decision 11): the presented token is spent, a
  * successor is issued in the same family, and a token presented after it was
  * already spent revokes the entire family.
@@ -49,7 +60,7 @@ export class RefreshTokenUseCase {
     // against whichever attempt happened to win.
     const now = this.clock.now()
 
-    const issued = await this.uow(async ({ refreshTokens }) => {
+    const outcome: RotationOutcome = await this.uow(async ({ refreshTokens }) => {
       // The row lock is what makes reuse detection possible at all: without it
       // two simultaneous refreshes of the same token both read it as active,
       // both rotate, and nothing is ever detected.
@@ -65,7 +76,13 @@ export class RefreshTokenUseCase {
         if (!current.isWithinGraceWindow(now, this.graceWindowMs)) {
           await refreshTokens.revokeFamily(current.familyId, now)
 
-          throw new RefreshTokenReusedError()
+          // RETURNED, not thrown, and this is the whole point: throwing here
+          // would roll the transaction back and undo the revocation just made.
+          // Detection would fire, answer 401, and leave the stolen family alive
+          // for the rest of its sixty days — the exact opposite of what it is
+          // for. The failure is invisible to a passthrough unit-of-work fake,
+          // because that fake models no rollback.
+          return REUSE_DETECTED
         }
 
         // Inside the window: a new pair in the same family, and `current` is
@@ -73,7 +90,15 @@ export class RefreshTokenUseCase {
         // retry loop would hold an eternal session; and `replacedBy` keeps
         // pointing at the FIRST successor, which is what tells a rotation from
         // a logout the next time this row is read.
-        return this.#issueInto(refreshTokens, current.userId, current.familyId, now)
+        return {
+          reused: false,
+          issued: await this.#issueInto(
+            refreshTokens,
+            current.userId,
+            current.familyId,
+            now,
+          ),
+        }
       }
 
       if (current.isExpired(now)) throw new InvalidRefreshTokenError()
@@ -86,15 +111,18 @@ export class RefreshTokenUseCase {
       )
       await refreshTokens.markRotated(current.id, next.entity.id, now)
 
-      return next
+      return { reused: false, issued: next }
     })
+
+    // Thrown AFTER the commit, so the revocation survives the refusal.
+    if (outcome.reused) throw new RefreshTokenReusedError()
 
     return {
       // Signed AFTER the commit: it depends on the user id, not on the
       // transaction, and everything that does not need the transaction stays
       // outside it.
-      accessToken: await this.tokenSigner.sign({ sub: issued.entity.userId }),
-      refreshToken: issued.token,
+      accessToken: await this.tokenSigner.sign({ sub: outcome.issued.entity.userId }),
+      refreshToken: outcome.issued.token,
     }
   }
 

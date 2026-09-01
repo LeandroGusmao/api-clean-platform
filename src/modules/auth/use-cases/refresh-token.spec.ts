@@ -257,6 +257,52 @@ describe('RefreshTokenUseCase — grace window', () => {
     expect(repository.tokens[1]?.revokedAt).toBeNull()
   })
 
+  it('COMMITS the family revocation instead of rolling it back', async () => {
+    // The defect this test exists to prevent, and it is invisible to the
+    // passthrough fake above: revoking the family and then THROWING from
+    // inside the callback rolls the transaction back and undoes the very
+    // revocation detection just performed. Reuse would fire, answer 401, and
+    // leave the stolen family alive for the rest of its sixty days.
+    //
+    // So this one double models rollback, which slice 4 deliberately kept out
+    // of the shared fake. Everything else in this file still uses the fake.
+    const rollingBack: IAuthUnitOfWork = async (work) => {
+      const snapshot = [...repository.tokens]
+
+      try {
+        return await work({ users: NO_USERS, refreshTokens: repository })
+      } catch (error) {
+        repository.tokens.length = 0
+        repository.tokens.push(...snapshot)
+        throw error
+      }
+    }
+
+    useCase = new RefreshTokenUseCase(
+      rollingBack,
+      new RefreshTokenIssuer(
+        { opaque: () => 'opaque-rollback' },
+        { hash: digestOf },
+        { generate: () => 'id-rollback' },
+        TTL_SECONDS,
+      ),
+      { sign: async () => ACCESS_TOKEN, verify: async () => ({ sub: USER_ID }) },
+      { hash: digestOf },
+      { now: () => clockReading },
+      GRACE_WINDOW_MS,
+    )
+
+    store({ revokedAt: NOW, replacedBy: SUCCESSOR_ID })
+    storeSuccessor()
+    clockReading = at(GRACE_WINDOW_MS + ONE_MILLISECOND)
+
+    await expect(refresh()).rejects.toBeInstanceOf(RefreshTokenReusedError)
+
+    // The successor must be dead. If the revocation was rolled back it is
+    // still alive, and the stolen session survived its own detection.
+    expect(repository.tokens[1]?.revokedAt).toEqual(clockReading)
+  })
+
   it('writes nothing at all when the token is unknown', async () => {
     await expect(useCase.execute({ refreshToken: UNKNOWN_TOKEN })).rejects.toBeInstanceOf(
       InvalidRefreshTokenError,
