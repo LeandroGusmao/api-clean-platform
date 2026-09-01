@@ -175,6 +175,27 @@ resolvidos; se algum falhar na sua mão, é regressão, não incerteza.
     só precisa das duas entradas novas. O segundo foi resolvido estreitando o
     construtor do signer para `Pick<AuthConfig, 'JWT_SECRET' |
     'ACCESS_TOKEN_TTL_SECONDS'>`, que é a fatia que ele de fato lê.
+18. **🔴 DEFEITO DE SEGURANÇA NO DESENHO APROVADO, encontrado na execução.**
+    O ramo de reuso revogava a família e **lançava de dentro do callback** do
+    `uow`. Lançar ali dá rollback, e o rollback **desfaz a revogação**: a
+    detecção dispara, o cliente recebe 401, e a família roubada continua viva
+    pelos 60 dias restantes. Corrigido fazendo o reuso sair da transação como
+    **dado**, com o `throw` depois do commit. Os ramos de token desconhecido e
+    expirado seguem lançando de dentro, porque não escrevem nada.
+    **Invisível ao fake passthrough**, que não modela rollback (fatia 4 §5.5) —
+    quem pegou foi o teste de integração.
+19. **`exactOptionalPropertyTypes` reporta o erro a três linhas da causa.**
+    Repassar `cookies?: Record<string,string>` direto para as opções do
+    `app.inject` passa um `undefined` explícito, inválido para propriedade
+    opcional; o `inject` falha a resolução de overload e devolve
+    `void & Promise<Response> & Chain`, então o `tsc` acusa
+    *"statusCode does not exist"*. Espalhe condicionalmente.
+20. **Verificação final executada:** `lint`, `typecheck` e `build` limpos;
+    **294 testes** (baseline 214); `dist/` sem `.spec`, `in-memory/` nem
+    `fixtures/`; `/docs` publicando `refresh`, `logout` e `logout-all` com 503
+    declarado e o 204 **sem `content`**; e nenhum refresh token em claro em
+    linha de log nenhuma — medido capturando o stream do logger durante login
+    nos dois transportes, rotação, logout e um 401.
 
 > **9 — a pasta `services/` é nova, e é um desvio da árvore do §9 da spec.**
 > O motivo é o construtor: sem um `RefreshTokenIssuer`, o `LoginUserUseCase`
