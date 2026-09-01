@@ -495,6 +495,7 @@ silêncio. Falha aberta, que é a direção errada para atributo de segurança.
 > | Safari, macOS | `http://localhost:3100` | **recusado** | guardado |
 > | Safari, iOS 18.7 (WebKit 605) | `http://192.168.x.x:3100` | **recusado** | guardado |
 > | Chrome, Linux | `http://localhost:3100` | **aceito** | guardado |
+> | Firefox 154, Linux | `http://localhost:3100` | **aceito** | guardado |
 >
 > O controle voltar em todos os três é o que torna a atribuição limpa: ele leva
 > `SameSite=Strict`, `Path=/auth` e `HttpOnly`, então **os três atributos da

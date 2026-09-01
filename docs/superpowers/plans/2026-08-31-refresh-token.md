@@ -2139,6 +2139,10 @@ export const refreshTransportSchema = z
  * | Safari, macOS | `http://localhost` | REFUSED | stored |
  * | Safari, iOS 18.7 | `http://192.168.x.x` | REFUSED | stored |
  * | Chrome, Linux | `http://localhost` | accepted | stored |
+ * | Firefox 154, Linux | `http://localhost` | accepted | stored |
+ *
+ * So it is WebKit specifically, not "HTTP", that refuses: both Gecko and Blink
+ * accept the same cookie at the same origin.
  *
  * The control coming back everywhere is what makes the attribution clean: it
  * carries `SameSite=Strict`, `Path=/auth` and `HttpOnly`, so those three are
@@ -3888,7 +3892,8 @@ registrando a mecânica que a implementação fechou:
      "$1"`. Tem de ser `sql.raw`, e portanto nunca com valor vindo de request.
   2. `clearCookie` **não herda** os atributos de `setCookie`: só com `{ path }`
      sai `SameSite=Lax`, sem `HttpOnly` e sem `Secure`.
-  3. **O Safari recusa cookie `Secure` em `http://localhost`; o Chrome aceita.**
+  3. **O Safari recusa cookie `Secure` em `http://localhost`; Chrome e Firefox
+     aceitam.**
      Medido em 2026-09-01, macOS e iOS, contra um controle idêntico sem o
      `Secure` que foi guardado nos dois — então `SameSite=Strict`, `Path` e
      `HttpOnly` funcionam, e a recusa é do `Secure` sozinho. Consequência
