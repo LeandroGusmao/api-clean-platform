@@ -163,6 +163,18 @@ resolvidos; se algum falhar na sua mão, é regressão, não incerteza.
     `fastify: ^5.0.0`.
 15. **Schema com FK `onDelete: 'cascade'` e coluna `replaced_by` sem FK
     compila.** Sem FK auto-referente não é preciso anotar `AnyPgColumn`.
+16. **`(contador += 1)` dentro de template string é ERRO do Biome**
+    (`lint/suspicious/noAssignInExpressions`), não aviso. Descoberto rodando: os
+    dublês contados dos specs precisam de uma função com corpo —
+    `const nextValue = () => { generated += 1; return generated }` — em vez do
+    incremento embutido na expressão.
+17. **Toda variável nova de `authEnvSchema` quebra dois specs existentes.**
+    `env.spec.ts` compara o objeto de config INTEIRO com `toEqual`, e o
+    `jwt-token-signer.spec.ts` montava um `AuthConfig` literal. O primeiro é
+    para manter — é o teste que pegou a armadilha do `.default()` do Zod, e ele
+    só precisa das duas entradas novas. O segundo foi resolvido estreitando o
+    construtor do signer para `Pick<AuthConfig, 'JWT_SECRET' |
+    'ACCESS_TOKEN_TTL_SECONDS'>`, que é a fatia que ele de fato lê.
 
 > **9 — a pasta `services/` é nova, e é um desvio da árvore do §9 da spec.**
 > O motivo é o construtor: sem um `RefreshTokenIssuer`, o `LoginUserUseCase`

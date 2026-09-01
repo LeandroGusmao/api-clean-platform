@@ -45,7 +45,10 @@ const bodySchema = z.object({
     .meta({ examples: [EXAMPLE_PASSWORD] }),
 })
 
-const okSchema = z.object({ accessToken: z.string() })
+const okSchema = z.object({
+  accessToken: z.string(),
+  refreshToken: z.string(),
+})
 
 export const loginRoute: FastifyPluginAsync<{ container: AuthContainer }> = async (
   app,
@@ -67,9 +70,9 @@ export const loginRoute: FastifyPluginAsync<{ container: AuthContainer }> = asyn
       },
     },
     async (request, reply) => {
-      const { accessToken } = await container.loginUser.execute(request.body)
+      const tokens = await container.loginUser.execute(request.body)
 
-      return reply.status(OK_STATUS).send({ accessToken })
+      return reply.status(OK_STATUS).send(tokens)
     },
   )
 }

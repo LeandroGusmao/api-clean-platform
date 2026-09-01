@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { env } from '#infra/config/env'
 import { createDatabase, type Database } from '#infra/database/client'
 import { buildApp } from '#main/app'
+import { refreshTokens } from '#modules/auth/infra/drizzle/schema/refresh-tokens'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
 
 // Spelled out rather than imported from the endpoint: these values ARE the wire
@@ -44,6 +45,9 @@ afterAll(async () => {
 })
 
 beforeEach(async () => {
+  // Children first: the cascade would take them anyway, but deleting in
+  // dependency order keeps this hook honest about what it does.
+  await db.delete(refreshTokens)
   await db.delete(users)
   await app.inject({
     method: POST_METHOD,
@@ -56,11 +60,24 @@ const login = (payload: object) =>
   app.inject({ method: POST_METHOD, url: LOGIN_PATH, payload })
 
 describe('POST /auth/login', () => {
-  it('answers 200 with an access token for valid credentials', async () => {
+  it('answers 200 with both tokens for valid credentials', async () => {
     const response = await login({ email: EMAIL, password: PASSWORD })
 
     expect(response.statusCode).toBe(OK_STATUS_CODE)
     expect(response.json().accessToken).toMatch(JWT_PATTERN)
+    // Opaque, so deliberately NOT a JWT: a refresh token that parses as a JWT
+    // is the discarded stateless option sneaking back in.
+    expect(response.json().refreshToken).toEqual(expect.any(String))
+    expect(response.json().refreshToken).not.toMatch(JWT_PATTERN)
+  })
+
+  it('stores only the digest of the refresh token', async () => {
+    const response = await login({ email: EMAIL, password: PASSWORD })
+
+    const [stored] = await db.select().from(refreshTokens)
+
+    expect(stored?.tokenHash).not.toBe(response.json().refreshToken)
+    expect(response.body).not.toContain(stored?.tokenHash)
   })
 
   it('matches the email case-insensitively', async () => {

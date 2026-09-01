@@ -19,7 +19,18 @@ export class JwtTokenSigner implements ITokenSigner {
   readonly #ttlSeconds: number
   readonly #clock: IClock
 
-  constructor(config: AuthConfig, clock: IClock) {
+  /**
+   * Takes the SLICE of the config it reads, not the whole of `AuthConfig` — the
+   * same reasoning decision 23 applies to a module's slice of the container,
+   * one level down. Structural typing means the container still passes the
+   * whole config unchanged; what it buys is that a variable added for the
+   * refresh token, or for e-mail verification later, cannot break this class
+   * or its spec by merely existing.
+   */
+  constructor(
+    config: Pick<AuthConfig, 'JWT_SECRET' | 'ACCESS_TOKEN_TTL_SECONDS'>,
+    clock: IClock,
+  ) {
     this.#secret = new TextEncoder().encode(config.JWT_SECRET)
     this.#ttlSeconds = config.ACCESS_TOKEN_TTL_SECONDS
     this.#clock = clock

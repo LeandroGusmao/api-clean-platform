@@ -29,7 +29,9 @@ function makeClock(start: Date) {
   }
 }
 
-function makeConfig(secret = SECRET): AuthConfig {
+function makeConfig(
+  secret = SECRET,
+): Pick<AuthConfig, 'JWT_SECRET' | 'ACCESS_TOKEN_TTL_SECONDS'> {
   return { JWT_SECRET: secret, ACCESS_TOKEN_TTL_SECONDS: TTL_SECONDS }
 }
 
