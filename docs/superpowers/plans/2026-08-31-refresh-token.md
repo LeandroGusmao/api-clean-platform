@@ -51,8 +51,11 @@ Valem para **todas** as tarefas. Copiadas do `CLAUDE.md`, do `biome.jsonc`, do
   declarada perto do uso. Inclui status HTTP, nome de cookie, algoritmo de
   digest, contagens e timeouts.
   **Exceção:** `schema/*.ts` escreve nome de tabela, coluna e índice inline —
-  e ela **vale integralmente nesta fatia**, porque nenhum nome de índice de
-  `refresh_tokens` é lido de outro arquivo (spec §3.1).
+  mas ela **para de valer para `refresh_tokens_token_hash_unique`**, que o
+  repositório lê para nomear a colisão. O próprio `CLAUDE.md` prevê isso: a
+  exceção morre quando o nome passa a ser lido de outro arquivo, e ele vira
+  constante exportada **declarada dentro do arquivo de schema**, como
+  `USERS_EMAIL_LOWER_UNIQUE_INDEX`. Os outros dois índices seguem inline.
 - **Formatação (Biome):** indentação de 2 espaços, largura **90**, aspas
   **simples**, **sem** ponto e vírgula, trailing comma. Rode `pnpm lint:fix`
   antes de cada commit.
@@ -91,7 +94,7 @@ Valem para **todas** as tarefas. Copiadas do `CLAUDE.md`, do `biome.jsonc`, do
 | `src/modules/auth/infra/drizzle/schema/refresh-tokens.ts` | **Criar.** A declaração da tabela. |
 | `src/modules/auth/infra/drizzle/refresh-token-mapper.ts` | **Criar.** Linha ↔ entidade (decisão 20). |
 | `src/modules/auth/repositories/refresh-tokens-repository.ts` | **Criar.** O contrato. Puro. |
-| `src/modules/auth/infra/drizzle/drizzle-refresh-tokens-repository.ts` | **Criar.** `FOR UPDATE`, `SET LOCAL`, os três comandos de revogação. |
+| `src/modules/auth/infra/drizzle/drizzle-refresh-tokens-repository.ts` | **Criar.** `FOR UPDATE`, `SET LOCAL`, os três comandos de revogação, e `RefreshTokenHashCollisionError`. |
 | `src/modules/auth/infra/in-memory/in-memory-refresh-tokens-repository.ts` | **Criar.** Dublê dos testes unitários. |
 | `src/modules/auth/infra/drizzle/auth-repositories.ts` | **Modificar.** Uma linha. |
 | `src/modules/auth/repositories/unit-of-work.ts` | **Modificar.** `AuthRepos` ganha `refreshTokens`. |
@@ -780,6 +783,22 @@ import { users } from './users.js'
  * referential integrity — and a self-reference would force the future pruning
  * job to delete a chain in order.
  */
+
+/**
+ * Exported because the repository reads it: a `23505` carrying THIS constraint
+ * is not a database error, it is a security alarm — 32 bytes of `randomBytes`
+ * do not collide, so what produces it in practice is a token generator that
+ * regressed to something low-entropy, meaning issued tokens are predictable.
+ *
+ * The primary key raises `23505` too, and that one keeps bubbling as an
+ * ordinary persistence failure: a repeated id means a broken `IIdGenerator`,
+ * which is annoying rather than dangerous.
+ *
+ * The `CLAUDE.md` exception that lets schema files spell names inline justifies
+ * itself by the name appearing exactly once. This one no longer does.
+ */
+export const REFRESH_TOKENS_TOKEN_HASH_UNIQUE_INDEX = 'refresh_tokens_token_hash_unique'
+
 export const refreshTokens = pgTable(
   'refresh_tokens',
   {
@@ -796,9 +815,11 @@ export const refreshTokens = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   },
   (table) => [
-    uniqueIndex('refresh_tokens_token_hash_unique').on(table.tokenHash),
+    uniqueIndex(REFRESH_TOKENS_TOKEN_HASH_UNIQUE_INDEX).on(table.tokenHash),
     // The WHERE of `revokeFamily` and `revokeAllForUser`. Without them each
     // revocation scans the table, on the hottest write path in the module.
+    // Spelled inline because each appears exactly once — the constant above is
+    // the one the repository reads back.
     index('refresh_tokens_family_id_idx').on(table.familyId),
     index('refresh_tokens_user_id_idx').on(table.userId),
   ],
@@ -979,9 +1000,11 @@ git commit -m "feat: give refresh tokens a table, with the clock as its only sou
   - `interface IRefreshTokensRepository` com `save`, `findByHashForUpdate`,
     `markRotated`, `revokeFamily`, `revokeAllForUser`
   - `class DrizzleRefreshTokensRepository`
+  - `class RefreshTokenHashCollisionError extends Error`
   - `class InMemoryRefreshTokensRepository` (com o array público `tokens`)
   - `AuthRepos` passa a ser `{ users: IUsersRepository; refreshTokens: IRefreshTokensRepository }`
   - `const ROTATION_LOCK_TIMEOUT_MS = 1_000`
+  - `const REFRESH_TOKENS_TOKEN_HASH_UNIQUE_INDEX` (da Task 3)
 
 **Contexto que o executor precisa.** Duas coisas que só existem aqui:
 
@@ -1147,14 +1170,63 @@ Crie `src/modules/auth/infra/drizzle/drizzle-refresh-tokens-repository.ts`:
 ```ts
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import type { Database } from '#infra/database/client'
-import { toPersistenceError } from '#infra/database/driver-error'
+import { findDriverError, toPersistenceError } from '#infra/database/driver-error'
 import type { RefreshToken } from '#modules/auth/entities/refresh-token'
 import type { IRefreshTokensRepository } from '#modules/auth/repositories/refresh-tokens-repository'
 import { toDomainRefreshToken, toPersistenceRefreshToken } from './refresh-token-mapper.js'
-import { refreshTokens } from './schema/refresh-tokens.js'
+import {
+  REFRESH_TOKENS_TOKEN_HASH_UNIQUE_INDEX,
+  refreshTokens,
+} from './schema/refresh-tokens.js'
 
 /** Every lookup here returns at most one row. */
 const SINGLE_ROW = 1
+
+/** Postgres `unique_violation`. */
+const PG_UNIQUE_VIOLATION = '23505'
+
+const HASH_COLLISION_ERROR_NAME = 'RefreshTokenHashCollisionError'
+const HASH_COLLISION_MESSAGE =
+  'two refresh tokens produced the same sha256 digest: the opaque token ' +
+  'generator has almost certainly regressed, and issued tokens may be predictable'
+
+/**
+ * Deliberately NOT an `AppError`, for the same reason `PersistenceError` and
+ * `NestedTransactionError` are not: this is a defect, not one of the seven
+ * semantic categories. It falls through to the error handler's generic branch
+ * and answers 500 — which is what it is. And it carries no `code`, because in
+ * this project `code` on an error is PUBLIC CONTRACT (decision 13), and there
+ * is nothing a client could do with this one.
+ *
+ * What it adds over the `PersistenceError` this would otherwise become is not
+ * data: that error already reaches the log carrying `code: '23505'` and the
+ * constraint name, and a dropped connection carries neither, so the two are
+ * already distinguishable. What it adds is the DIAGNOSIS — whoever is woken by
+ * this should not have to work out from an index name that the entropy source
+ * is broken.
+ */
+export class RefreshTokenHashCollisionError extends Error {
+  constructor() {
+    super(HASH_COLLISION_MESSAGE)
+    this.name = HASH_COLLISION_ERROR_NAME
+  }
+}
+
+/**
+ * Matches the constraint NAME, not just the code: this table carries a second
+ * unique constraint — its primary key — so an id collision raises `23505` as
+ * well, and matching the code alone would report a broken `IIdGenerator` as a
+ * compromised token generator. That one keeps bubbling as a `PersistenceError`:
+ * a repeated UUID fails a request, it does not make a session guessable.
+ */
+function isTokenHashCollision(error: unknown): boolean {
+  const driverError = findDriverError(error)
+
+  return (
+    driverError?.code === PG_UNIQUE_VIOLATION &&
+    driverError.constraint === REFRESH_TOKENS_TOKEN_HASH_UNIQUE_INDEX
+  )
+}
 
 /**
  * Deliberately shorter than the connection-wide 5s of the connection-limits
@@ -1173,6 +1245,11 @@ export class DrizzleRefreshTokensRepository implements IRefreshTokensRepository 
     try {
       await this.db.insert(refreshTokens).values(toPersistenceRefreshToken(token))
     } catch (error) {
+      // Named before the generic branch: this is the rarest and most suspicious
+      // failure the module can produce, and it must not read as "the database
+      // rejected a statement".
+      if (isTokenHashCollision(error)) throw new RefreshTokenHashCollisionError()
+
       // Never re-throw what the driver gave us: Drizzle's error glues every
       // bound parameter into its own message, and this insert binds the digest
       // that IS the lookup key for a live session.
@@ -1279,10 +1356,12 @@ import type { Pool } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { env } from '#infra/config/env'
 import { createDatabase, type Database } from '#infra/database/client'
+import { PersistenceError } from '#infra/database/driver-error'
 import { createTransactionRunner } from '#infra/database/transaction-runner'
 import { createUnitOfWork } from '#infra/database/unit-of-work'
 import { RefreshToken } from '#modules/auth/entities/refresh-token'
 import { authRepositories } from '#modules/auth/infra/drizzle/auth-repositories'
+import { RefreshTokenHashCollisionError } from '#modules/auth/infra/drizzle/drizzle-refresh-tokens-repository'
 import { refreshTokens } from '#modules/auth/infra/drizzle/schema/refresh-tokens'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
 import type { IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
@@ -1295,6 +1374,8 @@ const LATER = new Date('2026-08-31T12:00:05.000Z')
 
 const FAMILY_A = '11112222-3333-4444-8555-666677778888'
 const FAMILY_B = '99990000-1111-4222-8333-444455556666'
+/** Deliberately given to two different tokens, to force the unique violation. */
+const SHARED_HASH = 'c'.repeat(64)
 
 const USER_MISSING_MESSAGE = 'no user row was stored'
 const NO_WARNINGS = { warn: () => {} }
@@ -1421,6 +1502,44 @@ describe('DrizzleRefreshTokensRepository', () => {
     expect(stored?.revokedAt).toEqual(NOW)
   })
 
+  it('names a token_hash collision instead of burying it in a generic failure', async () => {
+    // Unreachable with 32 bytes of randomBytes, and that is exactly the point:
+    // what produces this in practice is a generator that regressed, which means
+    // issued tokens are predictable. A security incident, not a database error.
+    const first = token(FAMILY_A, SHARED_HASH)
+    const colliding = token(FAMILY_A, SHARED_HASH)
+
+    await expect(
+      uow(async ({ refreshTokens: repo }) => {
+        await repo.save(first)
+        await repo.save(colliding)
+      }),
+    ).rejects.toBeInstanceOf(RefreshTokenHashCollisionError)
+  })
+
+  it('lets an id collision bubble as an ordinary persistence failure', async () => {
+    // The primary key raises 23505 too. Matching the CODE alone would report a
+    // broken IIdGenerator as a compromised token generator — this is the test
+    // that keeps the two apart.
+    const first = token(FAMILY_A, 'a'.repeat(64))
+    const sameId = RefreshToken.create({
+      id: first.id,
+      userId,
+      tokenHash: 'b'.repeat(64),
+      familyId: FAMILY_A,
+      now: NOW,
+      ttlSeconds: TTL_SECONDS,
+    })
+
+    const failure = uow(async ({ refreshTokens: repo }) => {
+      await repo.save(first)
+      await repo.save(sameId)
+    })
+
+    await expect(failure).rejects.toBeInstanceOf(PersistenceError)
+    await expect(failure).rejects.not.toBeInstanceOf(RefreshTokenHashCollisionError)
+  })
+
   it('makes a second reader WAIT for the first transaction to commit', async () => {
     // THE test that defends `.for('update')`, and it lives here rather than in
     // the HTTP suite for a reason worth knowing: end to end, the lock is
@@ -1472,7 +1591,7 @@ describe('DrizzleRefreshTokensRepository', () => {
 - [ ] **Step 5: Rodar e confirmar que passa**
 
 Run: `pnpm test:integration -- drizzle-refresh-tokens-repository`
-Expected: PASS, 7 testes.
+Expected: PASS, 9 testes.
 
 - [ ] **Step 6: FALSIFICAR o `FOR UPDATE` — obrigatório**
 

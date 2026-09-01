@@ -93,12 +93,34 @@ obrigatória de deleção — deletar o antecessor antes do sucessor violaria a
 constraint. É dado de diagnóstico e de máquina de estados, não de integridade
 referencial.
 
-**Nenhum nome de índice vira constante exportada.** O `users` exportou
-`USERS_EMAIL_LOWER_UNIQUE_INDEX` porque o repositório **lê** o nome, para
-traduzir um `23505` daquela constraint em `EmailAlreadyInUseError`. Aqui não há
-tradução: colidir `token_hash` exige colidir 32 bytes de `randomBytes`, e se
-isso acontecer `500` é a resposta honesta. O nome aparece exatamente uma vez, a
-exceção do `CLAUDE.md` se aplica inteira, e os nomes ficam inline.
+**Um nome de índice vira constante exportada: o de `token_hash`.** Os outros dois
+ficam inline, porque aparecem exatamente uma vez e a exceção do `CLAUDE.md` se
+aplica a eles. O de `token_hash` não, porque o repositório **lê** o nome — e a
+mesma regra diz que a exceção morre nesse instante.
+
+O motivo de ler é que **um `23505` naquele índice não é um erro de banco, é um
+alarme de segurança**. Colidir 32 bytes de `randomBytes` é fantasia; o que
+produz essa violação na prática é o `RandomTokenGenerator` regredindo para algo
+de baixa entropia, e isso significa que os refresh tokens emitidos são
+**previsíveis**.
+
+> **O que isso acrescenta não é dado — é diagnóstico.** Verificado: um
+> `PersistenceError` já chega ao log com `code: "23505"` e
+> `constraint: "refresh_tokens_token_hash_unique"`, e uma queda de conexão sai
+> sem os dois, então a distinção já existe e já é alertável. O que não existe é
+> alguém dizendo o que aquele nome de índice **significa**. Um erro nomeado
+> carrega a frase que poupa uma hora de quem for acordado por ele.
+
+A forma é um `Error` comum com `name` distintivo, ao lado de
+`NestedTransactionError` e `PersistenceError`, e **não** um `AppError`: não é
+uma das sete categorias, cai no ramo genérico do handler e responde `500` — que
+é o que ele é. Sem `code`, porque neste projeto `code` num erro significa
+contrato público (decisão 13), e não há cliente que possa agir sobre este.
+
+Colisão na **chave primária** continua borbulhando como `PersistenceError`. É a
+mesma razão pela qual o `DrizzleUsersRepository` casa o nome e não só o código:
+um `id` repetido significa `IIdGenerator` quebrado, que é outra falha — chata,
+mas sem consequência de segurança, porque um UUID repetido não vaza nada.
 
 ### 3.2 — A entidade
 
