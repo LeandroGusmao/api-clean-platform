@@ -16,6 +16,8 @@ import { JwtTokenSigner } from './infra/providers/jwt-token-signer.js'
 import { RefreshTokenIssuer } from './services/refresh-token-issuer.js'
 import { GetUserProfileUseCase } from './use-cases/get-user-profile.js'
 import { LoginUserUseCase } from './use-cases/login-user.js'
+import { LogoutUseCase } from './use-cases/logout.js'
+import { LogoutAllUseCase } from './use-cases/logout-all.js'
 import { RefreshTokenUseCase } from './use-cases/refresh-token.js'
 import { RegisterUserUseCase } from './use-cases/register-user.js'
 
@@ -74,6 +76,8 @@ export function makeAuthContainer(
       clock,
       config.REFRESH_TOKEN_GRACE_WINDOW_SECONDS * MILLISECONDS_PER_SECOND,
     ),
+    logout: new LogoutUseCase(uow, tokenDigest, clock),
+    logoutAll: new LogoutAllUseCase(uow, clock),
     /**
      * Not a use case: there is nothing to orchestrate. Decision 11 keeps the
      * database out of the authenticated path, so verification is signature
