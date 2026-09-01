@@ -486,27 +486,35 @@ deliberadamente **não** condicionado a `NODE_ENV` — que tem
 faria um deploy que esquecesse a variável mandar o cookie **sem `Secure`**, em
 silêncio. Falha aberta, que é a direção errada para atributo de segurança.
 
-> ⚠️ **Medido em 2026-09-01, iOS 18.7 / WebKit 605, com exatamente os atributos
-> desta seção.** Servindo por **IP de LAN sobre HTTP** (`http://192.168.x.x`), o
-> Safari **recusa** o cookie `Secure` e guarda um cookie de controle idêntico
-> menos o `Secure`. Isso é o comportamento correto e universal — todo browser
-> recusa `Secure` fora de origem confiável —, mas o efeito prático merece
-> registro: **testar em aparelho real pela LAN, sem TLS, quebra o modo cookie.**
+> ⚠️ **O Safari recusa cookie `Secure` inclusive em `http://localhost`.
+> Medido em 2026-09-01**, com exatamente os atributos desta seção, contra um
+> par de cookies idênticos exceto pelo `Secure`:
 >
-> A recusa é atribuível ao `Secure` **sozinho**: o controle levava
-> `SameSite=Strict`, `Path=/auth` e `HttpOnly` e voltou normalmente, então os
-> três atributos da decisão 12 funcionam no WebKit — o que era premissa não
-> testada do desenho.
+> | Cliente | Origem | `Secure` | Controle sem `Secure` |
+> |---|---|---|---|
+> | Safari, macOS | `http://localhost:3100` | **recusado** | guardado |
+> | Safari, iOS 18.7 (WebKit 605) | `http://192.168.x.x:3100` | **recusado** | guardado |
+> | Chrome, Linux | `http://localhost:3100` | **aceito** | guardado |
 >
-> **Continua não medido:** se `http://localhost` conta como origem confiável para
-> cookie `Secure` depende do browser, e o caso do WebKit ali não foi verificado.
-> Chromium e Firefox aceitam. Quem recusa simplesmente **não guarda** o cookie —
-> sem erro, sem aviso no console — e o `POST /auth/refresh` seguinte chega sem
-> credencial e responde 401, indistinguível de nunca ter logado.
+> O controle voltar em todos os três é o que torna a atribuição limpa: ele leva
+> `SameSite=Strict`, `Path=/auth` e `HttpOnly`, então **os três atributos da
+> decisão 12 funcionam no WebKit** e a recusa é do `Secure` sozinho.
 >
-> Quem for depurar "o refresh não funciona no meu ambiente" checa isso primeiro:
-> browser Chromium para o `/docs`, ou TLS terminado na frente da API. Vai para o
-> §11 do `ARCHITECTURE.md`, junto das outras falhas silenciosas.
+> **Duas consequências práticas, e nenhuma é hipótese:**
+>
+> 1. **O modo cookie não funciona no Safari em desenvolvimento.** O `/docs`
+>    (development-only, `http://localhost`) não consegue exercitar
+>    `refreshTransport: "cookie"` no Safari. Use um browser Chromium, ou termine
+>    TLS na frente da API.
+> 2. **Testar em aparelho real pela LAN sem TLS quebra o modo cookie em qualquer
+>    browser** — IP de LAN cru nunca é origem confiável.
+>
+> A falha é silenciosa nos dois casos: o browser não guarda o cookie, não emite
+> erro nem aviso de console, e o `POST /auth/refresh` seguinte chega sem
+> credencial e responde 401 — indistinguível de nunca ter logado. Vai para o §11
+> do `ARCHITECTURE.md`, junto das outras falhas silenciosas.
+>
+> Nada disso alcança produção (HTTPS) nem mobile, que não usa cookie.
 
 **Isso não alcança mobile nem a suíte.** Cliente nativo nunca pede o cookie —
 `refreshTransport` tem default `body`, e o refresh vai para Keychain/Keystore. E

@@ -2130,27 +2130,32 @@ export const refreshTransportSchema = z
  * `Secure` — in silence. A security attribute that fails open on a missing
  * variable is the wrong trade at any price.
  *
- * **The price, and it is a real one.** Over plain HTTP, whether an origin
- * counts as trustworthy enough for a `Secure` cookie is BROWSER-DEPENDENT, and
- * a browser that refuses simply does not store it — no error, no console
- * warning — so the next `POST /auth/refresh` arrives with no credential and
- * answers 401, indistinguishable from never having logged in.
+ * **The price, and it is measured, not feared. Safari refuses a `Secure`
+ * cookie even on `http://localhost`.** Probed 2026-09-01 with exactly these
+ * attributes, against a pair of cookies differing only by `Secure`:
  *
- * Measured on iOS 18.7 / WebKit 605 with exactly these attributes: served over
- * a LAN IP on plain HTTP, Safari REFUSES this cookie and stores a control that
- * differs only by `Secure`. Universal and correct — no browser trusts a bare
- * LAN address — but it means testing on a real device without TLS breaks
- * cookie mode. The same run proves `SameSite=Strict`, `Path=/auth` and
- * `HttpOnly` are fine in WebKit: the control carried all three and came back.
+ * | Client | Origin | `Secure` | Control |
+ * |---|---|---|---|
+ * | Safari, macOS | `http://localhost` | REFUSED | stored |
+ * | Safari, iOS 18.7 | `http://192.168.x.x` | REFUSED | stored |
+ * | Chrome, Linux | `http://localhost` | accepted | stored |
  *
- * `http://localhost` specifically is the case NOT measured here. Chromium and
- * Firefox accept a `Secure` cookie there; WebKit's behaviour on it is unknown
- * to this project, so do not assume either way.
+ * The control coming back everywhere is what makes the attribution clean: it
+ * carries `SameSite=Strict`, `Path=/auth` and `HttpOnly`, so those three are
+ * fine in WebKit and only `Secure` is refused.
  *
- * So: if cookie-mode refresh does not work locally, check this first. Use a
- * Chromium browser for `/docs`, or terminate TLS in front of the API. Mobile
- * is unaffected — a native client never asks for the cookie (decision 12), it
- * takes the token in the body and stores it in the Keychain or Keystore.
+ * So cookie mode cannot be exercised from Safari in development — `/docs` is
+ * development-only and served over `http://localhost`. Use a Chromium browser,
+ * or terminate TLS in front of the API. Testing from a real device over a LAN
+ * IP fails the same way in EVERY browser, since a bare LAN address is never a
+ * trustworthy origin.
+ *
+ * The failure is silent in both cases: nothing is stored, nothing is warned,
+ * and the next refresh answers 401 exactly as if no one had logged in.
+ *
+ * Production is unaffected (HTTPS), and so is mobile — a native client never
+ * asks for this cookie (decision 12); it takes the token in the body and stores
+ * it in the Keychain or Keystore.
  */
 const cookieOptions = {
   httpOnly: true,
@@ -3883,15 +3888,17 @@ registrando a mecânica que a implementação fechou:
      "$1"`. Tem de ser `sql.raw`, e portanto nunca com valor vindo de request.
   2. `clearCookie` **não herda** os atributos de `setCookie`: só com `{ path }`
      sai `SameSite=Lax`, sem `HttpOnly` e sem `Secure`.
-  3. **Cookie `Secure` sobre `http://localhost` é dependente de browser.**
-     Chromium e Firefox aceitam; o WebKit historicamente não. O que recusa não
-     guarda o cookie e não avisa — nem erro, nem console —, e o refresh seguinte
-     responde 401 como se nunca tivesse havido login. É desenvolvimento apenas:
-     produção é HTTPS, e mobile não usa cookie. Diga também o que fazer —
-     browser Chromium para o `/docs`, ou TLS na frente da API — e por que
-     condicionar o `Secure` a `NODE_ENV` seria pior: essa variável tem
-     `.default('development')`, então a "correção" mandaria cookie sem `Secure`
-     em qualquer deploy que esquecesse de defini-la.
+  3. **O Safari recusa cookie `Secure` em `http://localhost`; o Chrome aceita.**
+     Medido em 2026-09-01, macOS e iOS, contra um controle idêntico sem o
+     `Secure` que foi guardado nos dois — então `SameSite=Strict`, `Path` e
+     `HttpOnly` funcionam, e a recusa é do `Secure` sozinho. Consequência
+     concreta: **o modo cookie não pode ser exercitado pelo `/docs` no Safari.**
+     O que recusa não guarda e não avisa — nem erro, nem console —, e o refresh
+     seguinte responde 401 como se nunca tivesse havido login. Diga o que fazer
+     (browser Chromium, ou TLS na frente da API) e por que condicionar o
+     `Secure` a `NODE_ENV` seria pior: essa variável tem `.default('development')`,
+     então a "correção" mandaria cookie sem `Secure` em qualquer deploy que
+     esquecesse de defini-la. Produção é HTTPS e mobile não usa cookie.
 - **§13:** corrija o erro que **já existe** — a lista ainda diz que o Unit of
   Work não existe, e a fatia 4 o construiu. Remova também "refresh token" se
   estiver listado, e mantenha o resto.
