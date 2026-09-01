@@ -2130,13 +2130,22 @@ export const refreshTransportSchema = z
  * `Secure` — in silence. A security attribute that fails open on a missing
  * variable is the wrong trade at any price.
  *
- * **The price, and it is a real one.** Over plain HTTP, whether
- * `http://localhost` counts as a trustworthy origin for a `Secure` cookie is
- * BROWSER-DEPENDENT. Chromium and Firefox accept it; WebKit has historically
- * not, and the behaviour has moved between versions. A browser that refuses
- * simply does not store the cookie — no error, no console warning — and the
- * next `POST /auth/refresh` arrives with no credential at all and answers 401,
- * indistinguishable from never having logged in.
+ * **The price, and it is a real one.** Over plain HTTP, whether an origin
+ * counts as trustworthy enough for a `Secure` cookie is BROWSER-DEPENDENT, and
+ * a browser that refuses simply does not store it — no error, no console
+ * warning — so the next `POST /auth/refresh` arrives with no credential and
+ * answers 401, indistinguishable from never having logged in.
+ *
+ * Measured on iOS 18.7 / WebKit 605 with exactly these attributes: served over
+ * a LAN IP on plain HTTP, Safari REFUSES this cookie and stores a control that
+ * differs only by `Secure`. Universal and correct — no browser trusts a bare
+ * LAN address — but it means testing on a real device without TLS breaks
+ * cookie mode. The same run proves `SameSite=Strict`, `Path=/auth` and
+ * `HttpOnly` are fine in WebKit: the control carried all three and came back.
+ *
+ * `http://localhost` specifically is the case NOT measured here. Chromium and
+ * Firefox accept a `Secure` cookie there; WebKit's behaviour on it is unknown
+ * to this project, so do not assume either way.
  *
  * So: if cookie-mode refresh does not work locally, check this first. Use a
  * Chromium browser for `/docs`, or terminate TLS in front of the API. Mobile

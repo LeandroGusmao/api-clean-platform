@@ -486,16 +486,27 @@ deliberadamente **não** condicionado a `NODE_ENV` — que tem
 faria um deploy que esquecesse a variável mandar o cookie **sem `Secure`**, em
 silêncio. Falha aberta, que é a direção errada para atributo de segurança.
 
-> ⚠️ **O preço, e ele é real: sobre HTTP simples, se `http://localhost` conta
-> como origem confiável para cookie `Secure` é dependente de browser.** Chromium
-> e Firefox aceitam; o WebKit historicamente não, e o comportamento já mudou
-> entre versões. O browser que recusa simplesmente **não guarda** o cookie — sem
-> erro, sem aviso no console — e o `POST /auth/refresh` seguinte chega sem
-> credencial nenhuma e responde 401, indistinguível de nunca ter logado.
+> ⚠️ **Medido em 2026-09-01, iOS 18.7 / WebKit 605, com exatamente os atributos
+> desta seção.** Servindo por **IP de LAN sobre HTTP** (`http://192.168.x.x`), o
+> Safari **recusa** o cookie `Secure` e guarda um cookie de controle idêntico
+> menos o `Secure`. Isso é o comportamento correto e universal — todo browser
+> recusa `Secure` fora de origem confiável —, mas o efeito prático merece
+> registro: **testar em aparelho real pela LAN, sem TLS, quebra o modo cookie.**
 >
-> Quem for depurar "o refresh não funciona no meu ambiente" deve checar isso
-> primeiro: browser Chromium para o `/docs`, ou TLS terminado na frente da API.
-> Vai para o §11 do `ARCHITECTURE.md`, junto das outras falhas silenciosas.
+> A recusa é atribuível ao `Secure` **sozinho**: o controle levava
+> `SameSite=Strict`, `Path=/auth` e `HttpOnly` e voltou normalmente, então os
+> três atributos da decisão 12 funcionam no WebKit — o que era premissa não
+> testada do desenho.
+>
+> **Continua não medido:** se `http://localhost` conta como origem confiável para
+> cookie `Secure` depende do browser, e o caso do WebKit ali não foi verificado.
+> Chromium e Firefox aceitam. Quem recusa simplesmente **não guarda** o cookie —
+> sem erro, sem aviso no console — e o `POST /auth/refresh` seguinte chega sem
+> credencial e responde 401, indistinguível de nunca ter logado.
+>
+> Quem for depurar "o refresh não funciona no meu ambiente" checa isso primeiro:
+> browser Chromium para o `/docs`, ou TLS terminado na frente da API. Vai para o
+> §11 do `ARCHITECTURE.md`, junto das outras falhas silenciosas.
 
 **Isso não alcança mobile nem a suíte.** Cliente nativo nunca pede o cookie —
 `refreshTransport` tem default `body`, e o refresh vai para Keychain/Keystore. E
