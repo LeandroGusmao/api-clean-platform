@@ -105,9 +105,13 @@ describe('refresh_tokens table', () => {
   })
 
   it('accepts a second live token in the same family', async () => {
-    // Not an accident: inside the grace window a family legitimately holds more
-    // than one active token. A unique index on family_id would be wrong, and
-    // this test is what would catch someone adding one.
+    // The application keeps at most one live token per family at commit time,
+    // but the TABLE must not enforce that, and this test is what would catch
+    // someone adding a partial unique index on family_id to "help".
+    //
+    // The reason is unavoidable: a normal rotation has to insert the successor
+    // before it can call markRotated with the successor's id, so both rows are
+    // live for the span of two statements inside every single transaction.
     await db.insert(refreshTokens).values(row())
     await db
       .insert(refreshTokens)

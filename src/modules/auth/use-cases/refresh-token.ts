@@ -73,7 +73,16 @@ export class RefreshTokenUseCase {
       // with a token that is revoked AND expired; answering on expiry first
       // would log it out — the very random logout the grace window removes.
       if (current.isRevoked()) {
-        if (!current.isWithinGraceWindow(now, this.graceWindowMs)) {
+        const supersededId = current.replacedBy
+
+        // `replacedBy` is null exactly when the revocation came from a logout,
+        // which must never be forgiven. `isWithinGraceWindow` checks that too —
+        // it is read again here because the compiler cannot narrow a nullable
+        // field through a method call, and the branch below needs the id.
+        const withinGrace =
+          supersededId !== null && current.isWithinGraceWindow(now, this.graceWindowMs)
+
+        if (!withinGrace) {
           await refreshTokens.revokeFamily(current.familyId, now)
 
           // RETURNED, not thrown, and this is the whole point: throwing here
@@ -85,11 +94,25 @@ export class RefreshTokenUseCase {
           return REUSE_DETECTED
         }
 
-        // Inside the window: a new pair in the same family, and `current` is
-        // left untouched. Its `revokedAt` must not move, or a client stuck in a
-        // retry loop would hold an eternal session; and `replacedBy` keeps
-        // pointing at the FIRST successor, which is what tells a rotation from
-        // a logout the next time this row is read.
+        // The successor already issued dies here, and dies WITHOUT a
+        // `replacedBy` of its own — so presenting it lands in the branch above
+        // instead of being forgiven again. That is what closes the fork: before
+        // this, a stolen token replayed inside the window minted a second live
+        // chain in the same family, neither chain ever presented a spent token,
+        // and detection never fired again for that family.
+        //
+        // It costs nothing in the case the window exists for: when the response
+        // was lost in a tunnel, the successor killed here is the one that
+        // reached nobody. It DOES require the client to serialise its refresh
+        // calls — two concurrent refreshes of the same token would leave it
+        // holding a successor this line killed (decision 11).
+        //
+        // Revoked BEFORE the replacement is issued, so "at most one live token
+        // per family" holds even in the middle of the transaction.
+        await refreshTokens.revoke(supersededId, now)
+
+        // `current` itself is left untouched: its `revokedAt` must not move, or
+        // a client stuck in a retry loop would hold an eternal session.
         return {
           reused: false,
           issued: await this.#issueInto(

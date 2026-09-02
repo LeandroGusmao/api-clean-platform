@@ -25,6 +25,10 @@ export class InMemoryRefreshTokensRepository implements IRefreshTokensRepository
     this.#replace((token) => token.id === id, { revokedAt, replacedBy })
   }
 
+  async revoke(id: string, revokedAt: Date): Promise<void> {
+    this.#replace((token) => token.id === id && token.revokedAt === null, { revokedAt })
+  }
+
   async revokeFamily(familyId: string, revokedAt: Date): Promise<void> {
     this.#replace((token) => token.familyId === familyId && token.revokedAt === null, {
       revokedAt,

@@ -27,6 +27,7 @@ const PASSWORD = 'sup3r-s3cr3t!'
 const UNKNOWN_TOKEN = 'a-token-that-was-never-issued'
 
 const ONE_FAMILY = 1
+const ONE_LIVE_TOKEN = 1
 
 let app: FastifyInstance
 let db: Database
@@ -156,6 +157,42 @@ describe('POST /auth/refresh', () => {
 
     const stored = await db.select().from(refreshTokens)
     expect(new Set(stored.map((row) => row.familyId)).size).toBe(ONE_FAMILY)
+  })
+
+  it('kills the successor when the old token is replayed, closing the fork', async () => {
+    // The whole point of the change, end to end. A stolen token replayed inside
+    // the window used to mint a SECOND live chain in the same family: thief and
+    // victim each held a working token, neither ever presented a spent one, and
+    // reuse detection never fired again for that family — a stolen session that
+    // outlived its own detection, for sixty sliding days.
+    const { refreshToken } = (await login()).json()
+    const mine = await refresh({ refreshToken })
+
+    // The replay: same window, different holder.
+    const replay = await refresh({ refreshToken })
+    expect(replay.statusCode).toBe(OK_STATUS_CODE)
+
+    // The token the first rotation handed out is now dead, and dead WITHOUT a
+    // successor — so presenting it is reuse, not a lost response.
+    const victim = await refresh({ refreshToken: mine.json().refreshToken })
+    expect(victim.statusCode).toBe(UNAUTHORIZED_STATUS_CODE)
+    expect(victim.json().error.code).toBe(REFRESH_TOKEN_REUSED_CODE)
+
+    // And the replayer loses too: the family died with the detection.
+    const replayer = await refresh({ refreshToken: replay.json().refreshToken })
+    expect(replayer.statusCode).toBe(UNAUTHORIZED_STATUS_CODE)
+  })
+
+  it('leaves at most one live token per family after a grace replay', async () => {
+    const { refreshToken } = (await login()).json()
+    await refresh({ refreshToken })
+    await refresh({ refreshToken })
+
+    const live = (await db.select().from(refreshTokens)).filter(
+      (row) => row.revokedAt === null,
+    )
+
+    expect(live).toHaveLength(ONE_LIVE_TOKEN)
   })
 
   it('reads the token from the cookie when the body has none', async () => {

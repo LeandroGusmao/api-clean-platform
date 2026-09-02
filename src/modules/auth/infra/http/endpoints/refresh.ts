@@ -22,7 +22,11 @@ const REFRESH_DESCRIPTION =
   'Exchanges a refresh token for a new access token and a new refresh token. ' +
   'The presented token is spent. Send it in the body, or let the browser send ' +
   'the cookie; the answer comes back on the channel it arrived on. A token ' +
-  'presented after it was already spent revokes the whole session family.'
+  'presented after it was already spent revokes the whole session family.\n\n' +
+  'Clients MUST serialise their refresh calls — one in flight at a time, with ' +
+  'later callers awaiting the same result. Two concurrent refreshes of the ' +
+  'same token return two different tokens and only the last one issued stays ' +
+  'valid, so a client that keeps the other is signed out on its next refresh.'
 
 const MIN_TOKEN_LENGTH = 1
 

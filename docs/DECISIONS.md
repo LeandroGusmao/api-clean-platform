@@ -412,6 +412,32 @@ Esse requisito foi o que eliminou o `decorate` do Fastify como DI.
 > a família pode ter **mais de um token ativo** — custo aceito, e é por isso que
 > `family_id` não pode ganhar índice único.
 >
+> **Emendada em 2026-09-01, segunda vez.** Dentro da janela, o par novo é
+> emitido **e o sucessor anterior é revogado** — sem `replaced_by`, para que
+> apresentá-lo caia em detecção de reuso e não seja perdoado de novo.
+>
+> Fecha uma bifurcação que a redação anterior permitia: um token roubado
+> reapresentado dentro dos 30s ganhava uma cadeia viva paralela na mesma
+> família; a partir daí nenhum dos dois lados jamais apresentava token gasto, e
+> **a detecção nunca mais disparava para aquela família** — sessão roubada
+> sobrevivendo à própria detecção, por 60 dias deslizantes.
+>
+> Não custa nada no caso que a janela existe para resolver: quando a resposta
+> se perdeu no túnel, o sucessor revogado é justamente o que não chegou a
+> ninguém.
+>
+> ⚠️ **Passa a exigir do cliente: refresh em single-flight.** Uma chamada por
+> vez, e quem chegar depois espera o mesmo resultado. Dois refresh concorrentes
+> com o mesmo token devolvem dois tokens diferentes e só o último emitido
+> sobrevive — o cliente que guardar o outro é deslogado no refresh seguinte.
+> É o que todo interceptor sério já faz; o que muda é que antes um cliente
+> desleixado sobrevivia por acidente, porque os dois tokens funcionavam.
+>
+> A invariante resultante é **no máximo um token vivo por família no commit** —
+> nunca dentro da transação, porque a rotação normal precisa inserir o sucessor
+> antes de poder gravar o `replaced_by` dele. Índice único parcial em
+> `family_id` é impossível por construção.
+
 > ⚠️ **A revogação da família tem de COMMITAR antes de o erro ser lançado.**
 > Revogar e lançar de dentro da transação faz o rollback desfazer a revogação:
 > a detecção dispara, responde 401, e a família roubada continua viva. O reuso
@@ -1699,8 +1725,11 @@ bloqueavam (lint de fronteira, build e path alias, mappers) viraram as decisões
   existir, sem mexer em call site.
 - **RBAC / permissões** — **acoplada à decisão 11**: se roles forem para dentro
   do JWT, mudança de permissão só vale no próximo refresh (janela de 1h).
-- **A janela de graça permite bifurcar uma família sem detecção.** Adiado
-  conscientemente em 2026-09-01. Dentro dos 30s, reapresentar o token já
+- ~~**A janela de graça permite bifurcar uma família sem detecção.**~~
+  **RESOLVIDA em 2026-09-01**, pela saída 3 abaixo, com a exigência de
+  single-flight escrita na decisão 11. O registro do problema fica porque as
+  três saídas continuam sendo o mapa de quem reabrir isto. Texto original:
+  adiado conscientemente em 2026-09-01. Dentro dos 30s, reapresentar o token já
   rotacionado emite um par novo **sem** matar o sucessor anterior, então um
   token roubado usado nessa janela cria uma segunda cadeia viva na mesma
   família e a detecção de reuso nunca dispara para nenhuma das duas.

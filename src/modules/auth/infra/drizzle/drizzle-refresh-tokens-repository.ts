@@ -119,6 +119,15 @@ export class DrizzleRefreshTokensRepository implements IRefreshTokensRepository 
       .where(eq(refreshTokens.id, id))
   }
 
+  async revoke(id: string, revokedAt: Date): Promise<void> {
+    await this.db
+      .update(refreshTokens)
+      .set({ revokedAt })
+      // `isNull` for the same reason as below: re-revoking must not push an
+      // already-dead token's instant forward.
+      .where(and(eq(refreshTokens.id, id), isNull(refreshTokens.revokedAt)))
+  }
+
   async revokeFamily(familyId: string, revokedAt: Date): Promise<void> {
     await this.db
       .update(refreshTokens)

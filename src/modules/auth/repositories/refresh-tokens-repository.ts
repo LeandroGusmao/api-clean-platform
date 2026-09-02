@@ -23,6 +23,15 @@ export interface IRefreshTokensRepository {
   /** Revokes one token and points it at its successor, in a single write. */
   markRotated(id: string, replacedBy: string, revokedAt: Date): Promise<void>
 
+  /**
+   * Revokes ONE token outright, with no `replacedBy`.
+   *
+   * The absence of a successor is the whole point: a replay of a token revoked
+   * this way lands in reuse detection rather than in the grace window, because
+   * only a revocation that recorded a successor counts as a rotation.
+   */
+  revoke(id: string, revokedAt: Date): Promise<void>
+
   /** Revokes every still-active token of one chain. */
   revokeFamily(familyId: string, revokedAt: Date): Promise<void>
 

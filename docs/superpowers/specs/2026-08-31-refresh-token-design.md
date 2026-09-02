@@ -309,13 +309,27 @@ consumidor da coluna é a guarda acima, que só pergunta se ela é nula — e
 custaria o link para o sucessor original, que é o que torna a cadeia legível
 numa investigação.
 
-**Uma família pode ter mais de um token ativo dentro da janela.** O `B` cuja
-resposta se perdeu continua válido ao lado do `C` recém-emitido. Matar o irmão
-daria o invariante "um ativo por família", mas ao preço de revogar, num
-duplo-toque legítimo, o token que o cliente acabou de receber — reintroduzindo
-pela porta dos fundos o logout aleatório que a janela existe para eliminar. A
-decisão 11 diz "emite um par novo na mesma família" e não manda matar o irmão;
-esta spec fica com a leitura literal e registra o custo.
+**No máximo um token vivo por família — e isto MUDOU depois da implementação.**
+
+A versão original desta spec deixava o `B` vivo ao lado do `C` recém-emitido e
+registrava aquilo como custo de arrumação. Era pior que isso: um token roubado
+reapresentado dentro da janela criava uma **cadeia paralela** na mesma família;
+a partir dali nenhum dos dois lados jamais apresentava token gasto, e **a
+detecção de reuso nunca mais disparava para aquela família** — sessão roubada
+sobrevivendo à própria detecção, por 60 dias deslizantes.
+
+Corrigido em 2026-09-01: a graça **revoga o sucessor anterior**, sem
+`replaced_by`, antes de emitir o novo. Apresentá-lo passa a cair em reuso e mata
+a família, que é o desfecho correto de um roubo.
+
+Não custa nada no caso que a janela existe para resolver: com a resposta perdida
+no túnel, o sucessor revogado é justamente o que não chegou a ninguém. O preço é
+outro, e está na decisão 11: **o cliente passa a ter de serializar o refresh**.
+
+A invariante vale **no commit**, nunca dentro da transação — a rotação normal
+insere o sucessor antes de poder gravar o `replaced_by` dele, então os dois
+coexistem por dois statements. Índice único parcial em `family_id` é impossível
+por construção, e o teste de schema existe para pegar quem tentar.
 
 ### 4.3 — O que o `FOR UPDATE` compra, exatamente
 
@@ -799,8 +813,10 @@ deles perde o `HttpOnly` numa manutenção futura.
 - **A tabela cresce sem poda.** Cada refresh insere uma linha e nenhuma sai. É
   aceitável na ordem de grandeza de um boilerplate, e o gatilho para resolver é
   o entrypoint `cron.ts`, não um volume.
-- **Uma família pode ter mais de um token ativo dentro da janela** (§4.2). O
-  limite é quantos retries chegam em 30 segundos.
+- ~~Uma família pode ter mais de um token ativo dentro da janela~~ — **deixou de
+  ser custo aceito em 2026-09-01**: era uma bifurcação que desligava a detecção
+  de reuso, não arrumação. Ver §4.2. O custo que ficou no lugar é a exigência de
+  **single-flight** no cliente.
 - **Um round trip a mais por refresh**, pelo `SET LOCAL lock_timeout` (§4.3).
 - **`logout` e `logout-all` pagam uma transação para um `UPDATE` só.** Comprado
   deliberadamente pelo retry de deadlock (§5): a alternativa é `500` num caso

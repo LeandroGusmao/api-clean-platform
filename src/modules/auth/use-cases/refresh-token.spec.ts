@@ -205,6 +205,51 @@ describe('RefreshTokenUseCase — grace window', () => {
     expect(repository.tokens[1]?.revokedAt).toEqual(clockReading)
   })
 
+  it('kills the successor that was already issued', async () => {
+    // What closes the fork. The successor dies WITHOUT a `replacedBy` of its
+    // own, so presenting it later lands in reuse detection instead of being
+    // forgiven a second time.
+    store({ revokedAt: NOW, replacedBy: SUCCESSOR_ID })
+    storeSuccessor()
+    clockReading = at(GRACE_WINDOW_MS)
+
+    await refresh()
+
+    const successor = repository.tokens.find((token) => token.id === SUCCESSOR_ID)
+    expect(successor?.revokedAt).toEqual(clockReading)
+    expect(successor?.replacedBy).toBeNull()
+  })
+
+  it('makes that killed successor trip reuse detection', async () => {
+    // The other half, and the reason the kill is worth anything: whoever was
+    // holding the successor — the victim, when the replay came from a thief —
+    // now trips detection on their next refresh, and the whole family dies.
+    // Before this, both chains lived side by side and nothing ever fired.
+    store({ revokedAt: NOW, replacedBy: SUCCESSOR_ID })
+    storeSuccessor()
+    clockReading = at(GRACE_WINDOW_MS)
+    await refresh()
+
+    await expect(
+      useCase.execute({ refreshToken: 'successor-token' }),
+    ).rejects.toBeInstanceOf(RefreshTokenReusedError)
+
+    expect(repository.tokens.every((token) => token.revokedAt !== null)).toBe(true)
+  })
+
+  it('still forgives the lost response, because that successor reached nobody', async () => {
+    // The case the window exists for is untouched: the successor killed here
+    // is the one that died in the tunnel, so killing it costs nothing.
+    store({ revokedAt: NOW, replacedBy: SUCCESSOR_ID })
+    storeSuccessor()
+    clockReading = at(GRACE_WINDOW_MS)
+
+    const result = await refresh()
+
+    expect(result.accessToken).toBe(ACCESS_TOKEN)
+    expect(result.refreshToken).not.toBe(CURRENT_TOKEN)
+  })
+
   it('refuses a token revoked by LOGOUT even inside the window', async () => {
     // The guard of the whole slice. `replacedBy` is null after a logout, so
     // this must NOT be treated as a lost-response retry — otherwise logging out
