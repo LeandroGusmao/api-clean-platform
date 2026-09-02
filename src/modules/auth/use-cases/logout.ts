@@ -36,9 +36,10 @@ export class LogoutUseCase {
       // free oracle, and "you are logged out" is already true.
       if (current === null) return
 
-      // The whole family, not the single row: inside the grace window a family
-      // legitimately holds more than one live token, and revoking one would
-      // leave the session standing.
+      // The whole family, not the single row: the token presented is not
+      // necessarily the live one — a client may log out holding a token that
+      // was already rotated — so revoking that row alone would leave its
+      // successor standing. The family IS the session.
       await refreshTokens.revokeFamily(current.familyId, now)
     })
   }

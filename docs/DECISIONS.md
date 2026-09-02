@@ -408,9 +408,14 @@ Esse requisito foi o que eliminou o `decorate` do Fastify como DI.
 > reaparece depois de expirar dispara detecção de reuso, em vez de um 401 mudo.
 >
 > **A janela não desliza.** `revoked_at` não é reescrito, então o token morre 30
-> segundos depois da primeira rotação por mais retries que cheguem. Dentro dela
-> a família pode ter **mais de um token ativo** — custo aceito, e é por isso que
-> `family_id` não pode ganhar índice único.
+> segundos depois da primeira rotação por mais retries que cheguem.
+>
+> **`family_id` não pode ganhar índice único parcial**, e o motivo não é o que
+> esta emenda dizia originalmente. Não é que a família tenha vários tokens
+> ativos — a emenda seguinte fechou isso. É que a rotação normal **precisa
+> inserir o sucessor antes** de poder gravar o `replaced_by` dele, então os dois
+> coexistem por dois statements dentro de **toda** transação de rotação. O
+> invariante vale no commit, nunca no meio.
 >
 > **Emendada em 2026-09-01, segunda vez.** Dentro da janela, o par novo é
 > emitido **e o sucessor anterior é revogado** — sem `replaced_by`, para que

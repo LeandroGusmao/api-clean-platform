@@ -62,8 +62,9 @@ beforeEach(() => {
 
 describe('LogoutUseCase', () => {
   it('revokes the WHOLE family, not just the presented token', async () => {
-    // Inside the grace window a family holds more than one live token. Revoking
-    // only the presented row would leave the session standing after a logout.
+    // The presented token is not necessarily the live one: a client may log out
+    // holding a token that was already rotated. Revoking only that row would
+    // leave its successor standing, and the session with it.
     store(PRESENTED_ID, TOKEN, FAMILY_ID)
     store(SIBLING_ID, SIBLING_TOKEN, FAMILY_ID)
 
