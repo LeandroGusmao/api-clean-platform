@@ -67,10 +67,15 @@ const EXPECTED = {
   'src/shared/utils/random-id.ts': ['PURE-IO:1', 'R7-RANDOM:3'],
   'src/infra/http/tenant-guard.ts': ['GLOBAL-INFRA-XMOD:1'],
   'src/modules/billing/helpers.ts': ['LAYER-UNKNOWN:1'],
+  // `services/` is `pure`, so the driver import has to be caught here. Before
+  // that folder entered the boundary table it was LAYER-UNKNOWN instead, and
+  // an unclassified file is checked by nothing at all.
+  'src/modules/billing/services/invoice-numberer.ts': ['PURE-IO:1'],
   'tests/integration/billing.spec.ts': ['TEST-ENV:3', 'TEST-ONLY:5'],
   // Correct code. A single finding here is a false positive, and a false
   // positive is worse than a missed check: it teaches people to skim.
   'src/modules/billing/use-cases/refund-order.ts': [],
+  'src/modules/billing/services/order-pricer.ts': [],
   'src/modules/billing/infra/drizzle/drizzle-orders-repository.ts': [],
 }
 

@@ -2,7 +2,7 @@
 
 Referência normativa desta base. Descreve **o que a arquitetura é** e **quais
 regras valem**. O raciocínio de cada escolha, as alternativas avaliadas e o
-histórico ficam em [`docs/DECISIONS.md`](docs/DECISIONS.md) — as marcas
+histórico ficam em [`docs/DECISIONS.md`](DECISIONS.md) — as marcas
 `(decisão NN)` apontam para lá.
 
 Onde algo ainda **não está decidido**, o documento diz isso explicitamente em vez
@@ -996,6 +996,6 @@ steps:
 
 ## 18. Referências
 
-- [`docs/DECISIONS.md`](docs/DECISIONS.md) — as 23 decisões com motivo,
+- [`docs/DECISIONS.md`](DECISIONS.md) — as 23 decisões com motivo,
   alternativas descartadas e os dados que sustentaram cada escolha
 - Decisões em aberto e pendências de manutenção: seções 6 e 7 daquele documento

@@ -150,7 +150,7 @@ escrita antes, não depois.
 
 | Elemento | Padrão | Pode importar |
 |---|---|---|
-| `pure` | `src/modules/*/{entities,value-objects,repositories,ports,use-cases,dtos,errors}/**` · `src/modules/*/config.ts` · `src/shared/**` | só `pure` |
+| `pure` | `src/modules/*/{entities,value-objects,repositories,ports,use-cases,services,dtos,errors}/**` · `src/modules/*/config.ts` · `src/shared/**` | só `pure` |
 | `module-infra` | `src/modules/*/infra/**` | `pure` · `global-infra` · o `module-infra` **do próprio módulo** |
 | `global-infra` | `src/infra/**` | `pure` · `global-infra` |
 | `composition` | `src/modules/*/container.ts` · `src/main/**` | tudo |
@@ -171,6 +171,22 @@ lint de fronteira aprovar exatamente o import que deveria barrar.
 
 A linha `module-infra` também resolve o cruzamento entre módulos: o `infra/` de
 um módulo não alcança o `infra/` de outro.
+
+**`services/` é a linha mais nova, e o que mora ali é estreito:** uma operação de
+domínio que precisa de colaboradores e não pertence a uma entidade só. O
+`RefreshTokenIssuer` é o caso que a criou — cunhar um elo da cadeia de refresh
+(gerar opaco, digerir, montar a entidade) é a mesma operação no `login` e nos
+dois ramos da rotação, e a entidade não pode conhecer porta. Sem ela o
+`LoginUserUseCase` receberia nove colaboradores.
+
+O que **não** mora ali: orquestração de caso de uso, que é `use-cases/`; e
+qualquer coisa que toque o mundo externo, que é `infra/`. Um `services/` que
+comece a receber repositório é sinal de que virou use case com outro nome.
+
+> A pasta nasceu numa fatia **sem** esta linha, e a auditoria a pegou como
+> `LAYER-UNKNOWN` — arquivo de produção que nenhuma regra classificava. É o
+> argumento concreto a favor de a tabela existir antes do lint: ela pegou o que
+> a revisão humana deixou passar.
 
 **Duas regras do Unit of Work (decisão 22) que nem o compilador nem o lint
 alcançam** — a tabela acima classifica arquivo por caminho, e as duas a seguir

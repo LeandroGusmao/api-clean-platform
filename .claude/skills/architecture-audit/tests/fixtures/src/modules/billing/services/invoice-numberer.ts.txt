@@ -1,0 +1,17 @@
+import { Pool } from 'pg'
+import type { IIdGenerator } from '#shared/ports/id-generator'
+
+/**
+ * Plants the violation: `services/` is classified `pure`, so reaching for the
+ * driver here must be caught. Before `services` entered the boundary table this
+ * file was unclassified, and an unclassified file is checked by nothing.
+ */
+export class InvoiceNumberer {
+  constructor(private readonly idGenerator: IIdGenerator) {}
+
+  next(): string {
+    return `INV-${this.idGenerator.generate()}`
+  }
+}
+
+export const pool = new Pool()
