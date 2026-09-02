@@ -1699,6 +1699,28 @@ bloqueavam (lint de fronteira, build e path alias, mappers) viraram as decisões
   existir, sem mexer em call site.
 - **RBAC / permissões** — **acoplada à decisão 11**: se roles forem para dentro
   do JWT, mudança de permissão só vale no próximo refresh (janela de 1h).
+- **A janela de graça permite bifurcar uma família sem detecção.** Adiado
+  conscientemente em 2026-09-01. Dentro dos 30s, reapresentar o token já
+  rotacionado emite um par novo **sem** matar o sucessor anterior, então um
+  token roubado usado nessa janela cria uma segunda cadeia viva na mesma
+  família e a detecção de reuso nunca dispara para nenhuma das duas.
+  **Não confundir com multi-device:** cada login abre família própria, e é isso
+  que sustenta vários aparelhos — fechar o fork não afeta isso.
+  Três saídas, e a decisão 11 hoje manda a primeira:
+  1. emitir par novo e não tocar no irmão (atual) — perdoa resposta perdida,
+     permite o fork;
+  2. falhar 401 dentro da janela sem revogar a família — é o que o
+     `~/projects/byteflow` faz, e o comentário dele nomeia o fork como o motivo;
+     fecha o buraco ao custo de reintroduzir o logout aleatório;
+  3. emitir par novo **e** revogar o sucessor anterior — um ativo por família:
+     perdoa a resposta perdida *e* faz o fork disparar detecção na próxima
+     rotação da vítima. Custo: um duplo-toque genuíno em que o cliente já
+     recebeu o sucessor e mesmo assim reenvia o antecessor mata o token que ele
+     tem. É a candidata mais forte se isto for reaberto.
+- **A sessão não tem teto absoluto.** Os 60 dias são deslizantes, então um
+  cliente que dê refresh toda semana nunca reautentica. Rotação e detecção de
+  reuso cobrem roubo, então não é furo — é decisão de produto nunca tomada. A
+  saída usual é um `max_lifetime` por família.
 - **Colisão de nome de tabela entre módulos.** Nada impede dois módulos
   declararem `users`. O `drizzle-kit` junta os globs e gera a migration com as
   duas — e o erro aparece no `db:migrate`, não no lint. Saídas possíveis:
