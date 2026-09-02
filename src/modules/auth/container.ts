@@ -1,14 +1,24 @@
 import type { Database } from '#infra/database/client'
 import type { TransactionRunner } from '#infra/database/transaction-runner'
 import { createUnitOfWork } from '#infra/database/unit-of-work'
+import { RandomTokenGenerator } from '#infra/providers/random-token-generator'
+import { Sha256TokenDigest } from '#infra/providers/sha256-token-digest'
 import { SystemClock } from '#infra/providers/system-clock'
 import { UuidIdGenerator } from '#infra/providers/uuid-id-generator'
 import type { AuthConfig } from './config.js'
+
+/** The grace window is configured in seconds; the entity compares milliseconds. */
+const MILLISECONDS_PER_SECOND = 1000
+
 import { authRepositories } from './infra/drizzle/auth-repositories.js'
 import { Argon2HashProvider } from './infra/providers/argon2-hash-provider.js'
 import { JwtTokenSigner } from './infra/providers/jwt-token-signer.js'
+import { RefreshTokenIssuer } from './services/refresh-token-issuer.js'
 import { GetUserProfileUseCase } from './use-cases/get-user-profile.js'
 import { LoginUserUseCase } from './use-cases/login-user.js'
+import { LogoutUseCase } from './use-cases/logout.js'
+import { LogoutAllUseCase } from './use-cases/logout-all.js'
+import { RefreshTokenUseCase } from './use-cases/refresh-token.js'
 import { RegisterUserUseCase } from './use-cases/register-user.js'
 
 /**
@@ -26,11 +36,21 @@ export function makeAuthContainer(
   config: AuthConfig,
   runner: TransactionRunner,
 ) {
-  const { users: usersRepository } = authRepositories(db)
+  const { users: usersRepository, refreshTokens: refreshTokensRepository } =
+    authRepositories(db)
   const hashProvider = new Argon2HashProvider()
   const clock = new SystemClock()
   const idGenerator = new UuidIdGenerator()
   const tokenSigner = new JwtTokenSigner(config, clock)
+  const tokenGenerator = new RandomTokenGenerator()
+  const tokenDigest = new Sha256TokenDigest()
+  const uow = createUnitOfWork(runner, authRepositories)
+  const refreshTokenIssuer = new RefreshTokenIssuer(
+    tokenGenerator,
+    tokenDigest,
+    idGenerator,
+    config.REFRESH_TOKEN_TTL_SECONDS,
+  )
 
   return {
     registerUser: new RegisterUserUseCase(
@@ -39,8 +59,25 @@ export function makeAuthContainer(
       clock,
       idGenerator,
     ),
-    loginUser: new LoginUserUseCase(usersRepository, hashProvider, tokenSigner),
+    loginUser: new LoginUserUseCase(
+      usersRepository,
+      hashProvider,
+      tokenSigner,
+      refreshTokensRepository,
+      refreshTokenIssuer,
+      clock,
+    ),
     getUserProfile: new GetUserProfileUseCase(usersRepository),
+    refreshToken: new RefreshTokenUseCase(
+      uow,
+      refreshTokenIssuer,
+      tokenSigner,
+      tokenDigest,
+      clock,
+      config.REFRESH_TOKEN_GRACE_WINDOW_SECONDS * MILLISECONDS_PER_SECOND,
+    ),
+    logout: new LogoutUseCase(uow, tokenDigest, clock),
+    logoutAll: new LogoutAllUseCase(uow, clock),
     /**
      * Not a use case: there is nothing to orchestrate. Decision 11 keeps the
      * database out of the authenticated path, so verification is signature
@@ -49,13 +86,17 @@ export function makeAuthContainer(
      */
     verifyAccessToken: (token: string) => tokenSigner.verify(token),
     /**
-     * Published with no consumer yet: the rotation of the refresh token slice
-     * is the first use case that writes twice and needs one transaction. Wired
-     * here rather than only in the tests so that the first construction in
-     * production does not happen in the same slice that first depends on it —
-     * the worst place to find a wiring mistake.
+     * The cookie's `Max-Age` has to match the token's own lifetime, and the
+     * endpoint is where the cookie is written — so both read this one value and
+     * cannot drift apart.
      */
-    uow: createUnitOfWork(runner, authRepositories),
+    refreshTokenTtlSeconds: config.REFRESH_TOKEN_TTL_SECONDS,
+    /**
+     * Still published, and now it has consumers: the rotation and both logouts
+     * open their transaction through it. `tests/integration/unit-of-work.spec.ts`
+     * also reaches for it directly to exercise the primitive on its own.
+     */
+    uow,
   }
 }
 

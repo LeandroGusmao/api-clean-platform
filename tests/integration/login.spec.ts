@@ -4,6 +4,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { env } from '#infra/config/env'
 import { createDatabase, type Database } from '#infra/database/client'
 import { buildApp } from '#main/app'
+import { DEFAULT_REFRESH_TOKEN_TTL_SECONDS } from '#modules/auth/config'
+import { refreshTokens } from '#modules/auth/infra/drizzle/schema/refresh-tokens'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
 
 // Spelled out rather than imported from the endpoint: these values ARE the wire
@@ -26,6 +28,12 @@ const INVALID_CREDENTIALS_CODE = 'INVALID_CREDENTIALS'
 const VALIDATION_ERROR_CODE = 'VALIDATION_ERROR'
 const JWT_PATTERN = /^[\w-]+\.[\w-]+\.[\w-]+$/
 
+const REFRESH_COOKIE_NAME = 'refresh_token'
+const COOKIE_TRANSPORT = 'cookie'
+const REFRESH_COOKIE_PATH = '/auth'
+const STRICT_SAME_SITE = 'Strict'
+const NO_COOKIES = 0
+
 const ROW_MISSING_MESSAGE = 'no user row was stored'
 
 let app: FastifyInstance
@@ -44,6 +52,9 @@ afterAll(async () => {
 })
 
 beforeEach(async () => {
+  // Children first: the cascade would take them anyway, but deleting in
+  // dependency order keeps this hook honest about what it does.
+  await db.delete(refreshTokens)
   await db.delete(users)
   await app.inject({
     method: POST_METHOD,
@@ -56,11 +67,24 @@ const login = (payload: object) =>
   app.inject({ method: POST_METHOD, url: LOGIN_PATH, payload })
 
 describe('POST /auth/login', () => {
-  it('answers 200 with an access token for valid credentials', async () => {
+  it('answers 200 with both tokens for valid credentials', async () => {
     const response = await login({ email: EMAIL, password: PASSWORD })
 
     expect(response.statusCode).toBe(OK_STATUS_CODE)
     expect(response.json().accessToken).toMatch(JWT_PATTERN)
+    // Opaque, so deliberately NOT a JWT: a refresh token that parses as a JWT
+    // is the discarded stateless option sneaking back in.
+    expect(response.json().refreshToken).toEqual(expect.any(String))
+    expect(response.json().refreshToken).not.toMatch(JWT_PATTERN)
+  })
+
+  it('stores only the digest of the refresh token', async () => {
+    const response = await login({ email: EMAIL, password: PASSWORD })
+
+    const [stored] = await db.select().from(refreshTokens)
+
+    expect(stored?.tokenHash).not.toBe(response.json().refreshToken)
+    expect(response.body).not.toContain(stored?.tokenHash)
   })
 
   it('matches the email case-insensitively', async () => {
@@ -120,6 +144,55 @@ describe('POST /auth/login', () => {
 
   it('answers 400 for a missing email field', async () => {
     const response = await login({ password: PASSWORD })
+
+    expect(response.statusCode).toBe(BAD_REQUEST_STATUS_CODE)
+  })
+
+  it('sends the refresh token as a cookie, and NOT in the body, when asked', async () => {
+    const response = await login({
+      email: EMAIL,
+      password: PASSWORD,
+      refreshTransport: COOKIE_TRANSPORT,
+    })
+
+    expect(response.statusCode).toBe(OK_STATUS_CODE)
+    expect(response.json().accessToken).toMatch(JWT_PATTERN)
+    // The whole point of the cookie: if the token is ALSO in the body, the
+    // SPA's JavaScript can read it and HttpOnly has bought nothing.
+    expect(response.json().refreshToken).toBeUndefined()
+  })
+
+  it('sets the cookie with every attribute decision 12 requires', async () => {
+    const response = await login({
+      email: EMAIL,
+      password: PASSWORD,
+      refreshTransport: COOKIE_TRANSPORT,
+    })
+
+    const cookie = response.cookies.find((each) => each.name === REFRESH_COOKIE_NAME)
+
+    expect(cookie?.httpOnly).toBe(true)
+    expect(cookie?.secure).toBe(true)
+    expect(cookie?.sameSite).toBe(STRICT_SAME_SITE)
+    // `/auth` and not `/auth/refresh`: the amendment that makes cookie-mode
+    // logout possible at all.
+    expect(cookie?.path).toBe(REFRESH_COOKIE_PATH)
+    expect(cookie?.maxAge).toBe(DEFAULT_REFRESH_TOKEN_TTL_SECONDS)
+  })
+
+  it('defaults to the body when the transport field is absent', async () => {
+    const response = await login({ email: EMAIL, password: PASSWORD })
+
+    expect(response.json().refreshToken).toEqual(expect.any(String))
+    expect(response.cookies).toHaveLength(NO_COOKIES)
+  })
+
+  it('answers 400 for an unknown transport', async () => {
+    const response = await login({
+      email: EMAIL,
+      password: PASSWORD,
+      refreshTransport: 'carrier-pigeon',
+    })
 
     expect(response.statusCode).toBe(BAD_REQUEST_STATUS_CODE)
   })

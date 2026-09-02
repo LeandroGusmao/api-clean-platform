@@ -1,0 +1,41 @@
+import { describe, expect, it } from 'vitest'
+import {
+  DEFAULT_OPAQUE_TOKEN_BYTES,
+  RandomTokenGenerator,
+} from '#infra/providers/random-token-generator'
+
+const SAMPLE_SIZE = 200
+const SMALLER_BYTES = 16
+const BASE64URL_ONLY = /^[A-Za-z0-9_-]+$/
+
+/** 32 bytes in base64url is 43 characters, with no padding. */
+const DEFAULT_ENCODED_LENGTH = 43
+const EXPECTED_DEFAULT_BYTES = 32
+
+describe('RandomTokenGenerator', () => {
+  it('never repeats a value across a large sample', () => {
+    const generator = new RandomTokenGenerator()
+
+    const values = new Set(Array.from({ length: SAMPLE_SIZE }, () => generator.opaque()))
+
+    expect(values.size).toBe(SAMPLE_SIZE)
+  })
+
+  it('encodes as base64url, so the value is safe in a cookie and in a URL', () => {
+    // `+`, `/` and `=` are what plain base64 would add. A `+` in a cookie value
+    // is decoded as a space by some clients, which would silently corrupt the
+    // token on the way back.
+    expect(new RandomTokenGenerator().opaque()).toMatch(BASE64URL_ONLY)
+  })
+
+  it('defaults to 32 bytes of entropy', () => {
+    expect(DEFAULT_OPAQUE_TOKEN_BYTES).toBe(EXPECTED_DEFAULT_BYTES)
+    expect(new RandomTokenGenerator().opaque()).toHaveLength(DEFAULT_ENCODED_LENGTH)
+  })
+
+  it('honours a requested size', () => {
+    const shorter = new RandomTokenGenerator().opaque(SMALLER_BYTES)
+
+    expect(shorter.length).toBeLessThan(DEFAULT_ENCODED_LENGTH)
+  })
+})

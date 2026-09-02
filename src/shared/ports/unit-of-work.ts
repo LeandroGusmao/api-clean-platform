@@ -13,6 +13,13 @@
  * counter is autocommit by design, and a rollback would erase the very record
  * that remembers the failure). Opening a second unit of work in there throws.
  *
+ * That third one shipped as a defect once, so it is worth naming concretely:
+ * the refresh token rotation revoked a reused token's whole family and then
+ * THREW from inside the callback. The throw rolled the revocation back, so
+ * detection fired, answered 401, and left the stolen session alive. When an
+ * operation has to both persist AND fail, return the outcome as data and raise
+ * the error after the commit.
+ *
  * And the rule that neither the compiler nor the linter can enforce: **a use
  * case that receives a unit of work must NOT also receive a repository
  * directly**. The injected singleton writes on an autocommit connection, so a

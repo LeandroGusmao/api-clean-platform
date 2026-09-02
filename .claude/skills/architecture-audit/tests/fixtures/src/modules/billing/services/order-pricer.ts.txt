@@ -1,0 +1,14 @@
+import type { IIdGenerator } from '#shared/ports/id-generator'
+
+/**
+ * The clean counter-example: a domain service that needs collaborators, does
+ * not belong to a single entity, and touches nothing outside the pure layer.
+ * A single finding here is a false positive.
+ */
+export class OrderPricer {
+  constructor(private readonly idGenerator: IIdGenerator) {}
+
+  price(cents: number): { id: string; cents: number } {
+    return { id: this.idGenerator.generate(), cents }
+  }
+}

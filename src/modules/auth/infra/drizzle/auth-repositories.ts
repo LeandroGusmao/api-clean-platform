@@ -1,5 +1,6 @@
 import type { Database } from '#infra/database/client'
 import type { AuthRepos } from '#modules/auth/repositories/unit-of-work'
+import { DrizzleRefreshTokensRepository } from './drizzle-refresh-tokens-repository.js'
 import { DrizzleUsersRepository } from './drizzle-users-repository.js'
 
 /**
@@ -11,5 +12,8 @@ import { DrizzleUsersRepository } from './drizzle-users-repository.js'
  * existing repository changes.
  */
 export function authRepositories(db: Database): AuthRepos {
-  return { users: new DrizzleUsersRepository(db) }
+  return {
+    users: new DrizzleUsersRepository(db),
+    refreshTokens: new DrizzleRefreshTokensRepository(db),
+  }
 }

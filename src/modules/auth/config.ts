@@ -10,6 +10,17 @@ export const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 3600
  */
 const MIN_JWT_SECRET_LENGTH = 32
 
+/** 60 days — decision 11. Sliding: every rotation issues a fresh window. */
+export const DEFAULT_REFRESH_TOKEN_TTL_SECONDS = 5_184_000
+
+/**
+ * 30 seconds — decision 11. The window in which a refresh that has already been
+ * rotated is still accepted, because the response carrying its successor may
+ * have died in a tunnel. Without it, rotation in a mobile app produces random
+ * logouts.
+ */
+export const DEFAULT_REFRESH_TOKEN_GRACE_WINDOW_SECONDS = 30
+
 /**
  * The module owns its own variables (decision 14). `infra/config/env.ts` merges
  * this into the core schema so the process dies at boot listing every problem
@@ -24,6 +35,19 @@ export const authEnvSchema = z.object({
     .int()
     .positive()
     .default(DEFAULT_ACCESS_TOKEN_TTL_SECONDS),
+  REFRESH_TOKEN_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_REFRESH_TOKEN_TTL_SECONDS),
+  // `.positive()` and not `.nonnegative()`: a grace window of zero brings back
+  // the random logout the window exists to remove, and rejecting zero is also
+  // what rejects an empty value — exactly as for `PORT`.
+  REFRESH_TOKEN_GRACE_WINDOW_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_REFRESH_TOKEN_GRACE_WINDOW_SECONDS),
 })
 
 export type AuthConfig = z.infer<typeof authEnvSchema>

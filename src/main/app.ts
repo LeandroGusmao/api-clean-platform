@@ -1,3 +1,4 @@
+import fastifyCookie from '@fastify/cookie'
 import type { FastifyInstance } from 'fastify'
 import type { Env } from '#infra/config/env'
 import { createDatabase } from '#infra/database/client'
@@ -33,6 +34,13 @@ export async function buildApp(
   const { db, pool } = createDatabase(env)
   // Makes `app.close()` the single teardown: callers never end the pool by hand.
   app.addHook('onClose', () => pool.end())
+
+  // Global infra: the auth module never registers a transport plugin of its
+  // own. Unlike `registerOpenApi` below, the position is NOT load-bearing —
+  // verified that `request.cookies` works even when the plugin is registered
+  // after the routes, because it decorates the request rather than hooking
+  // `onRoute` — but it belongs with the rest of the global setup.
+  await app.register(fastifyCookie)
 
   // Must come before any route: `@fastify/swagger` only documents what is
   // registered after it.

@@ -156,7 +156,7 @@ function layerPath(file) {
  * `infra/providers/`; só o lado do contrato foi renomeado.
  */
 const PURE_DIRECTORIES =
-  /^(entities|value-objects|repositories|ports|use-cases|dtos|errors)\//
+  /^(entities|value-objects|repositories|ports|use-cases|services|dtos|errors)\//
 
 function classify(lp) {
   if (lp.endsWith('.spec.ts') || lp.startsWith('tests/')) return 'test'
