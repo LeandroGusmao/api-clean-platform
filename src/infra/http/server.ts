@@ -37,6 +37,13 @@ export function buildServer(env: Env, options: BuildServerOptions = {}): Fastify
     options.logger ?? createLogger(env, { stream: options.logStream })
 
   const app = Fastify({
+    // Decides whether `request.ip` means anything at all. Behind a load
+    // balancer with this unset, every request carries the balancer's address,
+    // so anything keyed on the client — a rate limit, an audit line — puts the
+    // whole world in one bucket. It works perfectly on a laptop, where there is
+    // no proxy, which is what makes it worth a boot-time guard: the env schema
+    // refuses the two forms (`true` and a hop count) that fail in silence.
+    trustProxy: env.TRUST_PROXY,
     // Fastify's default is a per-process counter (`req-1`): two replicas emit
     // the same id and a restart resets it, so a traceId cannot correlate
     // anything beyond a single process.

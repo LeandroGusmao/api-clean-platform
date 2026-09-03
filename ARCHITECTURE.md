@@ -1152,6 +1152,22 @@ outra coisa.**
 > que o erro aparece como *"statusCode does not exist"*. Espalhe
 > condicionalmente em vez de repassar.
 
+> **`trustProxy` com número é inoperante — e parece configurado.** Medido no
+> Fastify 5.12.1: `trustProxy: 1` constrói sem erro e **nunca confia em
+> ninguém**, porque o `lib/request.js` devolve `() => false` para qualquer
+> número (*"hop-count-only trust cannot validate the immediate peer"*).
+> `request.ip` fica preso no `remoteAddress`, e atrás de um load balancer isso
+> significa que todo cliente compartilha um endereço — um limite por IP botaria
+> o mundo inteiro num balde só. É justamente o valor que todo tutorial mostra.
+> Por isso `TRUST_PROXY` **recusa número no boot** e só aceita lista de redes.
+>
+> No mesmo assunto: uma lista com CIDR inválido morre na **construção** da
+> instância — inclusive quando só um item da lista é inválido, não há aceitação
+> parcial —, mas como um `TypeError` **cru** do `@fastify/proxy-addr`, com
+> `message: "invalid IP address: <token>"` e **`code: undefined`**. Não é
+> `FST_*` e não sai no formato de erro de env do projeto: se o boot morrer com
+> um `TypeError` sem contexto nenhum, é isto.
+
 > **`loggerInstance` do Fastify especializa o genérico da instância.** Passar um
 > `pino.Logger` faz o `FastifyInstance` devolvido carregar aquele tipo de logger,
 > e ele deixa de ser atribuível ao `FastifyInstance` que a função declara

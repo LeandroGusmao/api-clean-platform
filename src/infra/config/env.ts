@@ -70,8 +70,53 @@ export const DEFAULT_HOST = '0.0.0.0'
 export const DEFAULT_PORT = 3000
 export const DEFAULT_LOG_LEVEL: (typeof LOG_LEVELS)[number] = 'info'
 
+const TRUST_PROXY_NUMERIC_PATTERN = /^\d+$/
+const TRUST_PROXY_BOOLEAN_LITERALS = ['true', 'false']
+/** Fastify treats `false`, `0` and `''` identically; this is the one form. */
+const TRUST_PROXY_TRUST_NOTHING = false
+
+const TRUST_PROXY_REFUSAL =
+  'must be empty (trust nothing) or a comma-separated list of trusted ' +
+  'networks, such as `10.0.0.0/8,loopback`. `true` is refused because it ' +
+  'trusts the LEFTMOST X-Forwarded-For entry, which the client writes — ' +
+  'anyone could then forge a fresh address per request. A hop count is ' +
+  'refused because Fastify 5 ignores it: a numeric trustProxy is fail-closed ' +
+  'and never trusts anyone, so the knob would look configured and do nothing.'
+
+/**
+ * Which proxies may speak for the client, and therefore whether `request.ip`
+ * means anything at all. Behind a load balancer with this unset, every request
+ * carries the balancer's address.
+ *
+ * The output is `string | false` — no number ever reaches Fastify, by the
+ * refusal above. Both refused forms fail SILENTLY if allowed through, which is
+ * why they are rejected at boot rather than documented.
+ *
+ * `.default('')` sits BEFORE the refinements on purpose: Zod 4's default is the
+ * OUTPUT type and short-circuits parsing (ARCHITECTURE.md §11), so placed at the
+ * end it would have to be `string | false` and would skip every check.
+ *
+ * The CIDR syntax itself is deliberately NOT validated here. Fastify compiles
+ * the list eagerly and dies at boot on an invalid entry — even one inside an
+ * otherwise valid list — so a second implementation would only add a way for
+ * the two to drift apart.
+ */
+const trustProxySchema = z
+  .string()
+  .trim()
+  .default('')
+  .refine((raw) => !TRUST_PROXY_BOOLEAN_LITERALS.includes(raw), TRUST_PROXY_REFUSAL)
+  .refine(
+    (raw) => !(TRUST_PROXY_NUMERIC_PATTERN.test(raw) && Number(raw) > 0),
+    TRUST_PROXY_REFUSAL,
+  )
+  .transform((raw) =>
+    raw === '' || TRUST_PROXY_NUMERIC_PATTERN.test(raw) ? TRUST_PROXY_TRUST_NOTHING : raw,
+  )
+
 const coreEnvSchema = z.object({
   NODE_ENV: z.enum(NODE_ENVS).default(NODE_ENV_DEVELOPMENT),
+  TRUST_PROXY: trustProxySchema,
   HOST: z.string().min(1).default(DEFAULT_HOST),
   PORT: z.coerce.number().int().positive().default(DEFAULT_PORT),
   LOG_LEVEL: z.enum(LOG_LEVELS).default(DEFAULT_LOG_LEVEL),

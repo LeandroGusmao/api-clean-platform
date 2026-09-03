@@ -33,6 +33,8 @@ import {
  */
 export const TEST_ENV: Env = {
   NODE_ENV: NODE_ENV_TEST,
+  /** No proxy in front of a test server, so nothing may speak for the client. */
+  TRUST_PROXY: false,
   HOST: DEFAULT_HOST,
   PORT: DEFAULT_PORT,
   LOG_LEVEL: DEFAULT_LOG_LEVEL,
