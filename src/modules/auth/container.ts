@@ -7,7 +7,7 @@ import { SystemClock } from '#infra/providers/system-clock'
 import { UuidIdGenerator } from '#infra/providers/uuid-id-generator'
 import type { AuthConfig } from './config.js'
 
-/** The grace window is configured in seconds; the entity compares milliseconds. */
+/** Windows are configured in seconds; the entity and the rate limiter take milliseconds. */
 const MILLISECONDS_PER_SECOND = 1000
 
 import { authRepositories } from './infra/drizzle/auth-repositories.js'

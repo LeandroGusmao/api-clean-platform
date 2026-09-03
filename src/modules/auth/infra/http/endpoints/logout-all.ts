@@ -9,6 +9,7 @@ import {
   AUTH_TAG,
   NO_CONTENT_STATUS,
   SERVICE_UNAVAILABLE_STATUS,
+  TOO_MANY_REQUESTS_STATUS,
   UNAUTHORIZED_STATUS,
 } from '#modules/auth/infra/http/constants'
 import { clearRefreshCookie } from '#modules/auth/infra/http/refresh-cookie'
@@ -44,6 +45,7 @@ export const logoutAllRoute: FastifyPluginAsync<{
           [NO_CONTENT_STATUS]: z.null(),
           [UNAUTHORIZED_STATUS]: errorResponseSchema,
           [SERVICE_UNAVAILABLE_STATUS]: errorResponseSchema,
+          [TOO_MANY_REQUESTS_STATUS]: errorResponseSchema,
         },
       },
     },

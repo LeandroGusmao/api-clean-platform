@@ -11,6 +11,7 @@ import {
   EXAMPLE_EMAIL,
   EXAMPLE_PASSWORD,
   EXAMPLE_USER_ID,
+  TOO_MANY_REQUESTS_STATUS,
 } from '#modules/auth/infra/http/constants'
 import { MAX_EMAIL_LENGTH } from '#modules/auth/value-objects/email'
 import {
@@ -65,6 +66,7 @@ export const registerRoute: FastifyPluginAsync<{ container: AuthContainer }> = a
           [CREATED_STATUS]: createdSchema,
           [BAD_REQUEST_STATUS]: errorResponseSchema,
           [CONFLICT_STATUS]: errorResponseSchema,
+          [TOO_MANY_REQUESTS_STATUS]: errorResponseSchema,
         },
       },
     },

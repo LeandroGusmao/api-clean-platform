@@ -9,6 +9,7 @@ import {
   BAD_REQUEST_STATUS,
   OK_STATUS,
   SERVICE_UNAVAILABLE_STATUS,
+  TOO_MANY_REQUESTS_STATUS,
   UNAUTHORIZED_STATUS,
 } from '#modules/auth/infra/http/constants'
 import {
@@ -66,6 +67,7 @@ export const refreshRoute: FastifyPluginAsync<{ container: AuthContainer }> = as
           // transaction, so a deadlock that survives the runner's retries
           // surfaces here as `TransactionConflictError`.
           [SERVICE_UNAVAILABLE_STATUS]: errorResponseSchema,
+          [TOO_MANY_REQUESTS_STATUS]: errorResponseSchema,
         },
       },
     },

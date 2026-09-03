@@ -11,6 +11,7 @@ import {
   EXAMPLE_USER_ID,
   NOT_FOUND_STATUS,
   OK_STATUS,
+  TOO_MANY_REQUESTS_STATUS,
   UNAUTHORIZED_STATUS,
 } from '#modules/auth/infra/http/constants'
 
@@ -61,6 +62,7 @@ export const meRoute: FastifyPluginAsync<{
           [OK_STATUS]: userSchema,
           [UNAUTHORIZED_STATUS]: errorResponseSchema,
           [NOT_FOUND_STATUS]: errorResponseSchema,
+          [TOO_MANY_REQUESTS_STATUS]: errorResponseSchema,
         },
       },
     },
