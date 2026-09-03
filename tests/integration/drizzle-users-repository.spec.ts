@@ -34,6 +34,14 @@ const ROW_MISSING_MESSAGE = 'no row was stored'
 
 const MISSING_USER_ID = '00000000-0000-4000-8000-000000000000'
 
+const NEW_PASSWORD_HASH = '$argon2id$v=19$m=65536,t=3,p=4$b3RoZXJzYWx0$newhash'
+/**
+ * Far from any real clock. If the repository ever stops sending the column, the
+ * `$onUpdate` fills it with the system clock and the difference is six years —
+ * impossible to mistake for a rounding artefact.
+ */
+const DISTANT_PAST = new Date('2020-01-01T00:00:00.000Z')
+
 let db: Database
 let pool: Pool
 let repository: DrizzleUsersRepository
@@ -206,5 +214,42 @@ describe('DrizzleUsersRepository.findById', () => {
     )
     expect(found?.createdAt.getTime()).toBe(REHYDRATION_CREATED_AT.getTime())
     expect(found?.updatedAt.getTime()).toBe(REHYDRATION_UPDATED_AT.getTime())
+  })
+})
+
+describe('DrizzleUsersRepository.updatePasswordHash', () => {
+  it('writes the exact updatedAt it is given, not the system clock', async () => {
+    await repository.save(makeUser(ID, EMAIL))
+
+    await repository.updatePasswordHash(ID, NEW_PASSWORD_HASH, DISTANT_PAST)
+
+    const stored = await repository.findById(ID)
+    expect(stored?.updatedAt).toEqual(DISTANT_PAST)
+  })
+
+  it('changes only the password columns', async () => {
+    await repository.save(makeUser(ID, EMAIL))
+    const before = await repository.findById(ID)
+
+    await repository.updatePasswordHash(ID, NEW_PASSWORD_HASH, DISTANT_PAST)
+
+    const after = await repository.findById(ID)
+    expect(after?.passwordHash).toBe(NEW_PASSWORD_HASH)
+    expect(after?.email.value).toBe(before?.email.value)
+    expect(after?.createdAt).toEqual(before?.createdAt)
+    expect(after?.emailVerifiedAt).toBeNull()
+  })
+
+  it('never touches another row', async () => {
+    // `id` and `passwordHash` are adjacent positional strings, so transposing
+    // them compiles. This is the test that catches it.
+    await repository.save(makeUser(ID, EMAIL))
+    await repository.save(makeUser(OTHER_ID, OTHER_EMAIL))
+
+    await repository.updatePasswordHash(ID, NEW_PASSWORD_HASH, DISTANT_PAST)
+
+    const other = await repository.findById(OTHER_ID)
+    expect(other?.passwordHash).toBe(PASSWORD_HASH)
+    expect(other?.updatedAt).not.toEqual(DISTANT_PAST)
   })
 })

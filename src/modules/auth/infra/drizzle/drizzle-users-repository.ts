@@ -81,4 +81,18 @@ export class DrizzleUsersRepository implements IUsersRepository {
 
     return row === undefined ? null : toDomainUser(row)
   }
+
+  async updatePasswordHash(
+    id: string,
+    passwordHash: string,
+    updatedAt: Date,
+  ): Promise<void> {
+    try {
+      await this.db.update(users).set({ passwordHash, updatedAt }).where(eq(users.id, id))
+    } catch (error) {
+      // Same reason as `save`: Drizzle's error glues every bound parameter into
+      // its own message, and this statement binds a password hash.
+      throw toPersistenceError(error)
+    }
+  }
 }

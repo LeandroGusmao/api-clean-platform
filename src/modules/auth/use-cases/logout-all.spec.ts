@@ -21,6 +21,7 @@ const NO_USERS = {
   save: async () => {},
   findByEmail: async () => null,
   findById: async () => null,
+  updatePasswordHash: async () => {},
 }
 
 let repository: InMemoryRefreshTokensRepository
