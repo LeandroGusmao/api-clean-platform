@@ -47,6 +47,10 @@ src/
 │   │   ├── server.ts               # instância Fastify, SEM rotas
 │   │   ├── server.spec.ts          # unitário colocado
 │   │   ├── auth-guard.ts           # preHandler genérico; verificador injetado, sem import de #modules/*
+│   │   ├── client-ip.ts            # request.ip -> chave validada e normalizada
+│   │   ├── client-ip.spec.ts
+│   │   ├── rate-limit.ts           # teto por endereço; rota isenta com config.rateLimit
+│   │   ├── rate-limit.spec.ts
 │   │   ├── openapi.ts              # OpenAPI + UI dos docs (só em development)
 │   │   ├── errors/                 # o contrato de erro; os três mudam juntos
 │   │   │   ├── error-handler.ts    # ÚNICO lugar que traduz erro em status HTTP

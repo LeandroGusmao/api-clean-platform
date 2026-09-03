@@ -510,13 +510,18 @@ git commit -m "feat: give 429 its own code instead of flattening it into BAD_REQ
 pnpm add @fastify/rate-limit@11.2.0
 ```
 
-Se o `pnpm add` recusar com erro de store (a store mora sob a revisão do snap do
-VS Code e quebra quando o snap atualiza), rode com a revisão de onde o
-`node_modules` está linkado:
+**Aconteceu de verdade em 2026-09-02:** o `pnpm add` recusou com
+`ERR_PNPM_UNEXPECTED_STORE`, porque o snap do VS Code pulou da revisão 255 para
+a 259 e o `node_modules` continua linkado da 255. O contorno é usar a store que
+**a própria mensagem de erro nomeia** como a atual do `node_modules`:
 
 ```bash
-pnpm add --store-dir "$(readlink -f node_modules/.pnpm | sed 's#/node_modules/.pnpm##')/../.pnpm-store" @fastify/rate-limit@11.2.0
+pnpm add --store-dir /home/legusmao/snap/code/255/.local/share/pnpm/store/v11 \
+  @fastify/rate-limit@11.2.0
 ```
+
+O número da revisão muda a cada atualização do snap — leia-o da mensagem de erro
+em vez de copiar este comando.
 
 Confirme que `package.json` gravou `"@fastify/rate-limit": "11.2.0"` — **sem `^`**.
 

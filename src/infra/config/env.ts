@@ -66,6 +66,17 @@ function timeoutMs(defaultMs: number) {
   )
 }
 
+/**
+ * A flood ceiling, not a UX limit. A chatty single-page app does not come near
+ * 300 requests a minute from one address, and whoever does is not browsing.
+ *
+ * The limit that actually matters lives at the edge, which sees every replica
+ * at once; this one exists so a single origin cannot saturate the process
+ * before the edge notices.
+ */
+export const DEFAULT_RATE_LIMIT_MAX_REQUESTS = 300
+export const DEFAULT_RATE_LIMIT_WINDOW_SECONDS = 60
+
 export const DEFAULT_HOST = '0.0.0.0'
 export const DEFAULT_PORT = 3000
 export const DEFAULT_LOG_LEVEL: (typeof LOG_LEVELS)[number] = 'info'
@@ -121,6 +132,19 @@ const coreEnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(DEFAULT_PORT),
   LOG_LEVEL: z.enum(LOG_LEVELS).default(DEFAULT_LOG_LEVEL),
   DATABASE_URL: z.url(),
+  // `.positive()` and not `.nonnegative()`, exactly as for `PORT`: a ceiling of
+  // zero would refuse every request, and rejecting zero is also what rejects an
+  // empty value.
+  RATE_LIMIT_MAX_REQUESTS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_RATE_LIMIT_MAX_REQUESTS),
+  RATE_LIMIT_WINDOW_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_RATE_LIMIT_WINDOW_SECONDS),
   // `.positive()` here, `nonnegative` in the timeouts: a pool of zero serves no
   // request at all, so it has no legitimate zero — and rejecting zero is also
   // what rejects an empty value, exactly as it does for `PORT`.
