@@ -1152,6 +1152,18 @@ outra coisa.**
 > que o erro aparece como *"statusCode does not exist"*. Espalhe
 > condicionalmente em vez de repassar.
 
+> **`request.ip` não é um endereço IP.** Medido no Fastify 5.12.1: quando o peer
+> é confiado, ele devolve **o último token do `X-Forwarded-For` sem validação
+> nenhuma** — `naoehip`, `1.2.3.4a`, `999.999.999.999`,
+> `<script>alert(1)</script>` e uma string de 200 caracteres saíram todas
+> intactas. `typeof` é sempre `string`, nada lança, e no laptop o valor parece
+> perfeito. Quem usar isso como chave, índice ou campo persistido está deixando
+> o atacante escolher o conteúdo **e o tamanho**. Passe por
+> `infra/http/client-ip.ts`, que valida e normaliza — e note que normalizar não
+> é opcional: substituir o `keyGenerator` do `@fastify/rate-limit` descarta o
+> agrupamento de IPv6 por /64 que ele aplicaria, e sem isso um único assinante
+> tem 2⁶⁴ endereços, logo baldes ilimitados.
+
 > **`trustProxy` com número é inoperante — e parece configurado.** Medido no
 > Fastify 5.12.1: `trustProxy: 1` constrói sem erro e **nunca confia em
 > ninguém**, porque o `lib/request.js` devolve `() => false` para qualquer
