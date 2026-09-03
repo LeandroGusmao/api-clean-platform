@@ -883,15 +883,21 @@ estender outra, o mapa começa a depender da ordem das linhas.
 apertado contra um banco já em contenção é pior que não repetir. Nenhuma das
 outras leva o header — repetir um 409 não o resolve.
 
+O `429` também responde com `Retry-After`, mas ele **não vem da taxonomia**:
+quem o define é o próprio limitador, com os segundos que de fato faltam para a
+janela virar. O handler não acrescenta nenhum — sobrescrever uma medida por um
+palpite seria pior que não ter o header.
+
 O use case só faz `throw`; o endpoint não tem `try/catch`.
 
-### As quatro coisas que não são da taxonomia
+### As cinco coisas que não são da taxonomia
 
 | origem | resposta | por quê |
 |---|---|---|
 | validação do Fastify/Zod | 400 `VALIDATION_ERROR` + `details[]` | chega como `Error` com `FST_ERR_VALIDATION`, não como `ValidationError` — sem esse ramo, todo payload inválido daria 500 |
 | 4xx do próprio Fastify (415, 413…) | status preservado, `code` `BAD_REQUEST` | 4xx é culpa do cliente; virar 500 encheria o log de erro interno falso |
 | rota inexistente | 404 `ROUTE_NOT_FOUND` | sem `setNotFoundHandler` o 404 sai no formato do Fastify e fura o envelope |
+| `429` do rate limiting | status preservado, `code` `TOO_MANY_REQUESTS` + `Retry-After` | o plugin lança um `Error` com `statusCode`; sem ramo próprio cairia no 4xx genérico e publicaria `BAD_REQUEST` — instrução oposta à que o cliente precisa. **Não é categoria nova**: nasce no transporte, e a taxonomia continua com sete |
 | qualquer outra coisa | 500 `INTERNAL_SERVER_ERROR` | corpo genérico, **sem stack e sem mensagem de driver**; o log registra tudo |
 
 Um `AppError` que estenda a base **fora** das seis categorias também cai no

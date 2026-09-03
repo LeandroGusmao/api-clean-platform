@@ -18,6 +18,7 @@ import {
   INTERNAL_SERVER_ERROR_MESSAGE,
   ROUTE_NOT_FOUND_CODE,
   ROUTE_NOT_FOUND_MESSAGE,
+  TOO_MANY_REQUESTS_CODE,
   VALIDATION_ERROR_CODE,
   VALIDATION_ERROR_MESSAGE,
 } from './error-response.js'
@@ -29,6 +30,7 @@ const FORBIDDEN_STATUS = 403
 const NOT_FOUND_STATUS = 404
 const CONFLICT_STATUS = 409
 const UNPROCESSABLE_ENTITY_STATUS = 422
+const TOO_MANY_REQUESTS_STATUS = 429
 const SERVICE_UNAVAILABLE_STATUS = 503
 const INTERNAL_SERVER_ERROR_STATUS = 500
 
@@ -144,6 +146,21 @@ function handleError(error: FastifyError, request: FastifyRequest, reply: Fastif
     }
     // An AppError outside the taxonomy is a programming mistake, not a client
     // problem: it falls through to the generic branch rather than guessing.
+  }
+
+  // Must precede the generic 4xx branch, which would flatten this into
+  // BAD_REQUEST — and "your request has a defect" is the opposite instruction
+  // from "you sent too much, come back later". Keyed on the status rather than
+  // on the rate limiter's error, so the library's name never becomes public
+  // contract: the same reasoning that keeps FST_ERR_* out of the envelope.
+  //
+  // No `Retry-After` is set here. The limiter already put one on the reply
+  // before throwing, carrying the seconds that actually remain in the window,
+  // and it survives — a second one would overwrite a measurement with a guess.
+  if (isClientError(error) && error.statusCode === TOO_MANY_REQUESTS_STATUS) {
+    return reply
+      .status(TOO_MANY_REQUESTS_STATUS)
+      .send(buildErrorResponse(TOO_MANY_REQUESTS_CODE, error.message, traceId))
   }
 
   if (isClientError(error)) {
