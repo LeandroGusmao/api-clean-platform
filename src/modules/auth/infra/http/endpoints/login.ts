@@ -9,6 +9,7 @@ import {
   EXAMPLE_EMAIL,
   EXAMPLE_PASSWORD,
   OK_STATUS,
+  TOO_MANY_REQUESTS_STATUS,
   UNAUTHORIZED_STATUS,
 } from '#modules/auth/infra/http/constants'
 import {
@@ -74,6 +75,13 @@ export const loginRoute: FastifyPluginAsync<{ container: AuthContainer }> = asyn
   app.withTypeProvider<ZodTypeProvider>().post(
     LOGIN_PATH,
     {
+      /**
+       * Tighter than the global ceiling: this is the one endpoint where a
+       * request carries a password guess. It counts requests and not failures,
+       * so a legitimate user retrying a typo spends the same budget — which is
+       * why the number sits far above human retry.
+       */
+      config: { rateLimit: container.loginRateLimit },
       schema: {
         tags: [AUTH_TAG],
         summary: LOGIN_SUMMARY,
@@ -83,6 +91,7 @@ export const loginRoute: FastifyPluginAsync<{ container: AuthContainer }> = asyn
           [OK_STATUS]: okSchema,
           [BAD_REQUEST_STATUS]: errorResponseSchema,
           [UNAUTHORIZED_STATUS]: errorResponseSchema,
+          [TOO_MANY_REQUESTS_STATUS]: errorResponseSchema,
         },
       },
     },

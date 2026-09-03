@@ -92,6 +92,16 @@ export function makeAuthContainer(
      */
     refreshTokenTtlSeconds: config.REFRESH_TOKEN_TTL_SECONDS,
     /**
+     * The login route declares its own ceiling, so the endpoint needs the
+     * numbers. Milliseconds here because that is what the limiter's
+     * `timeWindow` takes, and converting once keeps arithmetic out of the
+     * endpoint.
+     */
+    loginRateLimit: {
+      max: config.LOGIN_RATE_LIMIT_MAX_REQUESTS,
+      timeWindow: config.LOGIN_RATE_LIMIT_WINDOW_SECONDS * MILLISECONDS_PER_SECOND,
+    },
+    /**
      * Still published, and now it has consumers: the rotation and both logouts
      * open their transaction through it. `tests/integration/unit-of-work.spec.ts`
      * also reaches for it directly to exercise the primitive on its own.
