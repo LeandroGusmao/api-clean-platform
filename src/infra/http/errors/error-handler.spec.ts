@@ -62,6 +62,8 @@ const CONTENT_TYPE_HEADER = 'content-type'
 const UNSUPPORTED_PAYLOAD = '<request/>'
 const UNSUPPORTED_MEDIA_TYPE_STATUS = 415
 const SERVICE_UNAVAILABLE_STATUS = 503
+const TOO_MANY_REQUESTS_STATUS = 429
+const TOO_MANY_REQUESTS_CODE = 'TOO_MANY_REQUESTS'
 const RETRY_AFTER_HEADER = 'retry-after'
 const RETRY_AFTER_SECONDS = 1
 const OK_STATUS = 200
@@ -463,5 +465,52 @@ describe('validation vocabulary', () => {
       'meta.a': 'INVALID_TYPE',
       [ROOT_FIELD]: 'UNRECOGNIZED_KEYS',
     })
+  })
+})
+
+describe('error handler — rate limiting', () => {
+  const RATE_LIMIT_MESSAGE = 'Rate limit exceeded, retry in 1 minute'
+
+  /**
+   * Shaped like what `@fastify/rate-limit` throws: a plain `Error` carrying
+   * `statusCode` and no `code` of its own (measured on 11.2.0). Built here
+   * rather than imported, so this suite never needs the plugin to run.
+   */
+  const rateLimitError = () => {
+    const error = new Error(RATE_LIMIT_MESSAGE)
+    Object.assign(error, { statusCode: TOO_MANY_REQUESTS_STATUS })
+
+    return error
+  }
+
+  // Without a branch of its own it lands in the generic 4xx path and publishes
+  // BAD_REQUEST — "you sent something wrong" instead of "you sent too much,
+  // come back later", which are opposite instructions to a client.
+  it('publishes TOO_MANY_REQUESTS rather than BAD_REQUEST', async () => {
+    const result = await injectThrow(rateLimitError())
+
+    expect(result.statusCode).toBe(TOO_MANY_REQUESTS_STATUS)
+    expect(result.json()).toEqual({
+      error: {
+        code: TOO_MANY_REQUESTS_CODE,
+        message: RATE_LIMIT_MESSAGE,
+        traceId: expect.stringMatching(UUID_PATTERN),
+      },
+    })
+  })
+
+  it('produces a body that satisfies the published error schema', async () => {
+    const result = await injectThrow(rateLimitError())
+
+    expect(errorResponseSchema.safeParse(result.json()).success).toBe(true)
+  })
+
+  // The handler adds none: the plugin already put one on the reply before
+  // throwing, carrying the seconds that actually remain in the window. A second
+  // one here would overwrite a real value with a guess.
+  it('leaves the Retry-After the limiter itself measured', async () => {
+    const result = await injectThrow(rateLimitError())
+
+    expect(result.headers[RETRY_AFTER_HEADER]).toBeUndefined()
   })
 })

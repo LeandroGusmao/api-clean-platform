@@ -1720,14 +1720,35 @@ bloqueavam (lint de fronteira, build e path alias, mappers) viraram as decisões
   `#modules/*` e nenhum módulo importa `auth` para se proteger. A exceção
   declarada no lint que a auditoria de 2026-08-20 previu não é necessária.
   Desenho em [`specs/2026-08-27-login-design.md`](superpowers/specs/2026-08-27-login-design.md) §4.3.
-- **Rate limiting e proteção contra brute force** no endpoint de login. Levantado
-  pela auditoria: para um boilerplate cujo primeiro corte é auth, é branco
-  arquitetural, não wishlist. `@fastify/rate-limit` existe, mas a política
-  (janela, escopo por IP ou por conta, resposta) não foi definida.
-  **Política proposta** pela spec do login (§14.3): escopo pelo par **IP +
-  e-mail** — só IP pune NAT corporativo, só e-mail permite ataque distribuído;
-  resposta `429` no envelope do projeto; store em memória agora, Redis quando
-  existir, sem mexer em call site.
+- ~~**Rate limiting e proteção contra brute force**~~ — **RESOLVIDA em
+  2026-09-02.** Entrou teto por endereço com `@fastify/rate-limit` (global de
+  300/min, e 10/min no login), `TRUST_PROXY` explícito e `clientIpKey`. Resposta
+  `429` no envelope, com `code` próprio e **sem oitava categoria** na taxonomia:
+  o 429 nasce no transporte, então mora junto do 4xx do Fastify (decisão 13).
+
+  **A contagem de falha de autenticação NÃO entrou, e isso é decisão.** Só a
+  aplicação sabe que a senha estava errada, mas implementá-la exigiria porta de
+  store, política de dois baldes na camada pura, teto de memória com política de
+  despejo e um caminho próprio para Redis — para reimplementar, pior, o que a
+  borda já faz na metade grossa do problema. Fica delegada à borda
+  (Cloudflare/WAF/ALB) e ao custo do argon2, medido em 7,3 ms e 19 MB por
+  tentativa.
+
+  **O que a escolha custa, dito claramente:** uma conta de e-mail conhecido e
+  senha fraca pode ser quebrada por uma botnet paciente — cada IP gasta 10/min,
+  e mil IPs somam dez mil tentativas por minuto — e **nada no servidor vai
+  notar**. A proteção de borda também só vale para o tráfego que passa por ela:
+  se o IP de origem for alcançável direto, o atacante pula tudo.
+
+  **Gatilho para reabrir:** o primeiro app derivado que trate dado sensível
+  (saúde, financeiro), ou o primeiro incidente de conta comprometida por força
+  bruta.
+
+  A política do par IP + e-mail proposta pela spec do login §14.3 foi analisada
+  e **descartada com ela**: o par sozinho não detém ataque distribuído (mil IPs
+  são mil baldes), e o balde por e-mail que o deteria é vetor de DoS contra a
+  vítima. Desenho e alternativas recusadas em
+  [`specs/2026-09-02-rate-limiting-design.md`](superpowers/specs/2026-09-02-rate-limiting-design.md).
 - **RBAC / permissões** — **acoplada à decisão 11**: se roles forem para dentro
   do JWT, mudança de permissão só vale no próximo refresh (janela de 1h).
 - ~~**A janela de graça permite bifurcar uma família sem detecção.**~~

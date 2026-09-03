@@ -5,6 +5,7 @@ import { createDatabase } from '#infra/database/client'
 import { makeAuthGuard } from '#infra/http/auth-guard'
 import { healthRoute } from '#infra/http/endpoints/health'
 import { registerOpenApi } from '#infra/http/openapi'
+import { registerRateLimit } from '#infra/http/rate-limit'
 import { type BuildServerOptions, buildServer } from '#infra/http/server'
 import { createLogger } from '#infra/observability/logger'
 import { authRoutes } from '#modules/auth/infra/http/routes'
@@ -41,6 +42,11 @@ export async function buildApp(
   // after the routes, because it decorates the request rather than hooking
   // `onRoute` — but it belongs with the rest of the global setup.
   await app.register(fastifyCookie)
+
+  // Before any route, because the ceiling has to cover everything registered
+  // after it. It counts requests and not failed logins — that half is the
+  // edge's job, deliberately (see the slice's design §10.1).
+  await registerRateLimit(app, env)
 
   // Must come before any route: `@fastify/swagger` only documents what is
   // registered after it.

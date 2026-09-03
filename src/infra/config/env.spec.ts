@@ -8,11 +8,15 @@ import {
   DEFAULT_HOST,
   DEFAULT_LOG_LEVEL,
   DEFAULT_PORT,
+  DEFAULT_RATE_LIMIT_MAX_REQUESTS,
+  DEFAULT_RATE_LIMIT_WINDOW_SECONDS,
   NODE_ENV_DEVELOPMENT,
   parseEnv,
 } from '#infra/config/env'
 import {
   DEFAULT_ACCESS_TOKEN_TTL_SECONDS,
+  DEFAULT_LOGIN_RATE_LIMIT_MAX_REQUESTS,
+  DEFAULT_LOGIN_RATE_LIMIT_WINDOW_SECONDS,
   DEFAULT_REFRESH_TOKEN_GRACE_WINDOW_SECONDS,
   DEFAULT_REFRESH_TOKEN_TTL_SECONDS,
 } from '#modules/auth/config'
@@ -54,14 +58,19 @@ describe('parseEnv', () => {
     expect(result.success).toBe(true)
     expect(result.data).toEqual({
       NODE_ENV: NODE_ENV_DEVELOPMENT,
+      TRUST_PROXY: false,
       HOST: DEFAULT_HOST,
       PORT: DEFAULT_PORT,
       LOG_LEVEL: DEFAULT_LOG_LEVEL,
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      RATE_LIMIT_MAX_REQUESTS: DEFAULT_RATE_LIMIT_MAX_REQUESTS,
+      RATE_LIMIT_WINDOW_SECONDS: DEFAULT_RATE_LIMIT_WINDOW_SECONDS,
       ACCESS_TOKEN_TTL_SECONDS: DEFAULT_ACCESS_TOKEN_TTL_SECONDS,
       REFRESH_TOKEN_TTL_SECONDS: DEFAULT_REFRESH_TOKEN_TTL_SECONDS,
       REFRESH_TOKEN_GRACE_WINDOW_SECONDS: DEFAULT_REFRESH_TOKEN_GRACE_WINDOW_SECONDS,
+      LOGIN_RATE_LIMIT_MAX_REQUESTS: DEFAULT_LOGIN_RATE_LIMIT_MAX_REQUESTS,
+      LOGIN_RATE_LIMIT_WINDOW_SECONDS: DEFAULT_LOGIN_RATE_LIMIT_WINDOW_SECONDS,
       DATABASE_POOL_MAX: DEFAULT_DATABASE_POOL_MAX,
       DATABASE_CONNECTION_TIMEOUT_MS: DEFAULT_DATABASE_CONNECTION_TIMEOUT_MS,
       DATABASE_STATEMENT_TIMEOUT_MS: DEFAULT_DATABASE_STATEMENT_TIMEOUT_MS,
@@ -122,5 +131,59 @@ describe('parseEnv', () => {
     })
 
     expect(result.success).toBe(false)
+  })
+
+  // `true` trusts the LEFTMOST X-Forwarded-For entry, which the client writes:
+  // anyone could forge a fresh address per request and walk past every limit
+  // keyed on the client address.
+  it('refuses TRUST_PROXY=true, which trusts a client-written header', () => {
+    const result = parseEnv({
+      DATABASE_URL: VALID_DATABASE_URL,
+      JWT_SECRET: VALID_JWT_SECRET,
+      TRUST_PROXY: 'true',
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  // Measured on Fastify 5.12.1: a numeric trustProxy is fail-closed and never
+  // trusts anyone, so accepting it would publish a knob that looks configured
+  // and does nothing. It is also the value every tutorial shows.
+  it('refuses a hop count, which Fastify accepts and then ignores', () => {
+    const result = parseEnv({
+      DATABASE_URL: VALID_DATABASE_URL,
+      JWT_SECRET: VALID_JWT_SECRET,
+      TRUST_PROXY: '1',
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  // Absent, empty and zero are one behaviour, and it is the safe one: behind a
+  // proxy without configuration the limiter over-blocks, which is noisy and
+  // found within the hour. The opposite failure is silent.
+  it.each([undefined, '', '0', '00'])(
+    'treats %o as trusting no proxy at all',
+    (value) => {
+      const result = parseEnv({
+        DATABASE_URL: VALID_DATABASE_URL,
+        JWT_SECRET: VALID_JWT_SECRET,
+        ...(value === undefined ? {} : { TRUST_PROXY: value }),
+      })
+
+      expect(result.success).toBe(true)
+      expect(result.data?.TRUST_PROXY).toBe(false)
+    },
+  )
+
+  it('keeps a trusted network list as the string Fastify parses', () => {
+    const result = parseEnv({
+      DATABASE_URL: VALID_DATABASE_URL,
+      JWT_SECRET: VALID_JWT_SECRET,
+      TRUST_PROXY: ' 10.0.0.0/8,loopback ',
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.data?.TRUST_PROXY).toBe('10.0.0.0/8,loopback')
   })
 })

@@ -4,6 +4,7 @@ export const VALIDATION_ERROR_CODE = 'VALIDATION_ERROR'
 export const VALIDATION_ERROR_MESSAGE = 'Invalid payload'
 
 export const BAD_REQUEST_CODE = 'BAD_REQUEST'
+export const TOO_MANY_REQUESTS_CODE = 'TOO_MANY_REQUESTS'
 export const ROUTE_NOT_FOUND_CODE = 'ROUTE_NOT_FOUND'
 export const ROUTE_NOT_FOUND_MESSAGE = 'Route not found'
 

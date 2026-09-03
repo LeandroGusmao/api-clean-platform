@@ -47,6 +47,10 @@ src/
 │   │   ├── server.ts               # instância Fastify, SEM rotas
 │   │   ├── server.spec.ts          # unitário colocado
 │   │   ├── auth-guard.ts           # preHandler genérico; verificador injetado, sem import de #modules/*
+│   │   ├── client-ip.ts            # request.ip -> chave validada e normalizada
+│   │   ├── client-ip.spec.ts
+│   │   ├── rate-limit.ts           # teto por endereço; rota isenta com config.rateLimit
+│   │   ├── rate-limit.spec.ts
 │   │   ├── openapi.ts              # OpenAPI + UI dos docs (só em development)
 │   │   ├── errors/                 # o contrato de erro; os três mudam juntos
 │   │   │   ├── error-handler.ts    # ÚNICO lugar que traduz erro em status HTTP
@@ -883,15 +887,21 @@ estender outra, o mapa começa a depender da ordem das linhas.
 apertado contra um banco já em contenção é pior que não repetir. Nenhuma das
 outras leva o header — repetir um 409 não o resolve.
 
+O `429` também responde com `Retry-After`, mas ele **não vem da taxonomia**:
+quem o define é o próprio limitador, com os segundos que de fato faltam para a
+janela virar. O handler não acrescenta nenhum — sobrescrever uma medida por um
+palpite seria pior que não ter o header.
+
 O use case só faz `throw`; o endpoint não tem `try/catch`.
 
-### As quatro coisas que não são da taxonomia
+### As cinco coisas que não são da taxonomia
 
 | origem | resposta | por quê |
 |---|---|---|
 | validação do Fastify/Zod | 400 `VALIDATION_ERROR` + `details[]` | chega como `Error` com `FST_ERR_VALIDATION`, não como `ValidationError` — sem esse ramo, todo payload inválido daria 500 |
 | 4xx do próprio Fastify (415, 413…) | status preservado, `code` `BAD_REQUEST` | 4xx é culpa do cliente; virar 500 encheria o log de erro interno falso |
 | rota inexistente | 404 `ROUTE_NOT_FOUND` | sem `setNotFoundHandler` o 404 sai no formato do Fastify e fura o envelope |
+| `429` do rate limiting | status preservado, `code` `TOO_MANY_REQUESTS` + `Retry-After` | o plugin lança um `Error` com `statusCode`; sem ramo próprio cairia no 4xx genérico e publicaria `BAD_REQUEST` — instrução oposta à que o cliente precisa. **Não é categoria nova**: nasce no transporte, e a taxonomia continua com sete |
 | qualquer outra coisa | 500 `INTERNAL_SERVER_ERROR` | corpo genérico, **sem stack e sem mensagem de driver**; o log registra tudo |
 
 Um `AppError` que estenda a base **fora** das seis categorias também cai no
@@ -1151,6 +1161,34 @@ outra coisa.**
 > overload e reporta o retorno como `void & Promise<Response> & Chain`, de modo
 > que o erro aparece como *"statusCode does not exist"*. Espalhe
 > condicionalmente em vez de repassar.
+
+> **`request.ip` não é um endereço IP.** Medido no Fastify 5.12.1: quando o peer
+> é confiado, ele devolve **o último token do `X-Forwarded-For` sem validação
+> nenhuma** — `naoehip`, `1.2.3.4a`, `999.999.999.999`,
+> `<script>alert(1)</script>` e uma string de 200 caracteres saíram todas
+> intactas. `typeof` é sempre `string`, nada lança, e no laptop o valor parece
+> perfeito. Quem usar isso como chave, índice ou campo persistido está deixando
+> o atacante escolher o conteúdo **e o tamanho**. Passe por
+> `infra/http/client-ip.ts`, que valida e normaliza — e note que normalizar não
+> é opcional: substituir o `keyGenerator` do `@fastify/rate-limit` descarta o
+> agrupamento de IPv6 por /64 que ele aplicaria, e sem isso um único assinante
+> tem 2⁶⁴ endereços, logo baldes ilimitados.
+
+> **`trustProxy` com número é inoperante — e parece configurado.** Medido no
+> Fastify 5.12.1: `trustProxy: 1` constrói sem erro e **nunca confia em
+> ninguém**, porque o `lib/request.js` devolve `() => false` para qualquer
+> número (*"hop-count-only trust cannot validate the immediate peer"*).
+> `request.ip` fica preso no `remoteAddress`, e atrás de um load balancer isso
+> significa que todo cliente compartilha um endereço — um limite por IP botaria
+> o mundo inteiro num balde só. É justamente o valor que todo tutorial mostra.
+> Por isso `TRUST_PROXY` **recusa número no boot** e só aceita lista de redes.
+>
+> No mesmo assunto: uma lista com CIDR inválido morre na **construção** da
+> instância — inclusive quando só um item da lista é inválido, não há aceitação
+> parcial —, mas como um `TypeError` **cru** do `@fastify/proxy-addr`, com
+> `message: "invalid IP address: <token>"` e **`code: undefined`**. Não é
+> `FST_*` e não sai no formato de erro de env do projeto: se o boot morrer com
+> um `TypeError` sem contexto nenhum, é isto.
 
 > **`loggerInstance` do Fastify especializa o genérico da instância.** Passar um
 > `pino.Logger` faz o `FastifyInstance` devolvido carregar aquele tipo de logger,

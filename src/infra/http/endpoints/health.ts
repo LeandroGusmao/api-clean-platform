@@ -31,6 +31,18 @@ export const healthRoute: FastifyPluginAsync<{ db: Database }> = async (app, { d
   app.withTypeProvider<ZodTypeProvider>().get(
     HEALTH_CHECK_PATH,
     {
+      /**
+       * Never rate limited, and this is correctness rather than convenience: a
+       * liveness probe that takes a 429 makes the orchestrator kill the pod, so
+       * the limiter would take down the application it exists to protect.
+       *
+       * Declared on the route rather than in the limiter's `allowList` for two
+       * measured reasons: `allowList` compares against the generated KEY and
+       * never against the path, so a list of paths exempts nothing while
+       * looking correct; and an exemption matching a path by string would break
+       * in silence the day this route is renamed.
+       */
+      config: { rateLimit: false },
       schema: {
         tags: [HEALTH_TAG],
         summary: HEALTH_SUMMARY,

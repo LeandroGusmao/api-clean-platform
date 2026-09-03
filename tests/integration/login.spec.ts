@@ -36,12 +36,28 @@ const NO_COOKIES = 0
 
 const ROW_MISSING_MESSAGE = 'no user row was stored'
 
+const TOO_MANY_REQUESTS_STATUS_CODE = 429
+const TOO_MANY_REQUESTS_CODE = 'TOO_MANY_REQUESTS'
+const RETRY_AFTER_HEADER = 'retry-after'
+
+/**
+ * This suite spends far more login attempts than any human would, all from the
+ * one address `app.inject` arrives from. The shipped default stays untouched:
+ * the single case that exercises the ceiling builds its own app with its own.
+ */
+const CEILING_ABOVE_WHAT_THIS_SUITE_SPENDS = 1000
+/** Small on purpose: the case asserts the behaviour, not the shipped number. */
+const CEILING_UNDER_TEST = 3
+
 let app: FastifyInstance
 let db: Database
 let pool: Pool
 
 beforeAll(async () => {
-  app = await buildApp(env)
+  app = await buildApp({
+    ...env,
+    LOGIN_RATE_LIMIT_MAX_REQUESTS: CEILING_ABOVE_WHAT_THIS_SUITE_SPENDS,
+  })
   await app.ready()
   ;({ db, pool } = createDatabase(env))
 })
@@ -204,5 +220,37 @@ describe('POST /auth/login', () => {
     const response = await login({ email: EMAIL, password: 'short' })
 
     expect(response.statusCode).toBe(UNAUTHORIZED_STATUS_CODE)
+  })
+
+  it('answers 429 in the envelope once the login ceiling is passed', async () => {
+    const throttled = await buildApp({
+      ...env,
+      LOGIN_RATE_LIMIT_MAX_REQUESTS: CEILING_UNDER_TEST,
+    })
+    const attempt = () =>
+      throttled.inject({
+        method: POST_METHOD,
+        url: LOGIN_PATH,
+        payload: { email: EMAIL, password: WRONG_PASSWORD },
+      })
+
+    try {
+      let last = await attempt()
+
+      // One past the ceiling. Every attempt here is a wrong password, so the
+      // limiter is counting REQUESTS and not failures — which is the whole
+      // shape of this decision.
+      for (let sent = 0; sent < CEILING_UNDER_TEST; sent++) {
+        last = await attempt()
+      }
+
+      expect(last.statusCode).toBe(TOO_MANY_REQUESTS_STATUS_CODE)
+      expect(last.json().error.code).toBe(TOO_MANY_REQUESTS_CODE)
+      expect(last.json().error.traceId).toEqual(expect.any(String))
+      expect(last.headers[RETRY_AFTER_HEADER]).toBeDefined()
+    } finally {
+      // Ends this app's database pool too, through the onClose hook in app.ts.
+      await throttled.close()
+    }
   })
 })

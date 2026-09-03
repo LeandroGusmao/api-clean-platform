@@ -9,6 +9,7 @@ import {
   BAD_REQUEST_STATUS,
   NO_CONTENT_STATUS,
   SERVICE_UNAVAILABLE_STATUS,
+  TOO_MANY_REQUESTS_STATUS,
   UNAUTHORIZED_STATUS,
 } from '#modules/auth/infra/http/constants'
 import {
@@ -50,6 +51,7 @@ export const logoutRoute: FastifyPluginAsync<{ container: AuthContainer }> = asy
           [BAD_REQUEST_STATUS]: errorResponseSchema,
           [UNAUTHORIZED_STATUS]: errorResponseSchema,
           [SERVICE_UNAVAILABLE_STATUS]: errorResponseSchema,
+          [TOO_MANY_REQUESTS_STATUS]: errorResponseSchema,
         },
       },
     },

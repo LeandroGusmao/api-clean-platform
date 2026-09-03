@@ -7,7 +7,7 @@ import { SystemClock } from '#infra/providers/system-clock'
 import { UuidIdGenerator } from '#infra/providers/uuid-id-generator'
 import type { AuthConfig } from './config.js'
 
-/** The grace window is configured in seconds; the entity compares milliseconds. */
+/** Windows are configured in seconds; the entity and the rate limiter take milliseconds. */
 const MILLISECONDS_PER_SECOND = 1000
 
 import { authRepositories } from './infra/drizzle/auth-repositories.js'
@@ -91,6 +91,16 @@ export function makeAuthContainer(
      * cannot drift apart.
      */
     refreshTokenTtlSeconds: config.REFRESH_TOKEN_TTL_SECONDS,
+    /**
+     * The login route declares its own ceiling, so the endpoint needs the
+     * numbers. Milliseconds here because that is what the limiter's
+     * `timeWindow` takes, and converting once keeps arithmetic out of the
+     * endpoint.
+     */
+    loginRateLimit: {
+      max: config.LOGIN_RATE_LIMIT_MAX_REQUESTS,
+      timeWindow: config.LOGIN_RATE_LIMIT_WINDOW_SECONDS * MILLISECONDS_PER_SECOND,
+    },
     /**
      * Still published, and now it has consumers: the rotation and both logouts
      * open their transaction through it. `tests/integration/unit-of-work.spec.ts`
