@@ -18,6 +18,10 @@ const DOWN_BODY = { status: 'error', database: 'down' }
 // failure rather than a stubbed one.
 const UNREACHABLE_DATABASE_URL = 'postgres://user:pass@127.0.0.1:1/nowhere'
 
+/** Low enough that a probe polling every few seconds would trip it at once. */
+const CEILING_A_PROBE_WOULD_TRIP = 2
+const PROBES_SENT = CEILING_A_PROBE_WOULD_TRIP * 3
+
 /** Keeps the expected error log off the suite output. */
 const silentStream = new Writable({
   write(_chunk, _encoding, callback) {
@@ -54,5 +58,32 @@ describe('GET /health', () => {
 
     expect(response.statusCode).toBe(SERVICE_UNAVAILABLE_STATUS_CODE)
     expect(response.json()).toEqual(DOWN_BODY)
+  })
+
+  /**
+   * The rate limiter must never reach this route. A liveness probe polls it
+   * every few seconds from ONE address — the orchestrator's — so under any
+   * realistic ceiling it would start taking 429s, and the orchestrator would
+   * kill the pod. The limiter would take down the application it protects.
+   *
+   * `rate-limit.spec.ts` proves the opt-out MECHANISM works. This proves this
+   * route actually uses it, which is a different claim: the measured trap is
+   * that `allowList` looks like the way to do it and exempts nothing.
+   */
+  it('is never rate limited, however low the ceiling', async () => {
+    const app = await buildApp(
+      { ...env, RATE_LIMIT_MAX_REQUESTS: CEILING_A_PROBE_WOULD_TRIP },
+      { logStream: silentStream },
+    )
+
+    try {
+      for (let probe = 0; probe < PROBES_SENT; probe++) {
+        const response = await app.inject({ method: GET_METHOD, url: HEALTH_PATH })
+
+        expect(response.statusCode).toBe(OK_STATUS_CODE)
+      }
+    } finally {
+      await app.close()
+    }
   })
 })
