@@ -14,6 +14,7 @@ import { authRepositories } from './infra/drizzle/auth-repositories.js'
 import { Argon2HashProvider } from './infra/providers/argon2-hash-provider.js'
 import { JwtTokenSigner } from './infra/providers/jwt-token-signer.js'
 import { RefreshTokenIssuer } from './services/refresh-token-issuer.js'
+import { ChangePasswordUseCase } from './use-cases/change-password.js'
 import { GetUserProfileUseCase } from './use-cases/get-user-profile.js'
 import { LoginUserUseCase } from './use-cases/login-user.js'
 import { LogoutUseCase } from './use-cases/logout.js'
@@ -79,6 +80,20 @@ export function makeAuthContainer(
     logout: new LogoutUseCase(uow, tokenDigest, clock),
     logoutAll: new LogoutAllUseCase(uow, clock),
     /**
+     * Takes the users repository AND the unit of work. §9 of the unit of work
+     * design permits that for a READ: the argon2 compare needs the stored hash,
+     * and argon2 may not run inside the transaction. Every write goes through
+     * the callback's `repos`.
+     */
+    changePassword: new ChangePasswordUseCase(
+      usersRepository,
+      uow,
+      hashProvider,
+      tokenSigner,
+      refreshTokenIssuer,
+      clock,
+    ),
+    /**
      * Not a use case: there is nothing to orchestrate. Decision 11 keeps the
      * database out of the authenticated path, so verification is signature
      * checking and nothing else. Published here so the composition root can
@@ -100,6 +115,15 @@ export function makeAuthContainer(
     loginRateLimit: {
       max: config.LOGIN_RATE_LIMIT_MAX_REQUESTS,
       timeWindow: config.LOGIN_RATE_LIMIT_WINDOW_SECONDS * MILLISECONDS_PER_SECOND,
+    },
+    /**
+     * The password change route declares its own ceiling, like login.
+     * Milliseconds because that is what the limiter's `timeWindow` takes.
+     */
+    passwordChangeRateLimit: {
+      max: config.PASSWORD_CHANGE_RATE_LIMIT_MAX_REQUESTS,
+      timeWindow:
+        config.PASSWORD_CHANGE_RATE_LIMIT_WINDOW_SECONDS * MILLISECONDS_PER_SECOND,
     },
     /**
      * Still published, and now it has consumers: the rotation and both logouts

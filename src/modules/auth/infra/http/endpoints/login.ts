@@ -51,9 +51,10 @@ const bodySchema = z.object({
     .max(MAX_PASSWORD_LENGTH)
     .meta({ examples: [EXAMPLE_PASSWORD] }),
   /**
-   * Which channel carries the refresh token back. `login` is the one endpoint
-   * with no incoming signal to tell a mobile client from a web one — every
-   * other one learns it from the request that arrived.
+   * Which channel carries the refresh token back. `login` and
+   * `change-password` are the two endpoints with no incoming signal to tell a
+   * mobile client from a web one — the others learn it from the request that
+   * arrived.
    */
   refreshTransport: refreshTransportSchema,
 })
@@ -66,10 +67,13 @@ export const loginRoute: FastifyPluginAsync<{ container: AuthContainer }> = asyn
     LOGIN_PATH,
     {
       /**
-       * Tighter than the global ceiling: this is the one endpoint where a
-       * request carries a password guess. It counts requests and not failures,
-       * so a legitimate user retrying a typo spends the same budget — which is
-       * why the number sits far above human retry.
+       * Tighter than the global ceiling, because a request here carries a
+       * password guess. It counts requests and not failures, so a legitimate
+       * user retrying a typo spends the same budget — which is why the number
+       * sits far above human retry.
+       *
+       * `change-password` carries one too, and declares its own ceiling with
+       * its own variables rather than borrowing these.
        */
       config: { rateLimit: container.loginRateLimit },
       schema: {
