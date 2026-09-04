@@ -101,23 +101,16 @@ function makeIssuer() {
 }
 
 describe('EmailVerificationIssuer', () => {
-  it('invalidates the previous code BEFORE persisting the new one', async () => {
+  it('invalidates the previous code BEFORE persisting the new one, and does NOT send while issuing', async () => {
     const { issuer, verifications, callLog } = makeIssuer()
 
     await issuer.issueFor(user, verifications, NOW)
 
-    expect(callLog).toEqual([INVALIDATE, SAVE])
-  })
-
-  it('does NOT send while issuing — the send is what it returns', async () => {
-    const { issuer, verifications, callLog } = makeIssuer()
-
-    await issuer.issueFor(user, verifications, NOW)
-
-    // `toEqual` on the FULL log, not `toContain(SEND)`: this single assertion
-    // kills three separate bugs — a deleted send, a send moved inside
-    // `issueFor` (which would append SEND here), and the two writes swapped —
-    // where `toContain` would catch none of them.
+    // `toEqual` on the FULL log, not `toContain`: this single assertion kills
+    // four separate bugs — a deleted send, a send moved inside `issueFor`
+    // (which would append SEND here), the two writes swapped, and a send
+    // happening before the caller ever calls the returned thunk — where a
+    // partial assertion would catch none of them.
     expect(callLog).toEqual([INVALIDATE, SAVE])
   })
 

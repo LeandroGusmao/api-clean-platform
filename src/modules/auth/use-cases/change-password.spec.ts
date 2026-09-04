@@ -244,9 +244,11 @@ describe('ChangePasswordUseCase', () => {
    * One equality kills three mutations at once: deleting a step, swapping two,
    * and moving either argon2 call inside the transaction (§8 of the unit of
    * work design — 15ms of CPU with a pooled connection, of ten, standing
-   * still).
+   * still) — plus the one guarantee this task adds: a rollback must never
+   * precede a send, which is what would break first if the notification moved
+   * INSIDE `this.uow(...)`.
    */
-  it('calls its collaborators in exactly this order', async () => {
+  it('notifies the owner AFTER the transaction commits', async () => {
     storeUser(CURRENT_HASH)
 
     await change()
@@ -266,29 +268,6 @@ describe('ChangePasswordUseCase', () => {
       SAVE_TOKEN_CALL,
       // COMMIT is pushed by the `uow` fake only once its callback resolves, and
       // the notification is the very next thing the use case does — §8.
-      COMMIT_CALL,
-      SEND_EMAIL_CALL,
-    ])
-  })
-
-  /**
-   * Same fixture as the test above, phrased around the one guarantee this task
-   * adds: a rollback must never precede a send, and this is what would break
-   * first if the notification moved INSIDE `this.uow(...)`. `toEqual` on the
-   * full log, not `indexOf`, for the reason documented above it.
-   */
-  it('notifies the owner AFTER the transaction commits', async () => {
-    storeUser(CURRENT_HASH)
-
-    await change()
-
-    expect(callLog).toEqual([
-      COMPARE_CALL,
-      HASH_CALL,
-      UOW_CALL,
-      UPDATE_CALL,
-      REVOKE_ALL_CALL,
-      SAVE_TOKEN_CALL,
       COMMIT_CALL,
       SEND_EMAIL_CALL,
     ])

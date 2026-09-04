@@ -137,7 +137,12 @@ export class RegisterUserUseCase {
     if (existing === null) return NO_DELIVERY
 
     if (existing.emailVerifiedAt !== null) {
-      return () => this.emailSender.send(accountAlreadyExistsEmail(email))
+      // `existing.email`, not the request's `email`: the two agree today only
+      // by accident. The lookup matched through Postgres `lower()`, while
+      // `Email.create` normalises with JavaScript's `toLowerCase()`, and the
+      // two can disagree on exotic codepoints (see the comment on
+      // `in-memory-users-repository.ts`). Mail the address that is stored.
+      return () => this.emailSender.send(accountAlreadyExistsEmail(existing.email))
     }
 
     const active = await this.emailVerifications.findActiveByUserId(existing.id)

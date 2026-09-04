@@ -1,12 +1,12 @@
 import { z } from 'zod'
 
 /**
- * What every endpoint that hands out a session answers with: `login`, `refresh`
- * and `change-password`.
+ * What every endpoint that hands out a session answers with: `login`,
+ * `refresh`, `change-password` and `confirm-email`.
  *
- * Extracted at the third copy. It is public contract, and three literal
- * duplicates of a contract drift — one of them gains a field, the others do
- * not, and nothing fails until a client notices.
+ * Extracted at the third copy. It is public contract, and duplicates of a
+ * contract drift — one of them gains a field, the others do not, and nothing
+ * fails until a client notices.
  *
  * `refreshToken` is absent in cookie mode. Optional rather than two separate
  * schemas because declaring a status makes the serializer VALIDATE the body

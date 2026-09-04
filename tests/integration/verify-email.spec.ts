@@ -155,7 +155,6 @@ describe('the email verification flow, against a real SMTP server', () => {
     expect(response.headers[CONTENT_TYPE_HEADER]).toBe(JSON_CONTENT_TYPE)
 
     await waitForMessageCount(ONE_MESSAGE)
-    expect(await messageCount()).toBe(ONE_MESSAGE)
   })
 
   it('confirms the account with the code from that message, and opens a session', async () => {

@@ -106,7 +106,7 @@ describe('POST /auth/register', () => {
     expect(response.body).toBe(NULL_BODY)
   })
 
-  it('answers byte-for-byte the same response for a brand-new address and one with an already verified account', async () => {
+  it('answers with the same status, body and content headers for a brand-new address and one with an already verified account', async () => {
     await registerVerifiedAccount(VERIFIED_EMAIL, PASSWORD)
 
     const brandNew = await register(NEW_EMAIL, PASSWORD)
