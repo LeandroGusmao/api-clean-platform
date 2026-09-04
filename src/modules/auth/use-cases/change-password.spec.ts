@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
+import {
+  BestEffortEmailSender,
+  type ErrorLogger,
+} from '#infra/providers/best-effort-email-sender'
 import { User } from '#modules/auth/entities/user'
 import { InvalidCurrentPasswordError } from '#modules/auth/errors/invalid-current-password-error'
 import { InvalidPasswordError } from '#modules/auth/errors/invalid-password-error'
@@ -6,6 +10,7 @@ import { PasswordUnchangedError } from '#modules/auth/errors/password-unchanged-
 import { UserNotFoundError } from '#modules/auth/errors/user-not-found-error'
 import { InMemoryRefreshTokensRepository } from '#modules/auth/infra/in-memory/in-memory-refresh-tokens-repository'
 import { InMemoryUsersRepository } from '#modules/auth/infra/in-memory/in-memory-users-repository'
+import { passwordChangedEmail } from '#modules/auth/notifications/verification-email'
 import type { IHashProvider } from '#modules/auth/ports/hash-provider'
 import type { ITokenSigner } from '#modules/auth/ports/token-signer'
 import type { AuthRepos, IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
@@ -13,6 +18,7 @@ import type { IUsersRepository } from '#modules/auth/repositories/users-reposito
 import { RefreshTokenIssuer } from '#modules/auth/services/refresh-token-issuer'
 import { ChangePasswordUseCase } from '#modules/auth/use-cases/change-password'
 import { Email } from '#modules/auth/value-objects/email'
+import type { EmailMessage, IEmailSender } from '#shared/ports/email-sender'
 
 const USER_ID = '3f2a1b4c-5d6e-4f70-8192-a3b4c5d6e7f8'
 const MISSING_USER_ID = '00000000-0000-4000-8000-000000000000'
@@ -49,11 +55,22 @@ const UOW_CALL = 'uow'
 const UPDATE_CALL = 'updatePasswordHash'
 const REVOKE_ALL_CALL = 'revokeAllForUser'
 const SAVE_TOKEN_CALL = 'saveToken'
+/** Pushed by the `uow` fake only when its callback RESOLVES — never on a rollback. */
+const COMMIT_CALL = 'commit'
+const SEND_EMAIL_CALL = 'sendEmail'
+
+const NOTIFICATION_FAILURE_MESSAGE = 'delivery unavailable'
+/** A logger double that discards everything: this test is about the use case's
+ *  return value, not about what the decorator logs — that is covered on its own
+ *  spec. */
+const silentLogger: ErrorLogger = { error: () => {} }
 
 let callLog: string[]
+let sentEmails: EmailMessage[]
 let usersRepository: InMemoryUsersRepository
 let refreshTokensRepository: InMemoryRefreshTokensRepository
 let useCase: ChangePasswordUseCase
+let emailSender: IEmailSender
 // Typed with the real signatures rather than a bare `ReturnType<typeof vi.fn>`,
 // which erases them: the erased form compiles at the declaration and then fails
 // where the spy is handed to a port, several lines away.
@@ -85,6 +102,7 @@ const issuedToken = () =>
 
 beforeEach(() => {
   callLog = []
+  sentEmails = []
   usersRepository = new InMemoryUsersRepository()
   refreshTokensRepository = new InMemoryRefreshTokensRepository()
 
@@ -143,9 +161,14 @@ beforeEach(() => {
       usersRepository.markEmailVerified(id, verifiedAt, updatedAt),
   }
 
-  uowSpy = vi.fn((work) => {
+  // Pushes COMMIT only once `work` has resolved — never on a rejection — which
+  // is what makes the ordering assertions below a statement about §8 rather
+  // than a fixed sequence that happens to be true today.
+  uowSpy = vi.fn(async (work) => {
     callLog.push(UOW_CALL)
-    return work(trackedRepos)
+    const result = await work(trackedRepos)
+    callLog.push(COMMIT_CALL)
+    return result
   })
 
   compareSpy = vi.fn(async (plain, hashed) => {
@@ -164,6 +187,13 @@ beforeEach(() => {
   // exactly what turns a wiring slip into an authorization bug.
   signSpy = vi.fn(async () => ACCESS_TOKEN)
 
+  emailSender = {
+    send: async (message) => {
+      callLog.push(SEND_EMAIL_CALL)
+      sentEmails.push(message)
+    },
+  }
+
   useCase = new ChangePasswordUseCase(
     readRepository,
     // Cast because `IAuthUnitOfWork` is generic in the callback's return type
@@ -179,6 +209,7 @@ beforeEach(() => {
       TTL_SECONDS,
     ),
     { now: () => NOW },
+    emailSender,
   )
 })
 
@@ -233,7 +264,80 @@ describe('ChangePasswordUseCase', () => {
       // answers 200 and the first refresh answers 401.
       REVOKE_ALL_CALL,
       SAVE_TOKEN_CALL,
+      // COMMIT is pushed by the `uow` fake only once its callback resolves, and
+      // the notification is the very next thing the use case does — §8.
+      COMMIT_CALL,
+      SEND_EMAIL_CALL,
     ])
+  })
+
+  /**
+   * Same fixture as the test above, phrased around the one guarantee this task
+   * adds: a rollback must never precede a send, and this is what would break
+   * first if the notification moved INSIDE `this.uow(...)`. `toEqual` on the
+   * full log, not `indexOf`, for the reason documented above it.
+   */
+  it('notifies the owner AFTER the transaction commits', async () => {
+    storeUser(CURRENT_HASH)
+
+    await change()
+
+    expect(callLog).toEqual([
+      COMPARE_CALL,
+      HASH_CALL,
+      UOW_CALL,
+      UPDATE_CALL,
+      REVOKE_ALL_CALL,
+      SAVE_TOKEN_CALL,
+      COMMIT_CALL,
+      SEND_EMAIL_CALL,
+    ])
+  })
+
+  it('notifies the owner with the password-changed email', async () => {
+    storeUser(CURRENT_HASH)
+
+    await change()
+
+    expect(sentEmails).toEqual([passwordChangedEmail(Email.fromTrusted(EMAIL))])
+  })
+
+  it('still returns a session when the notification cannot be delivered', async () => {
+    storeUser(CURRENT_HASH)
+
+    // The REAL policy, not a mock of it: a sender that always rejects, wrapped
+    // by the same decorator the composition root uses for this notification.
+    // If `execute` still throws with this wiring, the use case — not just the
+    // decorator in isolation — is what is broken.
+    const resilientUseCase = new ChangePasswordUseCase(
+      usersRepository,
+      uowSpy as unknown as IAuthUnitOfWork,
+      { hash: hashSpy, compare: compareSpy, dummyHash: DUMMY_HASH },
+      { sign: signSpy, verify: async () => ({ sub: USER_ID }) },
+      new RefreshTokenIssuer(
+        { opaque: () => OPAQUE_TOKEN, numericCode: () => NUMERIC_CODE },
+        { hash: (value: string) => `${DIGEST_PREFIX}${value}` },
+        { generate: () => GENERATED_ID },
+        TTL_SECONDS,
+      ),
+      { now: () => NOW },
+      new BestEffortEmailSender(
+        {
+          send: async () => {
+            throw new Error(NOTIFICATION_FAILURE_MESSAGE)
+          },
+        },
+        silentLogger,
+      ),
+    )
+
+    await expect(
+      resilientUseCase.execute({
+        userId: USER_ID,
+        currentPassword: CURRENT_PASSWORD,
+        newPassword: NEW_PASSWORD,
+      }),
+    ).resolves.toHaveProperty('accessToken')
   })
 
   it('leaves the new token alive after the revocation', async () => {
@@ -330,6 +434,7 @@ describe('ChangePasswordUseCase', () => {
         TTL_SECONDS,
       ),
       { now: advancingClock },
+      emailSender,
     )
     storeUser(CURRENT_HASH)
 

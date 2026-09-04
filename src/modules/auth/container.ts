@@ -2,6 +2,10 @@ import type { Env } from '#infra/config/env'
 import type { Database } from '#infra/database/client'
 import type { TransactionRunner } from '#infra/database/transaction-runner'
 import { createUnitOfWork } from '#infra/database/unit-of-work'
+import {
+  BestEffortEmailSender,
+  type ErrorLogger,
+} from '#infra/providers/best-effort-email-sender'
 import { RandomTokenGenerator } from '#infra/providers/random-token-generator'
 import { Sha256TokenDigest } from '#infra/providers/sha256-token-digest'
 import { SmtpEmailSender } from '#infra/providers/smtp-email-sender'
@@ -68,6 +72,7 @@ export function makeAuthContainer(
   db: Database,
   config: AuthContainerConfig,
   runner: TransactionRunner,
+  logger: ErrorLogger,
 ) {
   const {
     users: usersRepository,
@@ -108,6 +113,14 @@ export function makeAuthContainer(
     idGenerator,
     config.EMAIL_VERIFICATION_TTL_SECONDS,
   )
+  /**
+   * Wraps the bare sender for exactly one notification. A verification code
+   * must propagate its failure (the account is unusable without it, and a
+   * retry heals through the collision path); "your password was changed" must
+   * not, because the password has already changed and a 500 here would tell
+   * the owner the change failed while their old password no longer works.
+   */
+  const passwordChangedEmailSender = new BestEffortEmailSender(emailSender, logger)
 
   return {
     /**
@@ -159,6 +172,7 @@ export function makeAuthContainer(
       tokenSigner,
       refreshTokenIssuer,
       clock,
+      passwordChangedEmailSender,
     ),
     /**
      * Takes the users repository AND `emailVerifications.incrementAttempts`
