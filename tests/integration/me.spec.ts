@@ -24,10 +24,13 @@ const INVALID_ACCESS_TOKEN_CODE = 'INVALID_ACCESS_TOKEN'
 const USER_NOT_FOUND_CODE = 'USER_NOT_FOUND'
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
 
+const ROW_MISSING_MESSAGE = 'no user row was stored'
+
 let app: FastifyInstance
 let db: Database
 let pool: Pool
 let userId: string
+let verifiedAt: Date | null
 let accessToken: string
 
 beforeAll(async () => {
@@ -44,12 +47,24 @@ afterAll(async () => {
 beforeEach(async () => {
   await db.delete(users)
 
-  const registered = await app.inject({
+  await app.inject({
     method: POST_METHOD,
     url: REGISTER_PATH,
     payload: { email: EMAIL, password: PASSWORD },
   })
-  userId = registered.json().id
+  // `register` no longer answers the id (202, empty body) — read the row back
+  // instead. Marked verified directly at the row rather than through a real
+  // code: the real, SMTP-delivered confirm flow is `verify-email.spec.ts`'s
+  // job, and this file's own concern — `me` — only needs the account to
+  // already BE verified, since login now gates on it.
+  const [row] = await db
+    .update(users)
+    .set({ emailVerifiedAt: new Date() })
+    .where(eq(users.email, EMAIL))
+    .returning()
+  if (row === undefined) throw new Error(ROW_MISSING_MESSAGE)
+  userId = row.id
+  verifiedAt = row.emailVerifiedAt
 
   const loggedIn = await app.inject({
     method: POST_METHOD,
@@ -78,7 +93,11 @@ describe('GET /auth/me', () => {
     expect(response.json()).toEqual({
       id: userId,
       email: EMAIL,
-      emailVerifiedAt: null,
+      // Not `null` any more: login now gates on a verified email (Task 11), so
+      // every account this fixture logs in with has to be verified — the
+      // `emailVerifiedAt: null` this assertion pinned before that gate landed
+      // no longer describes a state `getMe` can actually be called from.
+      emailVerifiedAt: verifiedAt?.toISOString(),
       createdAt: expect.stringMatching(ISO_DATE_PATTERN),
     })
   })

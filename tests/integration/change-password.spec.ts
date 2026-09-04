@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -69,6 +70,12 @@ beforeAll(async () => {
     ...env,
     LOGIN_RATE_LIMIT_MAX_REQUESTS: CEILING_ABOVE_WHAT_THIS_SUITE_SPENDS,
     PASSWORD_CHANGE_RATE_LIMIT_MAX_REQUESTS: CEILING_ABOVE_WHAT_THIS_SUITE_SPENDS,
+    // `beforeEach` registers a fresh account for every case below, and
+    // register now carries its own ceiling (it sends mail). Left at the
+    // shipped default, this file's own test count runs past it long before
+    // the suite finishes, and a later case fails for a reason that has
+    // nothing to do with what it is testing — a 429 on the SETUP call.
+    REGISTER_RATE_LIMIT_MAX_REQUESTS: CEILING_ABOVE_WHAT_THIS_SUITE_SPENDS,
   })
   await app.ready()
   ;({ db, pool } = createDatabase(env))
@@ -87,6 +94,15 @@ beforeEach(async () => {
     url: REGISTER_PATH,
     payload: { email: EMAIL, password: PASSWORD },
   })
+  // Login now gates on a verified email, and every case here logs in before
+  // changing the password. Marked directly at the row rather than through a
+  // real code: the real, SMTP-delivered confirm flow is
+  // `verify-email.spec.ts`'s job, and this file's own concern — changing a
+  // password — only needs the account to already BE verified.
+  await db
+    .update(users)
+    .set({ emailVerifiedAt: new Date() })
+    .where(eq(users.email, EMAIL))
 })
 
 const login = (password: string = PASSWORD) =>

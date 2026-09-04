@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -52,6 +52,15 @@ beforeEach(async () => {
     url: REGISTER_PATH,
     payload: { email: EMAIL, password: PASSWORD },
   })
+  // Login now gates on a verified email, and every case here logs in first.
+  // Marked directly at the row rather than through a real code: the real,
+  // SMTP-delivered confirm flow is `verify-email.spec.ts`'s job, and this
+  // file's own concern — refresh rotation — only needs the account to already
+  // BE verified.
+  await db
+    .update(users)
+    .set({ emailVerifiedAt: new Date() })
+    .where(eq(users.email, EMAIL))
 })
 
 const login = (payload: object = {}) =>
