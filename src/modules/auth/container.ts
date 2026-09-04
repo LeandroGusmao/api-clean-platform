@@ -126,8 +126,8 @@ export function makeAuthContainer(
         config.PASSWORD_CHANGE_RATE_LIMIT_WINDOW_SECONDS * MILLISECONDS_PER_SECOND,
     },
     /**
-     * Still published, and now it has consumers: the rotation and both logouts
-     * open their transaction through it. `tests/integration/unit-of-work.spec.ts`
+     * Still published, and now it has consumers: the rotation, both logouts and
+     * the password change open their transaction through it. `tests/integration/unit-of-work.spec.ts`
      * also reaches for it directly to exercise the primitive on its own.
      */
     uow,

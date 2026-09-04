@@ -480,6 +480,14 @@ A regra do repositório é falsificar todo teste: escrever a mutação que ele
 deveria matar e confirmar que ele fica vermelho. A tabela abaixo é a lista de
 mutações, não uma lista de asserções.
 
+> **O que a falsificação encontrou, em 2026-09-03.** O teste *"senha nova fraca
+> ⇒ erro antes de tocar o repositório"* **sobreviveu** à sua própria mutação: ele
+> asseria apenas que argon2 e a transação não rodaram, o que continua verdadeiro
+> com `Password.create` movido para depois do `findById`. Ou seja, ele não
+> testava o próprio nome. Passou a espionar também a leitura. É exatamente o
+> defeito que o §6 do handoff descreve tendo acontecido na fatia 8, reaparecendo
+> num teste diferente.
+
 ### Unidade — `change-password.spec.ts`
 
 | Teste | Mutação que ele mata |
@@ -539,6 +547,22 @@ lido e não exercitado, e fica para quando houver demanda.
 ### 11.5 — A regra do §9 fica menos visível
 
 Ver §7. O sinal de alarme sai da assinatura e vai para o corpo.
+
+### 11.6 — O 400 chega antes do 401 num corpo malformado
+
+Encontrado **na execução**, não no desenho. `POST /auth/password` é a primeira
+rota protegida do projeto que também tem schema de corpo — `logout-all` não tem
+corpo e `me` é `GET` —, e o Fastify valida o corpo **antes** do `preHandler`.
+
+Consequência: um chamador sem credencial nenhuma, mandando `{}`, recebe `400`
+com os nomes dos campos, e o guard nunca executa. Com corpo válido ele recebe o
+`401` esperado, verificado contra o servidor real.
+
+Aceito: a forma da request é contrato publicado para os clientes desta própria
+API, não segredo. Não há correção declarativa — mover a validação para depois da
+autenticação significaria abrir mão do schema, que é o que produz o `details`
+por campo e o documento OpenAPI. Está fixado por teste para ser decisão
+registrada e não comportamento acidental.
 
 ## 12. Emendas de documentação
 

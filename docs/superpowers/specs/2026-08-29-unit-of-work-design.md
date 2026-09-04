@@ -532,10 +532,28 @@ await this.uow(async ({ refreshTokens }) => {
 
 Compila, passa com o fake passthrough, e quebra a atomicidade em produção.
 
-**Regra: use case que recebe o UoW não recebe repositório direto.** Ele acessa
-tudo pelo `repos` do callback. É invisível ao lint e ao compilador, então vive
-como regra escrita na porta e no `ARCHITECTURE.md` — e é mais um item na dívida
-que o §4 do `ARCHITECTURE.md` já registra.
+**Regra: use case que recebe o UoW não faz ESCRITA por repositório direto.**
+Ele escreve tudo pelo `repos` do callback. É invisível ao lint e ao compilador,
+então vive como regra escrita na porta e no `ARCHITECTURE.md` — e é mais um item
+na dívida que o §4 do `ARCHITECTURE.md` já registra.
+
+> **Emendada em 2026-09-03, pela fatia 9.** A regra original proibia *receber* o
+> repositório, e a troca de senha não consegue obedecê-la: o `compare` do argon2
+> precisa do hash guardado, então a leitura tem de vir antes dele — e o §8
+> proíbe argon2 dentro da transação. Não existe ordem que satisfaça as duas
+> regras com um único `uow`.
+>
+> O estrago que este parágrafo descreve é inteiramente de uma **escrita** fora
+> da transação, que commita sozinha e quebra a atomicidade. Uma **leitura** fora
+> não tem esse estrago: o `UPDATE ... WHERE id` da fatia 9 é incondicional, e
+> duas trocas simultâneas do mesmo usuário terminam com a última vencendo — as
+> duas conheciam a senha atual.
+>
+> **O custo, dito por inteiro:** a regra deixa de ser visível na assinatura do
+> construtor. Antes, "tem `uow` **e** repositório" era o alarme, legível sem
+> abrir o corpo; agora é preciso ler o corpo para saber se o repositório direto
+> está sendo lido ou escrito. O `ChangePasswordUseCase` carrega a justificativa
+> no próprio doc comment, que é onde ela fica visível para quem edita o arquivo.
 
 ## 10. Achados empíricos
 
