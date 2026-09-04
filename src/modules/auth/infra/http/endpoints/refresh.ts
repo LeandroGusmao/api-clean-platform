@@ -16,6 +16,7 @@ import {
   readRefreshCookie,
   setRefreshCookie,
 } from '#modules/auth/infra/http/refresh-cookie'
+import { sessionTokensSchema } from '#modules/auth/infra/http/session-tokens'
 
 const REFRESH_PATH = '/refresh'
 const REFRESH_SUMMARY = 'Rotate the refresh token'
@@ -41,12 +42,6 @@ const bodySchema = z.object({
   refreshToken: z.string().min(MIN_TOKEN_LENGTH).optional(),
 })
 
-const okSchema = z.object({
-  accessToken: z.string(),
-  /** Absent in cookie mode — see `login.ts` for why this is optional. */
-  refreshToken: z.string().optional(),
-})
-
 export const refreshRoute: FastifyPluginAsync<{ container: AuthContainer }> = async (
   app,
   { container },
@@ -60,7 +55,7 @@ export const refreshRoute: FastifyPluginAsync<{ container: AuthContainer }> = as
         description: REFRESH_DESCRIPTION,
         body: bodySchema,
         response: {
-          [OK_STATUS]: okSchema,
+          [OK_STATUS]: sessionTokensSchema,
           [BAD_REQUEST_STATUS]: errorResponseSchema,
           [UNAUTHORIZED_STATUS]: errorResponseSchema,
           // The first 503 in the project. The rotation runs inside a

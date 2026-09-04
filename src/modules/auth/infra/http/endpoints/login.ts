@@ -17,6 +17,7 @@ import {
   refreshTransportSchema,
   setRefreshCookie,
 } from '#modules/auth/infra/http/refresh-cookie'
+import { sessionTokensSchema } from '#modules/auth/infra/http/session-tokens'
 import { MAX_EMAIL_LENGTH } from '#modules/auth/value-objects/email'
 import { MAX_PASSWORD_LENGTH } from '#modules/auth/value-objects/password'
 
@@ -57,17 +58,6 @@ const bodySchema = z.object({
   refreshTransport: refreshTransportSchema,
 })
 
-const okSchema = z.object({
-  accessToken: z.string(),
-  /**
-   * Absent in cookie mode. Optional rather than two schemas because declaring a
-   * status makes the serializer VALIDATE the body against it — the §7 warning
-   * of `ARCHITECTURE.md` — and a shape it cannot serialize answers 500 instead
-   * of the intended status.
-   */
-  refreshToken: z.string().optional(),
-})
-
 export const loginRoute: FastifyPluginAsync<{ container: AuthContainer }> = async (
   app,
   { container },
@@ -88,7 +78,7 @@ export const loginRoute: FastifyPluginAsync<{ container: AuthContainer }> = asyn
         description: LOGIN_DESCRIPTION,
         body: bodySchema,
         response: {
-          [OK_STATUS]: okSchema,
+          [OK_STATUS]: sessionTokensSchema,
           [BAD_REQUEST_STATUS]: errorResponseSchema,
           [UNAUTHORIZED_STATUS]: errorResponseSchema,
           [TOO_MANY_REQUESTS_STATUS]: errorResponseSchema,
