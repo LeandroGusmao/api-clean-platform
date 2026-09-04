@@ -1,0 +1,24 @@
+import { ForbiddenError } from '#shared/errors/app-error'
+
+const EMAIL_NOT_VERIFIED_CODE = 'EMAIL_NOT_VERIFIED'
+const EMAIL_NOT_VERIFIED_MESSAGE = 'Email is not verified'
+
+/**
+ * The login gate. Thrown ONLY after the password check has passed, so the
+ * "unverified" signal never reaches anyone who does not already know the
+ * password — otherwise the gate would reopen the enumeration surface that the
+ * decoy hash in `login-user.ts` exists to close.
+ *
+ * `ForbiddenError` → 403 and not 401: decision 13 glosses 403 as "authenticated,
+ * not permitted", which is literally the case here. The argument that pushed
+ * slice 9 to 422 — a mobile interceptor looping on refresh when it sees 401 —
+ * does not apply, because this happens at login, where there is no token to
+ * refresh.
+ */
+export class EmailNotVerifiedError extends ForbiddenError {
+  readonly code = EMAIL_NOT_VERIFIED_CODE
+
+  constructor() {
+    super(EMAIL_NOT_VERIFIED_MESSAGE)
+  }
+}

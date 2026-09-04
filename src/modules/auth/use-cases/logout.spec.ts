@@ -25,6 +25,7 @@ const NO_USERS = {
   findByEmail: async () => null,
   findById: async () => null,
   updatePasswordHash: async () => {},
+  markEmailVerified: async () => {},
 }
 
 let repository: InMemoryRefreshTokensRepository

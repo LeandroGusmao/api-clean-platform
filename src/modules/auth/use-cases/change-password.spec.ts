@@ -99,6 +99,8 @@ beforeEach(() => {
         callLog.push(UPDATE_CALL)
         return usersRepository.updatePasswordHash(id, passwordHash, updatedAt)
       },
+      markEmailVerified: (id, verifiedAt, updatedAt) =>
+        usersRepository.markEmailVerified(id, verifiedAt, updatedAt),
     },
     refreshTokens: {
       save: (token) => {
@@ -128,6 +130,8 @@ beforeEach(() => {
     findById: findByIdSpy,
     updatePasswordHash: (id, passwordHash, updatedAt) =>
       usersRepository.updatePasswordHash(id, passwordHash, updatedAt),
+    markEmailVerified: (id, verifiedAt, updatedAt) =>
+      usersRepository.markEmailVerified(id, verifiedAt, updatedAt),
   }
 
   uowSpy = vi.fn((work) => {

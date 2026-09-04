@@ -36,6 +36,7 @@ const NO_USERS = {
   findByEmail: async () => null,
   findById: async () => null,
   updatePasswordHash: async () => {},
+  markEmailVerified: async () => {},
 }
 
 /**
