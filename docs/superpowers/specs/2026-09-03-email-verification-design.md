@@ -393,6 +393,16 @@ Devolve access token no corpo e refresh no cookie, reusando o `sessionTokensSche
 e o `RefreshTokenIssuer` que já existem. Poupa um round-trip e evita o usuário
 digitar a senha duas vezes seguidas.
 
+> **Emendada em 2026-09-04.** O parágrafo original não dizia nada sobre
+> transporte, e o silêncio foi lido como decisão durante a implementação — teve
+> de ser corrigido em revisão. `POST /auth/email/verify` aceita `refreshTransport`
+> exatamente como `login` e `change-password` (decisão 12): é o **terceiro**
+> endpoint que emite sessão sem sinal de entrada que distinga um cliente mobile
+> de um web, e a decisão 12 já registra que `login` precisou do campo por
+> exatamente esse motivo. Sem ele, um cliente mobile que se cadastra e confirma
+> recebe o refresh token só no cookie `httpOnly`, que não consegue ler, e é
+> deslogado em silêncio um TTL de access token depois.
+
 ### 6.7 — Tabela nova, não coluna em `users`
 
 Um código de verificação tem hash, expiração, uso único **e contador de
@@ -750,18 +760,29 @@ suíte verde, o teste é que está errado.
 
 ## 11. A medir, não presumir
 
-Três afirmações desta spec são raciocínio, não medição, e a implementação deve
-confirmá-las antes de confiar nelas:
+Três afirmações desta spec eram raciocínio, não medição. Duas foram MEDIDAS
+durante a implementação; a terceira ficou de fora e continua suposta.
 
-1. **[suposto]** O `uow` do caminho de colisão, aberto no `catch` do primeiro, é
-   **sequencial e não aninhado** — a guarda de `AsyncLocalStorage` do §4.2 já
-   desfez o contexto quando o callback rejeitou. Se estiver errado, o `register`
-   lança na colisão em vez de mandar e-mail.
+1. **[medido]** O `uow` do caminho de colisão, aberto no `catch` do primeiro, é
+   **sequencial e não aninhado** — a guarda de `AsyncLocalStorage` do §4.2 **NÃO**
+   dispara para ele. Duas razões independentes, e as duas precisam valer:
+   `runAttempt` fecha sua caixa num `finally`, que roda quando a transação
+   SETTLES — sucesso ou rejeição —, então a flag já está `false` quando a
+   rejeição chega ao `catch`; e o `catch` retoma no próprio contexto assíncrono
+   do chamador, o que existia antes de `insideTransaction.run` ser entrado, e
+   que nunca teve store nenhum. Fixado por um teste permanente em
+   [`src/infra/database/transaction-runner.spec.ts`](../../../src/infra/database/transaction-runner.spec.ts)
+   (`'allows a second run opened from the catch of a failed one'`).
 2. **[suposto]** Os dois caminhos do `register` custam tempo parecido: ambos pagam
    argon2, que domina. Se a diferença for mensurável, o `202` volta a ser um
-   oráculo — só que por timing.
-3. **[suposto]** O `postgres.js` reporta linhas afetadas de forma que
-   `consume` consiga distinguir 0 de 1. Todo o uso único depende disso.
+   oráculo — só que por timing. **Isto não foi medido** — fica suposto, e dito
+   com todas as letras.
+3. **[medido]** `drizzle-orm@1.0.0-rc.4` sobre `node-postgres` devolve, num
+   `update`, o `pg.QueryResult` bruto do driver, com `rowCount` `1` num acerto e
+   `0` numa falta — nunca `null` na prática observada. O tipo do próprio `pg`
+   continua `number | null`, e por isso `consume` guarda `?? 0` mesmo assim: o
+   uso único tem de falhar fechado, não aberto, se o driver algum dia expuser
+   `null` num caminho não observado aqui.
 
 ## 12. Custos aceitos
 
@@ -798,6 +819,32 @@ que a fatia 9 já havia acelerado. A poda que estava no roteiro passa a ter
 ### 12.6 — Dois `IEmailSender` no container
 
 Ver §9.5.
+
+### 12.7 — Uma falha de envio ainda propaga do `register`, e sobra um oráculo estreito
+
+O envio não é best-effort no `register`: se o `send` rejeitar, a exceção sobe e
+o cliente vê. Isso deixa um oráculo residual e específico — contra um relay que
+recusa deterministicamente um destinatário, um endereço livre responde `500` e
+um endereço com código não expirado recente responde `202`. Tornar o envio
+best-effort fecharia essa fresta, mas reabriria a falha que o §9.5 rejeitou: um
+SMTP mal configurado responderia `202` para sempre, e ninguém conseguiria
+verificar nada. O conserto de verdade é o outbox que o §5.3 já adiou.
+
+### 12.8 — "Recadastrar é reenviar" também serve para invalidar o código da vítima
+
+A mesma propriedade que salva quem perdeu o e-mail é uma arma para quem não é
+dono do endereço: como `issueFor` chama `invalidateActiveForUser` **antes** de
+persistir, qualquer chamador anônimo que souber o endereço pode invalidar o
+código pendente de uma vítima, uma vez por cooldown, só chamando `register` de
+novo.
+
+### 12.9 — O e-mail "você já tem conta" não tem cooldown por endereço
+
+Só o teto por IP do §8.2 o segura — não há cooldown por conta como o do código
+de verificação. Um atacante que gire de IP em IP pode encher a caixa de um
+endereço verificado conhecido com esse aviso. Manter o e-mail é deliberado: sem
+ele, alguém que esqueceu que já tinha conta recebe um `202` e silêncio, o que
+lê como cadastro quebrado.
 
 ## 13. Emendas de documentação
 

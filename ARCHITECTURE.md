@@ -1217,6 +1217,21 @@ outra coisa.**
 > devolver. A correção não é cast: anote o valor como `FastifyBaseLogger` antes
 > de passá-lo, e o genérico fica fixo.
 
+> **`requireTLS` do nodemailer é `false` por padrão, e falha em silêncio.** Um
+> transporte que não consegue negociar STARTTLS **não erra** — ele manda em
+> texto claro, credenciais e conteúdo inclusos, sem aviso nenhum no caminho
+> feliz. É por isso que `MAIL_REQUIRE_TLS` é forçado a `true` em produção pelo
+> schema de env: deixar o default do nodemailer decidir isso é deixar a
+> segurança do transporte depender de ninguém esquecer uma variável.
+>
+> **O contrafactual, registrado porque foi suspeitado e refutado.** `sendMail()`
+> **não** resolve em silêncio quando o destinatário é recusado. Lido no código
+> de `smtp-connection` do `nodemailer@9.1.1`: quando **todo** destinatário do
+> envelope é rejeitado, ele lança — e como `EmailMessage.to` desta fatia é um
+> endereço só, "o destinatário" e "todos os destinatários" são o mesmo caso
+> aqui. Uma porta futura para múltiplos destinatários teria de reexaminar
+> `info.rejected`, porque aí a rejeição parcial silenciosa volta a ser possível.
+
 ---
 
 ## 12. Decisões travadas

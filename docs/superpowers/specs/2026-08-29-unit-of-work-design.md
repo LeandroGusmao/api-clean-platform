@@ -514,6 +514,23 @@ Regra de uso que a fatia 5 vai precisar, e que vale documentar na porta agora:
 | **Escrita que precisa sobreviver à falha** — contador de brute force | O rollback apagaria justamente o registro que existe para lembrar da falha. É autocommit por desenho. |
 | **Outro `uow(...)`** | §4.2 — lança. |
 
+> **Emendada em 2026-09-04, pela fatia 10.** O caso concreto da linha "I/O
+> externo" é o thunk `deliver`, que `EmailVerificationIssuer.issueFor` devolve
+> em vez de executar (§5.1 da spec da fatia 10).
+>
+> Há **dois** estragos independentes atrás dessa linha, e vale separá-los porque
+> têm causas diferentes. **Retry:** o `TransactionRunner` reexecuta o callback
+> inteiro a cada tentativa, e `MAX_ATTEMPTS` é 3 — um envio dentro do callback
+> sai de novo a cada reexecução, sem erro e sem log, e só sob a concorrência que
+> produz um deadlock. **Rollback:** se a transação falhar depois do envio, foi
+> mandado um e-mail sobre uma conta que não existe.
+>
+> O thunk resolve os dois pelo mesmo mecanismo: `issueFor` devolve o envio em
+> vez de executá-lo, então **nada dentro do callback é capaz de mandar
+> e-mail**. A regra do §8 vira estrutura — chamar o thunk ali dentro exigiria
+> escrever `await (await this.issuer.issueFor(...))()`, feio o bastante para não
+> passar numa revisão — em vez de depender de disciplina.
+
 ## 9. A regra do repositório direto
 
 O erro mais provável na prática não é aninhar:
@@ -564,6 +581,19 @@ na dívida que o §4 do `ARCHITECTURE.md` já registra.
 >
 > **A regra passa a ter dente:** use case que recebe o UoW declara o repositório
 > direto por `Pick`, com os métodos de leitura que realmente usa.
+
+> **Emendada em 2026-09-04, pela fatia 10.** "Métodos de leitura" era estreito
+> demais. `ConfirmEmailUseCase` declara
+> `Pick<IEmailVerificationsRepository, 'findActiveByUserId' | 'incrementAttempts'>`,
+> e `incrementAttempts` é uma **escrita** — legitimamente, porque a terceira
+> linha do §8 a coloca fora da transação: um contador de força bruta escrito
+> dentro de uma transação que sofre rollback é apagado exatamente quando
+> importa.
+>
+> A regra passa a ser: **o `Pick` lista o que o use case usa, e uma escrita só
+> entra quando o §8 a manda para fora — com o porquê escrito no próprio lugar da
+> declaração.** `ConfirmEmailUseCase` é o primeiro caso; o comentário ao lado do
+> `Pick` é onde o porquê mora, não aqui.
 
 ## 10. Achados empíricos
 

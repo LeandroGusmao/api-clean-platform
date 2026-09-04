@@ -77,6 +77,8 @@ ficasse rasa em tudo, e são atacados nesta ordem:
 | 22 | Atomicidade | Unit of Work explícito, injetado só em quem precisa |
 | 23 | Transporte do container | Plugin do módulo recebe **a fatia dele** por opção |
 | 24 | Posse de tabela e FK entre módulos | Schema mora no módulo; FK só dentro do módulo |
+| 25 | Contrato do `register` | `202` sempre, sem corpo — quebra deliberada do `201`/`409` publicado |
+| 26 | Backfill de `email_verified_at` | Nenhum; ressalva normativa para apps derivados em produção |
 
 ---
 
@@ -722,6 +724,31 @@ entre sessões, ampliando a janela de roubo.
 > É a única categoria que acrescenta header. Desenho em
 > [`specs/2026-08-30-transient-failures-design.md`](superpowers/specs/2026-08-30-transient-failures-design.md) §6.
 
+> **Emendada em 2026-09-04, pela fatia 10.** Ela precisou de duas categorias
+> novas, cada uma resolvendo um confronto com uma decisão já tomada.
+>
+> **`EmailNotVerifiedError` → `ForbiddenError` → 403**, e não 401. A definição
+> da tabela é "autenticado, sem permissão", e é literalmente o caso: a senha
+> bateu, a identidade está provada, e o que falta é a permissão de entrar.
+> Cogitado e descartado: 422, pela simetria com `InvalidCurrentPasswordError`
+> logo abaixo. A simetria não se sustenta — o argumento que levou a fatia 9 a
+> preferir 422 a 401 foi um interceptor mobile que lê 401 como "access token
+> venceu", refresca um token perfeitamente bom e repete a chamada, deslogando o
+> usuário quando o problema era outro. Em `change-password` esse token existe: é
+> ele que autoriza a chamada, e é ele que o interceptor tentaria refrescar. Em
+> login não há token nenhum ainda — nada para o interceptor refrescar, então o
+> loop que motivou a fatia 9 não pode acontecer aqui. Sem essa pressão, vale o
+> significado natural da tabela.
+>
+> **`EmailVerificationFailedError` → `BusinessRuleError` → 422.** Aqui a
+> simetria com `InvalidCurrentPasswordError` é exata, não aparente: um segredo
+> errado (o código de seis dígitos) apresentado por quem já se identificou (dono
+> do endereço de e-mail). O corpo está bem formado — seis dígitos —, o que
+> falhou é uma regra: código inexistente, expirado, tentativas esgotadas, código
+> errado ou a corrida perdida para uma confirmação concorrente. Um erro só para
+> as seis causas, pelo mesmo motivo do `throw` único de `login-user.ts`: ramos
+> que nascem idênticos divergem na primeira manutenção — um ganha um log, outro
+> uma mensagem — e o oráculo volta.
 
 O problema: `InvalidCredentialsError` mora em `modules/auth/errors/`, camada
 **pura**. Ela não pode saber que é um HTTP 401 — isso violaria a fronteira da
@@ -1554,6 +1581,66 @@ Desenho completo em
 
 ---
 
+### 25 — `register` responde `202`, sempre — quebra deliberada do contrato publicado
+
+Até a fatia 10, `POST /auth/register` respondia `201 { id }` para um endereço
+livre e `409 EMAIL_ALREADY_IN_USE` para um já tomado. O `409` é um oráculo de
+contas: qualquer anônimo descobre se um endereço tem conta aqui, sem precisar
+de senha nenhuma.
+
+A partir da fatia 10, o endpoint responde `202`, sem corpo, em **todo** caso —
+endereço livre, endereço já tomado e verificado, endereço já tomado e ainda
+não verificado. A diferença que sobrevive não está mais na resposta HTTP: está
+em qual e-mail o endereço recebe, e só o dono do endereço pode ler um e-mail.
+
+**Dito sem rodeio: isto é quebra deliberada de um contrato publicado.** `id`
+some do corpo, `201` e `409` somem dos códigos possíveis. Um cliente que
+fizesse `switch` no status ou lesse `response.id` quebra.
+
+**Por que teve de ser NESTA fatia, e não numa fatia de "limpeza de contrato"
+adiada.** Fechar o oráculo exige um canal que divirja sem que a resposta HTTP
+divirja — e antes desta fatia não existia e-mail nenhum saindo do sistema. Não
+havia como responder igual e ainda assim entregar a cada um a informação certa.
+É aqui ou nunca; adiar a quebra é adiar o fechamento do oráculo, não evitá-lo.
+
+**Custo aceito:** o `id` sai da resposta sem substituto. Ele nunca serviu para
+muita coisa — `register` não emite sessão —, mas era contrato publicado, e
+algum cliente pode estar lendo. **Descartado:** `202 { id }`, devolvendo o id
+da conta existente na colisão — preserva o campo, mas vaza mais que o `409`
+que se pretende fechar, entregando o identificador interno de uma conta alheia
+a qualquer anônimo.
+
+Desenho completo em
+[`specs/2026-09-03-email-verification-design.md`](superpowers/specs/2026-09-03-email-verification-design.md) §6.1.
+
+### 26 — Sem backfill de `email_verified_at`, e ressalva normativa para apps derivados
+
+A fatia 10 liga um gate em `login`: senha certa não basta, a conta também
+precisa estar com `email_verified_at` preenchido. Ligar esse gate tranca **toda**
+conta existente, porque `User.create` sempre gravou `emailVerifiedAt: null` e
+nada, antes desta fatia, jamais escreveu outro valor — 100% das linhas de
+`users` têm a coluna nula.
+
+**A saída escolhida é nenhuma migração de dados.** Não é omissão; é decisão
+registrada. Este projeto é boilerplate: não existe conta real em lugar nenhum,
+então não há ninguém para grandfather. Escrever uma migração de backfill aqui
+seria resolver um problema que este repositório não tem.
+
+> ⚠️ **Ressalva normativa para apps derivados.** Um app que nasceu deste
+> boilerplate e **já está em produção**, com contas reais, precisa escrever a
+> própria migração de grandfathering —
+> `UPDATE users SET email_verified_at = now() WHERE email_verified_at IS NULL`
+> — **antes** de puxar esta fatia para dentro do seu repositório. Sem ela, o
+> merge é uma queda de login em massa: todo usuário existente passa a levar
+> `EmailNotVerifiedError` no próximo login. E é o tipo de falha que **passa em
+> toda a suíte de testes**, porque os testes criam contas novas dentro do mesmo
+> cenário que as verifica — nenhum teste representa uma conta antiga.
+
+Desenho completo em
+[`specs/2026-09-03-email-verification-design.md`](superpowers/specs/2026-09-03-email-verification-design.md) §6.4.
+
+---
+
 ## 3. Defaults assumidos (não debatidos, abertos a objeção)
 
 | Tema | Escolha | Nota |
@@ -1800,7 +1887,9 @@ bloqueavam (lint de fronteira, build e path alias, mappers) viraram as decisões
 
 **Escopo de produto, não de arquitetura — decidir o que entra no boilerplate:**
 
-- Recuperação de senha e verificação de e-mail (implica provedor de e-mail)
+- ~~Verificação de e-mail~~ — **RESOLVIDA pela fatia 10** (decisões 13, 25 e 26).
+  Recuperação de senha continua em aberto — é a próxima fatia do roteiro, e
+  reusa a infraestrutura de e-mail que esta abriu.
 - Login social / OAuth — ver a ressalva de formato de erro na decisão 13
 - Multi-tenancy
 
