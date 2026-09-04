@@ -52,6 +52,7 @@ import { LogoutUseCase } from './use-cases/logout.js'
 import { LogoutAllUseCase } from './use-cases/logout-all.js'
 import { RefreshTokenUseCase } from './use-cases/refresh-token.js'
 import { RegisterUserUseCase } from './use-cases/register-user.js'
+import { RequestEmailVerificationUseCase } from './use-cases/request-email-verification.js'
 
 /**
  * The module's slice of the dependency graph. This file is `composition`: it is
@@ -178,6 +179,20 @@ export function makeAuthContainer(
       config.EMAIL_VERIFICATION_MAX_ATTEMPTS,
     ),
     /**
+     * Takes the users repository AND the email verifications repository
+     * DIRECTLY, alongside the unit of work — both narrowed to `Pick`, per §9:
+     * one is the lookup, the other the cooldown check, and neither is ever a
+     * write outside the transaction the issuer opens.
+     */
+    requestEmailVerification: new RequestEmailVerificationUseCase(
+      usersRepository,
+      emailVerificationsRepository,
+      uow,
+      emailVerificationIssuer,
+      clock,
+      config.EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS * MILLISECONDS_PER_SECOND,
+    ),
+    /**
      * Not a use case: there is nothing to orchestrate. Decision 11 keeps the
      * database out of the authenticated path, so verification is signature
      * checking and nothing else. Published here so the composition root can
@@ -218,6 +233,17 @@ export function makeAuthContainer(
     emailVerifyRateLimit: {
       max: config.EMAIL_VERIFY_RATE_LIMIT_MAX_REQUESTS,
       timeWindow: config.EMAIL_VERIFY_RATE_LIMIT_WINDOW_SECONDS * MILLISECONDS_PER_SECOND,
+    },
+    /**
+     * The resend route declares its own ceiling, tighter than `emailVerifyRateLimit`:
+     * an anonymous request here both spams a stranger's inbox and can burn
+     * their live code by racing a fresh one into existence, so its budget is
+     * its own numbers rather than borrowed ones.
+     */
+    emailVerifyResendRateLimit: {
+      max: config.EMAIL_VERIFY_RESEND_RATE_LIMIT_MAX_REQUESTS,
+      timeWindow:
+        config.EMAIL_VERIFY_RESEND_RATE_LIMIT_WINDOW_SECONDS * MILLISECONDS_PER_SECOND,
     },
     /**
      * The password change route declares its own ceiling, like login.

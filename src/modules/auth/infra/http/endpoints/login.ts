@@ -8,6 +8,7 @@ import {
   BAD_REQUEST_STATUS,
   EXAMPLE_EMAIL,
   EXAMPLE_PASSWORD,
+  FORBIDDEN_STATUS,
   OK_STATUS,
   TOO_MANY_REQUESTS_STATUS,
   UNAUTHORIZED_STATUS,
@@ -85,6 +86,10 @@ export const loginRoute: FastifyPluginAsync<{ container: AuthContainer }> = asyn
           [OK_STATUS]: sessionTokensSchema,
           [BAD_REQUEST_STATUS]: errorResponseSchema,
           [UNAUTHORIZED_STATUS]: errorResponseSchema,
+          // The gate: the password was right, but the account is not
+          // verified yet. New here — `LoginUserUseCase` did not produce this
+          // before this slice.
+          [FORBIDDEN_STATUS]: errorResponseSchema,
           [TOO_MANY_REQUESTS_STATUS]: errorResponseSchema,
         },
       },

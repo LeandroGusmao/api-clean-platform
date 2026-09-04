@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { User } from '#modules/auth/entities/user'
+import { EmailNotVerifiedError } from '#modules/auth/errors/email-not-verified-error'
 import { InvalidCredentialsError } from '#modules/auth/errors/invalid-credentials-error'
 import { InMemoryRefreshTokensRepository } from '#modules/auth/infra/in-memory/in-memory-refresh-tokens-repository'
 import { InMemoryUsersRepository } from '#modules/auth/infra/in-memory/in-memory-users-repository'
@@ -66,15 +67,32 @@ beforeEach(async () => {
     { now: () => NOW },
   )
 
+  // Verified by default: most tests in this file are not about the gate, and
+  // an unverified fixture would make every one of them fail on
+  // `EmailNotVerifiedError` instead of on whatever they actually assert.
   await usersRepository.save(
-    User.create({
+    User.fromTrusted({
       id: USER_ID,
       email: Email.create(EMAIL),
       passwordHash: hashOf(PASSWORD),
-      now: NOW,
+      emailVerifiedAt: NOW,
+      createdAt: NOW,
+      updatedAt: NOW,
     }),
   )
 })
+
+/** Replaces the fixture with an otherwise-identical, unverified account. */
+function makeAccountUnverified(): void {
+  usersRepository.users[0] = User.fromTrusted({
+    id: USER_ID,
+    email: Email.create(EMAIL),
+    passwordHash: hashOf(PASSWORD),
+    emailVerifiedAt: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+  })
+}
 
 describe('LoginUserUseCase', () => {
   it('returns an access token for valid credentials', async () => {
@@ -188,5 +206,32 @@ describe('LoginUserUseCase', () => {
     ).rejects.toBeInstanceOf(InvalidCredentialsError)
 
     expect(refreshTokensRepository.tokens).toHaveLength(0)
+  })
+
+  it('refuses an unverified account with EmailNotVerifiedError', async () => {
+    makeAccountUnverified()
+
+    await expect(
+      useCase.execute({ email: EMAIL, password: PASSWORD }),
+    ).rejects.toBeInstanceOf(EmailNotVerifiedError)
+  })
+
+  // THE test of this task. Deleting the gate breaks the test above; moving it
+  // ABOVE the credential check breaks only this one — and moving it up is
+  // exactly the "simplification" a future reader will be tempted by, because
+  // it reads as tidier while quietly reopening the enumeration hole the decoy
+  // hash exists to close.
+  it('reports bad credentials, not the gate, when the password is wrong on an unverified account', async () => {
+    makeAccountUnverified()
+
+    await expect(
+      useCase.execute({ email: EMAIL, password: WRONG_PASSWORD }),
+    ).rejects.toBeInstanceOf(InvalidCredentialsError)
+  })
+
+  it('issues a session for a verified account', async () => {
+    const result = await useCase.execute({ email: EMAIL, password: PASSWORD })
+
+    expect(result.accessToken).toBe(ACCESS_TOKEN)
   })
 })
