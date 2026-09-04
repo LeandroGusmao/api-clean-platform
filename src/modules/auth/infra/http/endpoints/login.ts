@@ -51,10 +51,10 @@ const bodySchema = z.object({
     .max(MAX_PASSWORD_LENGTH)
     .meta({ examples: [EXAMPLE_PASSWORD] }),
   /**
-   * Which channel carries the refresh token back. `login` and
-   * `change-password` are the two endpoints with no incoming signal to tell a
-   * mobile client from a web one — the others learn it from the request that
-   * arrived.
+   * Which channel carries the refresh token back. `login`, `change-password`
+   * and `confirm-email` are the three endpoints with no incoming signal to
+   * tell a mobile client from a web one — the others learn it from the
+   * request that arrived.
    */
   refreshTransport: refreshTransportSchema,
 })

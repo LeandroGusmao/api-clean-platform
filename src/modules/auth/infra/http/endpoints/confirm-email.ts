@@ -12,7 +12,11 @@ import {
   TOO_MANY_REQUESTS_STATUS,
   UNPROCESSABLE_ENTITY_STATUS,
 } from '#modules/auth/infra/http/constants'
-import { setRefreshCookie } from '#modules/auth/infra/http/refresh-cookie'
+import {
+  REFRESH_TRANSPORT_COOKIE,
+  refreshTransportSchema,
+  setRefreshCookie,
+} from '#modules/auth/infra/http/refresh-cookie'
 import { sessionTokensSchema } from '#modules/auth/infra/http/session-tokens'
 import { MAX_EMAIL_LENGTH } from '#modules/auth/value-objects/email'
 
@@ -20,8 +24,7 @@ const CONFIRM_EMAIL_PATH = '/email/verify'
 const CONFIRM_EMAIL_SUMMARY = 'Confirm an email address'
 const CONFIRM_EMAIL_DESCRIPTION =
   'Redeems the six-digit code emailed at registration, marks the account ' +
-  'verified, and opens a session — an access token in the body and the ' +
-  'refresh token in an HttpOnly cookie, the same pair `login` issues.'
+  'verified, and opens a session — the same pair `login` issues.'
 
 const VERIFICATION_CODE_PATTERN = /^[0-9]{6}$/
 const EXAMPLE_VERIFICATION_CODE = '042317'
@@ -48,6 +51,13 @@ const bodySchema = z.object({
     .string()
     .regex(VERIFICATION_CODE_PATTERN, VERIFICATION_CODE_REASON)
     .meta({ examples: [EXAMPLE_VERIFICATION_CODE] }),
+  /**
+   * Which channel carries the refresh token back. This route mints a BRAND
+   * NEW session with no incoming cookie or bearer either — the third endpoint
+   * `refresh-cookie.ts` documents, alongside `login` and `change-password`,
+   * with no signal of its own to tell a mobile client from a web one.
+   */
+  refreshTransport: refreshTransportSchema,
 })
 
 export const confirmEmailRoute: FastifyPluginAsync<{ container: AuthContainer }> = async (
@@ -86,14 +96,13 @@ export const confirmEmailRoute: FastifyPluginAsync<{ container: AuthContainer }>
         request.body,
       )
 
-      // §6.6 of the design spec: the confirm always auto-logs in, with the
-      // access token in the body and the refresh token in the cookie — unlike
-      // `login` and `change-password`, there is no `refreshTransport` choice
-      // on this route; the spec fixes the transport rather than adding a third
-      // field to a body that is otherwise just `{ email, code }`.
-      setRefreshCookie(reply, refreshToken, container.refreshTokenTtlSeconds)
+      if (request.body.refreshTransport === REFRESH_TRANSPORT_COOKIE) {
+        setRefreshCookie(reply, refreshToken, container.refreshTokenTtlSeconds)
 
-      return reply.status(OK_STATUS).send({ accessToken })
+        return reply.status(OK_STATUS).send({ accessToken })
+      }
+
+      return reply.status(OK_STATUS).send({ accessToken, refreshToken })
     },
   )
 }
