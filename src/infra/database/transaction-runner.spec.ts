@@ -135,6 +135,36 @@ describe('createTransactionRunner', () => {
     await expect(runner(async () => WORK_RESULT)).resolves.toBe(WORK_RESULT)
   })
 
+  /**
+   * The exact shape `RegisterUserUseCase` relies on: the first transaction
+   * FAILS, the caller catches, and the recovery path opens a second one from
+   * inside that `catch`.
+   *
+   * Measured rather than assumed, because two independent mechanisms have to
+   * hold for it and either one failing would turn every registration on a
+   * taken address into a 500. First, `runAttempt` closes its box in `finally`,
+   * which runs when the transaction SETTLES — a rejection included — so the
+   * flag is already `false` by the time the rejection reaches the caller.
+   * Second, the `catch` resumes in the caller's own async context, the one
+   * that existed before `insideTransaction.run` was ever entered, so there is
+   * no store to read there at all.
+   */
+  it('allows a second run opened from the catch of a failed one', async () => {
+    const runner = createTransactionRunner(db, logger)
+    const boom = new Error(BOOM_MESSAGE)
+    let recovered: string | undefined
+
+    try {
+      await runner(async () => {
+        throw boom
+      })
+    } catch {
+      recovered = await runner(async () => COLLABORATOR_RESULT)
+    }
+
+    expect(recovered).toBe(COLLABORATOR_RESULT)
+  })
+
   it('does not trip the guard on runs that overlap', async () => {
     const runner = createTransactionRunner(db, logger)
     let release: (() => void) | undefined

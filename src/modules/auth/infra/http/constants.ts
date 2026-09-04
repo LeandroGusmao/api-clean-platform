@@ -2,7 +2,6 @@
 export const AUTH_TAG = 'Auth'
 
 export const OK_STATUS = 200
-export const CREATED_STATUS = 201
 /**
  * The register endpoint's only success status. It says "accepted, and what
  * happens next happens by email" — which is exactly true, and reveals nothing
@@ -15,7 +14,6 @@ export const UNAUTHORIZED_STATUS = 401
 /** The login gate: the password was right, the account is not verified. */
 export const FORBIDDEN_STATUS = 403
 export const NOT_FOUND_STATUS = 404
-export const CONFLICT_STATUS = 409
 /**
  * A rule failed on a request that was well-formed and properly authenticated.
  * The password change endpoint is the first to produce it from a domain error.
