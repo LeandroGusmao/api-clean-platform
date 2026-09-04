@@ -45,6 +45,7 @@ import { JwtTokenSigner } from './infra/providers/jwt-token-signer.js'
 import { EmailVerificationIssuer } from './services/email-verification-issuer.js'
 import { RefreshTokenIssuer } from './services/refresh-token-issuer.js'
 import { ChangePasswordUseCase } from './use-cases/change-password.js'
+import { ConfirmEmailUseCase } from './use-cases/confirm-email.js'
 import { GetUserProfileUseCase } from './use-cases/get-user-profile.js'
 import { LoginUserUseCase } from './use-cases/login-user.js'
 import { LogoutUseCase } from './use-cases/logout.js'
@@ -159,6 +160,24 @@ export function makeAuthContainer(
       clock,
     ),
     /**
+     * Takes the users repository AND `emailVerifications.incrementAttempts`
+     * directly, alongside the unit of work. §9 permits the first for the same
+     * reason `changePassword` gets one; the second is the exception its own
+     * constructor comment documents — a write outside the transaction, because
+     * §8's third line says a brute-force counter written inside one that rolls
+     * back is erased exactly when it matters.
+     */
+    confirmEmail: new ConfirmEmailUseCase(
+      usersRepository,
+      emailVerificationsRepository,
+      uow,
+      refreshTokenIssuer,
+      tokenSigner,
+      tokenDigest,
+      clock,
+      config.EMAIL_VERIFICATION_MAX_ATTEMPTS,
+    ),
+    /**
      * Not a use case: there is nothing to orchestrate. Decision 11 keeps the
      * database out of the authenticated path, so verification is signature
      * checking and nothing else. Published here so the composition root can
@@ -190,6 +209,15 @@ export function makeAuthContainer(
     loginRateLimit: {
       max: config.LOGIN_RATE_LIMIT_MAX_REQUESTS,
       timeWindow: config.LOGIN_RATE_LIMIT_WINDOW_SECONDS * MILLISECONDS_PER_SECOND,
+    },
+    /**
+     * The confirm route declares its own ceiling, like login: a request here
+     * carries a code guess against a six-digit space. Its own numbers, not
+     * login's or register's, for the reason login already documents.
+     */
+    emailVerifyRateLimit: {
+      max: config.EMAIL_VERIFY_RATE_LIMIT_MAX_REQUESTS,
+      timeWindow: config.EMAIL_VERIFY_RATE_LIMIT_WINDOW_SECONDS * MILLISECONDS_PER_SECOND,
     },
     /**
      * The password change route declares its own ceiling, like login.
