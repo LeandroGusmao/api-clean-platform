@@ -118,6 +118,15 @@ beforeEach(() => {
         return refreshTokensRepository.revokeAllForUser(userId, revokedAt)
       },
     },
+    // Nothing in this suite reads email verifications; the shape only has to
+    // satisfy AuthRepos.
+    emailVerifications: {
+      save: async () => {},
+      findActiveByUserId: async () => null,
+      invalidateActiveForUser: async () => {},
+      incrementAttempts: async () => {},
+      consume: async () => false,
+    },
   }
 
   // The read the use case makes OUTSIDE the transaction, spied separately: it

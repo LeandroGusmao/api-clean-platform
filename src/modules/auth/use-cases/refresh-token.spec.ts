@@ -39,6 +39,15 @@ const NO_USERS = {
   markEmailVerified: async () => {},
 }
 
+/** Nothing in this suite reads email verifications; the shape only has to satisfy AuthRepos. */
+const NO_EMAIL_VERIFICATIONS = {
+  save: async () => {},
+  findActiveByUserId: async () => null,
+  invalidateActiveForUser: async () => {},
+  incrementAttempts: async () => {},
+  consume: async () => false,
+}
+
 /**
  * Passthrough, exactly like the unit of work fake of slice 4: it runs the
  * callback against the same repositories and models NO rollback and NO row
@@ -71,7 +80,11 @@ const build = () => {
   )
 
   useCase = new RefreshTokenUseCase(
-    makeUow({ users: NO_USERS, refreshTokens: repository }),
+    makeUow({
+      users: NO_USERS,
+      refreshTokens: repository,
+      emailVerifications: NO_EMAIL_VERIFICATIONS,
+    }),
     issuer,
     { sign: async () => ACCESS_TOKEN, verify: async () => ({ sub: USER_ID }) },
     { hash: digestOf },
@@ -319,7 +332,11 @@ describe('RefreshTokenUseCase — grace window', () => {
       const snapshot = [...repository.tokens]
 
       try {
-        return await work({ users: NO_USERS, refreshTokens: repository })
+        return await work({
+          users: NO_USERS,
+          refreshTokens: repository,
+          emailVerifications: NO_EMAIL_VERIFICATIONS,
+        })
       } catch (error) {
         repository.tokens.length = 0
         repository.tokens.push(...snapshot)

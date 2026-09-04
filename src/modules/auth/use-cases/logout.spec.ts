@@ -28,6 +28,15 @@ const NO_USERS = {
   markEmailVerified: async () => {},
 }
 
+/** Nothing in this suite reads email verifications; the shape only has to satisfy AuthRepos. */
+const NO_EMAIL_VERIFICATIONS = {
+  save: async () => {},
+  findActiveByUserId: async () => null,
+  invalidateActiveForUser: async () => {},
+  incrementAttempts: async () => {},
+  consume: async () => false,
+}
+
 let repository: InMemoryRefreshTokensRepository
 let useCase: LogoutUseCase
 let clockReading: Date
@@ -56,7 +65,11 @@ beforeEach(() => {
   clockReading = NOW
   repository = new InMemoryRefreshTokensRepository()
   useCase = new LogoutUseCase(
-    makeUow({ users: NO_USERS, refreshTokens: repository }),
+    makeUow({
+      users: NO_USERS,
+      refreshTokens: repository,
+      emailVerifications: NO_EMAIL_VERIFICATIONS,
+    }),
     { hash: digestOf },
     { now: () => clockReading },
   )
