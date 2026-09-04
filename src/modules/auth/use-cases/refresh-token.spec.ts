@@ -16,6 +16,8 @@ const ACCESS_TOKEN = 'signed.access.token'
 const CURRENT_ID = 'current-id'
 const SUCCESSOR_ID = 'successor-id'
 const OTHER_FAMILY_TOKEN_ID = 'other-family-token'
+/** Unused by this suite; required only to satisfy `ITokenGenerator`. */
+const NUMERIC_CODE = '000000'
 
 const NOW = new Date('2026-08-31T12:00:00.000Z')
 const MILLISECONDS_PER_SECOND = 1000
@@ -61,7 +63,7 @@ const build = () => {
   }
 
   const issuer = new RefreshTokenIssuer(
-    { opaque: () => `opaque-${nextValue()}` },
+    { opaque: () => `opaque-${nextValue()}`, numericCode: () => NUMERIC_CODE },
     { hash: digestOf },
     { generate: () => `id-${nextValue()}` },
     TTL_SECONDS,
@@ -327,7 +329,7 @@ describe('RefreshTokenUseCase — grace window', () => {
     useCase = new RefreshTokenUseCase(
       rollingBack,
       new RefreshTokenIssuer(
-        { opaque: () => 'opaque-rollback' },
+        { opaque: () => 'opaque-rollback', numericCode: () => NUMERIC_CODE },
         { hash: digestOf },
         { generate: () => 'id-rollback' },
         TTL_SECONDS,

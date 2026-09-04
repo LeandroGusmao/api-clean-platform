@@ -31,6 +31,8 @@ const DUMMY_HASH = `${HASH_PREFIX}dummy`
 
 const ACCESS_TOKEN = 'signed-access-token'
 const OPAQUE_TOKEN = 'opaque-refresh-token'
+/** Unused by this suite; required only to satisfy `ITokenGenerator`. */
+const NUMERIC_CODE = '000000'
 const GENERATED_ID = 'generated-id'
 const DIGEST_PREFIX = 'digest:'
 const TTL_SECONDS = 3600
@@ -158,7 +160,7 @@ beforeEach(() => {
     { hash: hashSpy, compare: compareSpy, dummyHash: DUMMY_HASH },
     { sign: signSpy, verify: async () => ({ sub: USER_ID }) },
     new RefreshTokenIssuer(
-      { opaque: () => OPAQUE_TOKEN },
+      { opaque: () => OPAQUE_TOKEN, numericCode: () => NUMERIC_CODE },
       { hash: (value: string) => `${DIGEST_PREFIX}${value}` },
       { generate: () => GENERATED_ID },
       TTL_SECONDS,
@@ -309,7 +311,7 @@ describe('ChangePasswordUseCase', () => {
       { hash: hashSpy, compare: compareSpy, dummyHash: DUMMY_HASH },
       { sign: signSpy, verify: async () => ({ sub: USER_ID }) },
       new RefreshTokenIssuer(
-        { opaque: () => OPAQUE_TOKEN },
+        { opaque: () => OPAQUE_TOKEN, numericCode: () => NUMERIC_CODE },
         { hash: (value: string) => `${DIGEST_PREFIX}${value}` },
         { generate: () => GENERATED_ID },
         TTL_SECONDS,

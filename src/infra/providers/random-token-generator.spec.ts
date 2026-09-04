@@ -39,3 +39,31 @@ describe('RandomTokenGenerator', () => {
     expect(shorter.length).toBeLessThan(DEFAULT_ENCODED_LENGTH)
   })
 })
+
+const CODE_DIGITS = 6
+const SAMPLE_SIZE_NUMERIC_CODE = 500
+const DIGITS_ONLY_PATTERN = /^[0-9]+$/
+
+describe('numericCode', () => {
+  it('returns exactly the requested number of digits', () => {
+    expect(new RandomTokenGenerator().numericCode(CODE_DIGITS)).toHaveLength(CODE_DIGITS)
+  })
+
+  it('returns digits only', () => {
+    expect(new RandomTokenGenerator().numericCode(CODE_DIGITS)).toMatch(
+      DIGITS_ONLY_PATTERN,
+    )
+  })
+
+  // The bug this kills is real and silent: a naive `randomInt(...).toString()`
+  // yields "42" for the value 42, and a five-character code is rejected by the
+  // endpoint's schema — so roughly one signup in ten breaks, at random.
+  it('keeps leading zeros, so a low draw is still a full-length code', () => {
+    const generator = new RandomTokenGenerator()
+    const codes = Array.from({ length: SAMPLE_SIZE_NUMERIC_CODE }, () =>
+      generator.numericCode(CODE_DIGITS),
+    )
+
+    expect(codes.every((code) => code.length === CODE_DIGITS)).toBe(true)
+  })
+})
