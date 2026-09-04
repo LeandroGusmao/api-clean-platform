@@ -544,9 +544,36 @@ o guard escreve o principal. A rota poderia pedir `hook: 'preHandler'` — o plu
 faz *append* no array, então o guard correria primeiro —, mas isso é mecanismo
 lido e não exercitado, e fica para quando houver demanda.
 
-### 11.5 — A regra do §9 fica menos visível
+### 11.5 — ~~A regra do §9 fica menos visível~~ — resolvido na revisão
 
-Ver §7. O sinal de alarme sai da assinatura e vai para o corpo.
+Este custo foi aceito no desenho e **eliminado na revisão**: o parâmetro é
+declarado como `Pick<IUsersRepository, 'findById'>`, então a escrita direta fora
+da transação virou erro de compilação. Medido. O §7 e a emenda ao §9 da fatia 4
+foram corrigidos.
+
+### 11.7 — Uma família pode sobreviver a uma rotação concorrente
+
+Encontrado na revisão, e a spec afirmava "todas as famílias são revogadas, **sem
+exceção**" sem esta ressalva.
+
+O `createUnitOfWork` não fixa nível de isolamento, logo READ COMMITTED. Se um
+refresh estiver rotacionando no aparelho B no mesmo instante:
+
+```
+B:  BEGIN, SELECT ... FOR UPDATE em T, INSERT T'   (ainda não commitado)
+troca: UPDATE ... WHERE user_id AND revoked_at IS NULL   → bloqueia em T
+B:  COMMIT   (T revogado, T' vivo)
+troca: destrava, reavalia T → já revogado, pula.
+       T' foi inserido DEPOIS do snapshot do statement → invisível.
+```
+
+Resultado: `T'` sobrevive, e o aparelho B mantém uma sessão viva.
+
+A janela é de milissegundos e exige rotação simultânea à troca de senha. A
+correção — travar a linha do usuário nos dois caminhos, ou SERIALIZABLE — põe um
+lock no caminho mais quente da API (o refresh) para fechar uma corrida que a
+própria vítima teria de provocar. Aceito, e registrado aqui porque o §11 é
+exaustivo sobre custos e este faltava.
 
 ### 11.6 — O 400 chega antes do 401 num corpo malformado
 

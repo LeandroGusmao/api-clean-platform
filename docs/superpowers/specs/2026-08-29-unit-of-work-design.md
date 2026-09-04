@@ -549,11 +549,21 @@ na dívida que o §4 do `ARCHITECTURE.md` já registra.
 > duas trocas simultâneas do mesmo usuário terminam com a última vencendo — as
 > duas conheciam a senha atual.
 >
-> **O custo, dito por inteiro:** a regra deixa de ser visível na assinatura do
-> construtor. Antes, "tem `uow` **e** repositório" era o alarme, legível sem
-> abrir o corpo; agora é preciso ler o corpo para saber se o repositório direto
-> está sendo lido ou escrito. O `ChangePasswordUseCase` carrega a justificativa
-> no próprio doc comment, que é onde ela fica visível para quem edita o arquivo.
+> **E o custo tem conserto, encontrado na revisão da própria fatia 9.** A
+> objeção original era que a regra deixaria de ser visível na assinatura do
+> construtor. Não deixa, se o parâmetro for declarado no tamanho do uso:
+>
+> ```ts
+> private readonly usersRepository: Pick<IUsersRepository, 'findById'>,
+> ```
+>
+> Com isso, `usersRepository.updatePasswordHash(...)` fora da transação é **erro
+> de compilação**, não comentário de revisão — medido. É o mesmo movimento do
+> `RateLimitEnv = Pick<Env, …>` da decisão 23, e o mesmo raciocínio que escolheu
+> `updatePasswordHash` em vez de um `update(user)` amplo.
+>
+> **A regra passa a ter dente:** use case que recebe o UoW declara o repositório
+> direto por `Pick`, com os métodos de leitura que realmente usa.
 
 ## 10. Achados empíricos
 

@@ -127,8 +127,9 @@ export function makeAuthContainer(
     },
     /**
      * Still published, and now it has consumers: the rotation, both logouts and
-     * the password change open their transaction through it. `tests/integration/unit-of-work.spec.ts`
-     * also reaches for it directly to exercise the primitive on its own.
+     * the password change open their transaction through it.
+     * `tests/integration/unit-of-work.spec.ts` also reaches for it directly, to
+     * exercise the primitive on its own.
      */
     uow,
   }

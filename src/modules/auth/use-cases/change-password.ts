@@ -30,14 +30,23 @@ export interface ChangePasswordResult {
  * WRITE, and the reason for the amendment is visible in the ordering below:
  * `compare` needs the stored hash, so the read must precede it — and argon2 may
  * not run inside a transaction (§8). No ordering satisfies both rules with a
- * single `uow`. The read here is the only thing this repository is used for;
- * every write goes through `repos`.
+ * single `uow`. Every write goes through `repos`, and the constructor's `Pick`
+ * is what makes that a compile error rather than a convention.
  *
  * The order of the steps is normative, not stylistic. See the comments inline.
  */
 export class ChangePasswordUseCase {
   constructor(
-    private readonly usersRepository: IUsersRepository,
+    /**
+     * `Pick`, and that narrowing IS the rule: with the full interface,
+     * `usersRepository.updatePasswordHash(...)` outside the transaction would
+     * compile, and the amendment below would rest entirely on someone reading
+     * this comment. Declaring only what is used makes the violation a compile
+     * error — the same move as `RateLimitEnv` in `infra/http/rate-limit.ts`
+     * (decision 23), and the same reasoning that chose `updatePasswordHash`
+     * over a broad `update(user)`.
+     */
+    private readonly usersRepository: Pick<IUsersRepository, 'findById'>,
     private readonly uow: IAuthUnitOfWork,
     private readonly hashProvider: IHashProvider,
     private readonly tokenSigner: ITokenSigner,
