@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { env } from '#infra/config/env'
 import { createDatabase, type Database } from '#infra/database/client'
 import { buildApp } from '#main/app'
+import { DEFAULT_REFRESH_TOKEN_TTL_SECONDS } from '#modules/auth/config'
 import { refreshTokens } from '#modules/auth/infra/drizzle/schema/refresh-tokens'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
 
@@ -18,12 +19,32 @@ const AUTHORIZATION_HEADER = 'authorization'
 const BEARER_PREFIX = 'Bearer '
 
 const OK_STATUS_CODE = 200
+const TOO_MANY_REQUESTS_STATUS_CODE = 429
 const BAD_REQUEST_STATUS_CODE = 400
 const UNAUTHORIZED_STATUS_CODE = 401
 const UNPROCESSABLE_ENTITY_STATUS_CODE = 422
 
 const INVALID_CURRENT_PASSWORD_CODE = 'INVALID_CURRENT_PASSWORD'
 const PASSWORD_UNCHANGED_CODE = 'PASSWORD_UNCHANGED'
+const TOO_MANY_REQUESTS_CODE = 'TOO_MANY_REQUESTS'
+
+const REFRESH_COOKIE_NAME = 'refresh_token'
+const REFRESH_COOKIE_PATH = '/auth'
+const COOKIE_TRANSPORT = 'cookie'
+const STRICT_SAME_SITE = 'Strict'
+const RETRY_AFTER_HEADER = 'retry-after'
+/**
+ * This suite logs in and changes the password far more often than any human
+ * would, all from the one address `app.inject` arrives from — and it sat at
+ * exactly the shipped login ceiling, so the next test added would have started
+ * receiving 429 where it expected a session. The shipped defaults stay
+ * untouched: the single case that exercises the ceiling builds its own app with
+ * its own.
+ */
+const CEILING_ABOVE_WHAT_THIS_SUITE_SPENDS = 1000
+/** Small enough to spend in a loop; the real default is far above human retry. */
+const CEILING_UNDER_TEST = 3
+const EXPIRED_MAX_AGE = 0
 
 const EMAIL = 'joao@example.com'
 const PASSWORD = 'sup3r-s3cr3t!'
@@ -44,7 +65,11 @@ let db: Database
 let pool: Pool
 
 beforeAll(async () => {
-  app = await buildApp(env)
+  app = await buildApp({
+    ...env,
+    LOGIN_RATE_LIMIT_MAX_REQUESTS: CEILING_ABOVE_WHAT_THIS_SUITE_SPENDS,
+    PASSWORD_CHANGE_RATE_LIMIT_MAX_REQUESTS: CEILING_ABOVE_WHAT_THIS_SUITE_SPENDS,
+  })
   await app.ready()
   ;({ db, pool } = createDatabase(env))
 })
@@ -167,6 +192,107 @@ describe('POST /auth/password', () => {
     })
 
     expect(response.statusCode).toBe(UNAUTHORIZED_STATUS_CODE)
+  })
+
+  it('sends the refresh token as a cookie, and NOT in the body, when asked', async () => {
+    const session = await loggedIn()
+
+    const response = await changePassword(session.accessToken, {
+      refreshTransport: COOKIE_TRANSPORT,
+    })
+
+    expect(response.statusCode).toBe(OK_STATUS_CODE)
+    // The whole point of the cookie: if the token is ALSO in the body, the
+    // SPA's JavaScript can read it and HttpOnly has bought nothing.
+    expect(response.json().refreshToken).toBeUndefined()
+    expect(
+      response.cookies.find((each) => each.name === REFRESH_COOKIE_NAME)?.value,
+    ).toEqual(expect.any(String))
+  })
+
+  it('sets the cookie with every attribute decision 12 requires', async () => {
+    const session = await loggedIn()
+
+    const response = await changePassword(session.accessToken, {
+      refreshTransport: COOKIE_TRANSPORT,
+    })
+
+    const cookie = response.cookies.find((each) => each.name === REFRESH_COOKIE_NAME)
+
+    expect(cookie?.httpOnly).toBe(true)
+    expect(cookie?.secure).toBe(true)
+    expect(cookie?.sameSite).toBe(STRICT_SAME_SITE)
+    expect(cookie?.path).toBe(REFRESH_COOKIE_PATH)
+    expect(cookie?.maxAge).toBe(DEFAULT_REFRESH_TOKEN_TTL_SECONDS)
+  })
+
+  it('issues a cookie the refresh endpoint actually accepts', async () => {
+    const session = await loggedIn()
+
+    const response = await changePassword(session.accessToken, {
+      refreshTransport: COOKIE_TRANSPORT,
+    })
+    const issued = response.cookies.find((each) => each.name === REFRESH_COOKIE_NAME)
+
+    const refreshed = await app.inject({
+      method: POST_METHOD,
+      url: REFRESH_PATH,
+      cookies: { [REFRESH_COOKIE_NAME]: issued?.value ?? '' },
+      payload: {},
+    })
+
+    expect(refreshed.statusCode).toBe(OK_STATUS_CODE)
+  })
+
+  it('clears a stale cookie in body mode, since its family was just revoked', async () => {
+    const session = await loggedIn()
+
+    const response = await changePassword(session.accessToken)
+
+    expect(response.json().refreshToken).toEqual(expect.any(String))
+    const cleared = response.cookies.find((each) => each.name === REFRESH_COOKIE_NAME)
+    // Not "no cookie at all": the header IS sent, carrying an expiry. Leaving a
+    // dead cookie in the browser only produces a confusing 401 on the next
+    // refresh.
+    expect(cleared?.maxAge).toBe(EXPIRED_MAX_AGE)
+  })
+
+  it('answers 429 in the envelope once this route ceiling is passed', async () => {
+    // Its OWN ceiling, not the global one: this is the control that closes
+    // stolen access token -> password changed -> account taken.
+    // Only this route's ceiling is lowered. The session comes from the main
+    // app, and the shared JWT_SECRET is what lets this instance verify it.
+    const throttled = await buildApp({
+      ...env,
+      PASSWORD_CHANGE_RATE_LIMIT_MAX_REQUESTS: CEILING_UNDER_TEST,
+    })
+
+    try {
+      const session = await loggedIn()
+      const attempt = () =>
+        throttled.inject({
+          method: POST_METHOD,
+          url: CHANGE_PASSWORD_PATH,
+          headers: { [AUTHORIZATION_HEADER]: `${BEARER_PREFIX}${session.accessToken}` },
+          payload: { currentPassword: WRONG_PASSWORD, newPassword: NEW_PASSWORD },
+        })
+
+      let last = await attempt()
+
+      // One past the ceiling. Every attempt carries a WRONG current password,
+      // so the limiter is counting requests and not failures — the same shape
+      // as the login ceiling.
+      for (let sent = 0; sent < CEILING_UNDER_TEST; sent++) {
+        last = await attempt()
+      }
+
+      expect(last.statusCode).toBe(TOO_MANY_REQUESTS_STATUS_CODE)
+      expect(last.json().error.code).toBe(TOO_MANY_REQUESTS_CODE)
+      expect(last.headers[RETRY_AFTER_HEADER]).toBeDefined()
+    } finally {
+      // Ends this app's database pool too, through the onClose hook in app.ts.
+      await throttled.close()
+    }
   })
 
   /**

@@ -7,6 +7,7 @@ import { UserNotFoundError } from '#modules/auth/errors/user-not-found-error'
 import { InMemoryRefreshTokensRepository } from '#modules/auth/infra/in-memory/in-memory-refresh-tokens-repository'
 import { InMemoryUsersRepository } from '#modules/auth/infra/in-memory/in-memory-users-repository'
 import type { IHashProvider } from '#modules/auth/ports/hash-provider'
+import type { ITokenSigner } from '#modules/auth/ports/token-signer'
 import type { AuthRepos, IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
 import type { IUsersRepository } from '#modules/auth/repositories/users-repository'
 import { RefreshTokenIssuer } from '#modules/auth/services/refresh-token-issuer'
@@ -36,6 +37,8 @@ const TTL_SECONDS = 3600
 
 const NOW = new Date('2026-09-03T12:00:00.000Z')
 const CREATED_AT = new Date('2026-01-01T08:00:00.000Z')
+/** Enough to make two readings distinguishable; nothing depends on the size. */
+const CLOCK_STEP_MS = 1
 
 /** Records the order in which collaborators were called. */
 const COMPARE_CALL = 'compare'
@@ -55,6 +58,7 @@ let useCase: ChangePasswordUseCase
 let findByIdSpy: Mock<IUsersRepository['findById']>
 let compareSpy: Mock<IHashProvider['compare']>
 let hashSpy: Mock<IHashProvider['hash']>
+let signSpy: Mock<ITokenSigner['sign']>
 let uowSpy: Mock<(work: (repos: AuthRepos) => Promise<unknown>) => Promise<unknown>>
 
 const storeUser = (passwordHash: string) => {
@@ -139,6 +143,12 @@ beforeEach(() => {
     return `${HASH_PREFIX}${plain}`
   })
 
+  // Records the payload. A fake that ignores it would let the use case sign for
+  // any subject at all with every assertion in this file still green — and on
+  // an endpoint that MINTS a credential, "which subject did we sign for" is
+  // exactly what turns a wiring slip into an authorization bug.
+  signSpy = vi.fn(async () => ACCESS_TOKEN)
+
   useCase = new ChangePasswordUseCase(
     readRepository,
     // Cast because `IAuthUnitOfWork` is generic in the callback's return type
@@ -146,7 +156,7 @@ beforeEach(() => {
     // still checked above; only the generic instantiation is waived here.
     uowSpy as unknown as IAuthUnitOfWork,
     { hash: hashSpy, compare: compareSpy, dummyHash: DUMMY_HASH },
-    { sign: async () => ACCESS_TOKEN, verify: async () => ({ sub: USER_ID }) },
+    { sign: signSpy, verify: async () => ({ sub: USER_ID }) },
     new RefreshTokenIssuer(
       { opaque: () => OPAQUE_TOKEN },
       { hash: (value: string) => `${DIGEST_PREFIX}${value}` },
@@ -175,31 +185,40 @@ describe('ChangePasswordUseCase', () => {
     expect(result).toEqual({ accessToken: ACCESS_TOKEN, refreshToken: OPAQUE_TOKEN })
   })
 
-  it('runs both argon2 calls BEFORE opening the transaction', async () => {
-    // The assertion is the ORDER, not the outcome. Moving either hash call
-    // inside the callback keeps every other test in this file green while
-    // parking a pooled connection on 15ms of CPU — §8 of the unit of work
-    // design, and the one mistake this slice was warned about.
+  /**
+   * The whole sequence, as one equality, and NOT a pair of
+   * `indexOf(a) < indexOf(b)` comparisons.
+   *
+   * `indexOf` returns -1 for a call that never happened, and -1 is less than
+   * every real index — so an ordering assertion written that way passes
+   * VACUOUSLY when the step it guards is deleted rather than moved. Measured:
+   * with the earlier form, deleting `revokeAllForUser` outright left all ten
+   * tests in this file green, including the one whose name promised it.
+   *
+   * One equality kills three mutations at once: deleting a step, swapping two,
+   * and moving either argon2 call inside the transaction (§8 of the unit of
+   * work design — 15ms of CPU with a pooled connection, of ten, standing
+   * still).
+   */
+  it('calls its collaborators in exactly this order', async () => {
     storeUser(CURRENT_HASH)
 
     await change()
 
-    expect(callLog.indexOf(COMPARE_CALL)).toBeLessThan(callLog.indexOf(UOW_CALL))
-    expect(callLog.indexOf(HASH_CALL)).toBeLessThan(callLog.indexOf(UOW_CALL))
-  })
-
-  it('revokes every session BEFORE inserting the new token', async () => {
-    // revokeAllForUser revokes every row of the user whose revoked_at is null.
-    // Inserting first means the brand new token is caught by that same UPDATE
-    // and is born revoked: the endpoint answers 200 and the first refresh
-    // answers 401.
-    storeUser(CURRENT_HASH)
-
-    await change()
-
-    expect(callLog.indexOf(REVOKE_ALL_CALL)).toBeLessThan(
-      callLog.indexOf(SAVE_TOKEN_CALL),
-    )
+    expect(callLog).toEqual([
+      COMPARE_CALL,
+      HASH_CALL,
+      // Everything below this line runs inside the transaction; everything
+      // above it must not.
+      UOW_CALL,
+      UPDATE_CALL,
+      // Before the insert, always: `revokeAllForUser` revokes every row of the
+      // user whose `revoked_at` is null, so inserting first means the brand new
+      // token is caught by that same UPDATE and is born revoked — the endpoint
+      // answers 200 and the first refresh answers 401.
+      REVOKE_ALL_CALL,
+      SAVE_TOKEN_CALL,
+    ])
   })
 
   it('leaves the new token alive after the revocation', async () => {
@@ -258,10 +277,52 @@ describe('ChangePasswordUseCase', () => {
     expect(storedUser()?.updatedAt).toEqual(NOW)
   })
 
-  it('reads the clock once, so every write shares one instant', async () => {
+  it('signs the access token for the user who changed the password', async () => {
     storeUser(CURRENT_HASH)
 
     await change()
+
+    expect(signSpy).toHaveBeenCalledWith({ sub: USER_ID })
+  })
+
+  /**
+   * The clock ADVANCES one millisecond per reading, and that is what makes this
+   * falsifiable. A fixed stub returns the same instant however many times it is
+   * asked, so the test would be green by construction — decoration, by this
+   * project's own rule that a test surviving its own mutation is not a test.
+   *
+   * An advancing stub is a double in the same sense as `HASH_PREFIX`: it makes
+   * readings DISTINGUISHABLE, so a behaviour that would otherwise be invisible
+   * becomes observable. Three `clock.now()` calls put different instants on
+   * `updated_at` and on the token's `created_at`, across writes one transaction
+   * makes atomic.
+   */
+  it('reads the clock once, so every write shares one instant', async () => {
+    let reading = NOW.getTime()
+    const advancingClock = () => {
+      reading += CLOCK_STEP_MS
+      return new Date(reading)
+    }
+    const advancingUseCase = new ChangePasswordUseCase(
+      usersRepository,
+      uowSpy as unknown as IAuthUnitOfWork,
+      { hash: hashSpy, compare: compareSpy, dummyHash: DUMMY_HASH },
+      { sign: signSpy, verify: async () => ({ sub: USER_ID }) },
+      new RefreshTokenIssuer(
+        { opaque: () => OPAQUE_TOKEN },
+        { hash: (value: string) => `${DIGEST_PREFIX}${value}` },
+        { generate: () => GENERATED_ID },
+        TTL_SECONDS,
+      ),
+      { now: advancingClock },
+    )
+    storeUser(CURRENT_HASH)
+
+    await advancingUseCase.execute({
+      userId: USER_ID,
+      currentPassword: CURRENT_PASSWORD,
+      newPassword: NEW_PASSWORD,
+    })
 
     expect(storedUser()?.updatedAt).toEqual(issuedToken()?.createdAt)
   })
