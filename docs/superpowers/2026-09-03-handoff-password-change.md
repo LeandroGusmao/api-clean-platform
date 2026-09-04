@@ -1,5 +1,12 @@
 # Handoff — Fatia 9: troca de senha
 
+> ⚠️ **Corrigido em 2026-09-03 pela fatia que ele descreve.** Três afirmações
+> deste documento foram medidas e refutadas — o `$onUpdate` do §4.1, o
+> trade-off da sessão preservada no §5 e o estado do repositório no §7. As
+> medições estão no §3 de
+> [`specs/2026-09-03-password-change-design.md`](specs/2026-09-03-password-change-design.md).
+> Leia aquela seção antes de agir sobre qualquer parte deste handoff.
+
 > Escrito em 2026-09-03, ao fim da fatia 8, para uma sessão que começa sem o
 > contexto dela. O objetivo é te poupar de reaprender o que já foi decidido —
 > **não** de reler as decisões. Elas são a autoridade.

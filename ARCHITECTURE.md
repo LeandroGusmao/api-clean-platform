@@ -1190,6 +1190,27 @@ outra coisa.**
 > `FST_*` e não sai no formato de erro de env do projeto: se o boot morrer com
 > um `TypeError` sem contexto nenhum, é isto.
 
+> **`$onUpdate` do Drizzle preenche a ausência, não sobrescreve a presença — e o
+> perigo é o contrário do que parece.** Medido em 2026-09-03 no
+> `drizzle-orm@1.0.0-rc.4`: `set({ passwordHash, updatedAt: D })` grava `D`, e
+> `set({ passwordHash })` grava `new Date()`. A causa é o `??` do
+> `buildUpdateSet`, em `pg-core/dialect.js`. Ou seja: um valor vindo do `IClock`
+> **não** é descartado — mas **omitir** a coluna deixa o relógio do sistema
+> entrar em silêncio, e em produção ninguém nota, porque os dois relógios
+> coincidem. Quem nota é o teste que avança um relógio falso. Por isso o
+> repositório manda `updated_at` sempre, explicitamente, e o teste de integração
+> grava uma data de 2020: com uma data plausível a asserção não provaria nada.
+
+> **A validação de schema do Fastify roda ANTES do `preHandler`.** Consequência
+> concreta numa rota protegida que também tem corpo — `POST /auth/password` é a
+> primeira do projeto: um chamador **sem** credencial nenhuma, mandando corpo
+> malformado, recebe `400` com os nomes dos campos, e o guard nunca executa. Com
+> corpo válido ele recebe o `401` esperado. Não é defeito do guard e não tem
+> correção declarativa; foi aceito porque a forma da request é contrato
+> publicado para os clientes desta própria API, não segredo. Está fixado por
+> teste em `tests/integration/change-password.spec.ts` para ser decisão
+> registrada, e não surpresa.
+
 > **`loggerInstance` do Fastify especializa o genérico da instância.** Passar um
 > `pino.Logger` faz o `FastifyInstance` devolvido carregar aquele tipo de logger,
 > e ele deixa de ser atribuível ao `FastifyInstance` que a função declara

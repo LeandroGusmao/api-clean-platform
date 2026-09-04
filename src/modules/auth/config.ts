@@ -37,6 +37,22 @@ export const DEFAULT_LOGIN_RATE_LIMIT_MAX_REQUESTS = 10
 export const DEFAULT_LOGIN_RATE_LIMIT_WINDOW_SECONDS = 60
 
 /**
+ * Ten attempts a minute from one address, the same numbers as the login route
+ * and for the same reason: a request here carries a password guess, it counts
+ * REQUESTS rather than failures, and the number sits far above human retry and
+ * far below anything useful to an attacker.
+ *
+ * Its own variables rather than reusing the login ones, because the two
+ * ceilings may need to diverge — and a field named `login` declared on a route
+ * that is not login is a comment that lies.
+ *
+ * The vector this closes is concrete: stolen access token -> password changed
+ * -> account taken. Without it the route would inherit only the global 300/min.
+ */
+export const DEFAULT_PASSWORD_CHANGE_RATE_LIMIT_MAX_REQUESTS = 10
+export const DEFAULT_PASSWORD_CHANGE_RATE_LIMIT_WINDOW_SECONDS = 60
+
+/**
  * The module owns its own variables (decision 14). `infra/config/env.ts` merges
  * this into the core schema so the process dies at boot listing every problem
  * at once, instead of revealing one per restart.
@@ -75,6 +91,19 @@ export const authEnvSchema = z.object({
     .int()
     .positive()
     .default(DEFAULT_LOGIN_RATE_LIMIT_WINDOW_SECONDS),
+  // `.positive()` for the reason it is used everywhere else here: a ceiling of
+  // zero would refuse every password change, and rejecting zero is what rejects
+  // an empty value.
+  PASSWORD_CHANGE_RATE_LIMIT_MAX_REQUESTS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_PASSWORD_CHANGE_RATE_LIMIT_MAX_REQUESTS),
+  PASSWORD_CHANGE_RATE_LIMIT_WINDOW_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_PASSWORD_CHANGE_RATE_LIMIT_WINDOW_SECONDS),
 })
 
 export type AuthConfig = z.infer<typeof authEnvSchema>

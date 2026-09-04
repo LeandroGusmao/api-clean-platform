@@ -1,4 +1,4 @@
-import type { User } from '#modules/auth/entities/user'
+import { User } from '#modules/auth/entities/user'
 import { EmailAlreadyInUseError } from '#modules/auth/errors/email-already-in-use-error'
 import type { IUsersRepository } from '#modules/auth/repositories/users-repository'
 import type { Email } from '#modules/auth/value-objects/email'
@@ -31,5 +31,26 @@ export class InMemoryUsersRepository implements IUsersRepository {
 
   async findById(id: string): Promise<User | null> {
     return this.users.find((existing) => existing.id === id) ?? null
+  }
+
+  async updatePasswordHash(
+    id: string,
+    passwordHash: string,
+    updatedAt: Date,
+  ): Promise<void> {
+    const current = this.users.find((existing) => existing.id === id)
+    if (current === undefined) return
+
+    // The entity is frozen with `#` readonly fields, so there is nothing to
+    // mutate: a new one is rehydrated from the old one's getters with the two
+    // columns replaced. Same shape as `InMemoryRefreshTokensRepository.#replace`.
+    this.users[this.users.indexOf(current)] = User.fromTrusted({
+      id: current.id,
+      email: current.email,
+      passwordHash,
+      emailVerifiedAt: current.emailVerifiedAt,
+      createdAt: current.createdAt,
+      updatedAt,
+    })
   }
 }

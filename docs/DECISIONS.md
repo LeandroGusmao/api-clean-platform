@@ -450,6 +450,21 @@ Esse requisito foi o que eliminou o `decorate` do Fastify como DI.
 > foi encontrado pelo teste de integração, não pela revisão — desenho completo
 > em [`specs/2026-08-31-refresh-token-design.md`](superpowers/specs/2026-08-31-refresh-token-design.md) §4.2.
 
+> **Emendada em 2026-09-03, pela fatia 9.** A troca de senha é o primeiro
+> consumidor real da revogação: ela revoga **todas** as famílias e emite um par
+> novo para o aparelho que trocou, na mesma transação e nessa ordem — a
+> revogação antes do insert, porque `revokeAllForUser` apanha toda linha viva do
+> usuário e pegaria o token recém-inserido.
+>
+> Preservar a sessão atual foi considerado e descartado. O argumento de que
+> preservá-la protegeria o atacante **não separa os desenhos**: quem trocou a
+> senha a conhece, e faz login de novo em qualquer um deles. A escolha foi de UX
+> e de superfície de contrato.
+>
+> Senha atual errada responde **422**, não 401, e a razão é o cliente: um
+> interceptor que lê 401 como "access token venceu" refrescaria um token bom,
+> repetiria a request e deslogaria o usuário por um erro de digitação.
+
 ```
 access   JWT, 1h, transporte Bearer
 refresh  token opaco no banco, 60d deslizante, rotativo a cada uso

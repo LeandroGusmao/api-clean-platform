@@ -17,6 +17,7 @@ import {
   refreshTransportSchema,
   setRefreshCookie,
 } from '#modules/auth/infra/http/refresh-cookie'
+import { sessionTokensSchema } from '#modules/auth/infra/http/session-tokens'
 import { MAX_EMAIL_LENGTH } from '#modules/auth/value-objects/email'
 import { MAX_PASSWORD_LENGTH } from '#modules/auth/value-objects/password'
 
@@ -50,22 +51,12 @@ const bodySchema = z.object({
     .max(MAX_PASSWORD_LENGTH)
     .meta({ examples: [EXAMPLE_PASSWORD] }),
   /**
-   * Which channel carries the refresh token back. `login` is the one endpoint
-   * with no incoming signal to tell a mobile client from a web one — every
-   * other one learns it from the request that arrived.
+   * Which channel carries the refresh token back. `login` and
+   * `change-password` are the two endpoints with no incoming signal to tell a
+   * mobile client from a web one — the others learn it from the request that
+   * arrived.
    */
   refreshTransport: refreshTransportSchema,
-})
-
-const okSchema = z.object({
-  accessToken: z.string(),
-  /**
-   * Absent in cookie mode. Optional rather than two schemas because declaring a
-   * status makes the serializer VALIDATE the body against it — the §7 warning
-   * of `ARCHITECTURE.md` — and a shape it cannot serialize answers 500 instead
-   * of the intended status.
-   */
-  refreshToken: z.string().optional(),
 })
 
 export const loginRoute: FastifyPluginAsync<{ container: AuthContainer }> = async (
@@ -76,10 +67,13 @@ export const loginRoute: FastifyPluginAsync<{ container: AuthContainer }> = asyn
     LOGIN_PATH,
     {
       /**
-       * Tighter than the global ceiling: this is the one endpoint where a
-       * request carries a password guess. It counts requests and not failures,
-       * so a legitimate user retrying a typo spends the same budget — which is
-       * why the number sits far above human retry.
+       * Tighter than the global ceiling, because a request here carries a
+       * password guess. It counts requests and not failures, so a legitimate
+       * user retrying a typo spends the same budget — which is why the number
+       * sits far above human retry.
+       *
+       * `change-password` carries one too, and declares its own ceiling with
+       * its own variables rather than borrowing these.
        */
       config: { rateLimit: container.loginRateLimit },
       schema: {
@@ -88,7 +82,7 @@ export const loginRoute: FastifyPluginAsync<{ container: AuthContainer }> = asyn
         description: LOGIN_DESCRIPTION,
         body: bodySchema,
         response: {
-          [OK_STATUS]: okSchema,
+          [OK_STATUS]: sessionTokensSchema,
           [BAD_REQUEST_STATUS]: errorResponseSchema,
           [UNAUTHORIZED_STATUS]: errorResponseSchema,
           [TOO_MANY_REQUESTS_STATUS]: errorResponseSchema,
