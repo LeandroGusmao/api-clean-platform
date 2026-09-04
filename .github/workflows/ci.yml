@@ -38,6 +38,14 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      # Same image as docker-compose.yml. The integration suite reads sent
+      # messages back through its HTTP API on 8025.
+      mailpit:
+        image: axllent/mailpit:v1.30.2
+        ports:
+          - 1025:1025
+          - 8025:8025
+
     steps:
       # Actions are pinned by commit SHA: a tag is a movable pointer and
       # Actions has no lockfile, so the tag is the only reference there is.

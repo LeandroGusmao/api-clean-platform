@@ -7,6 +7,9 @@ import {
   DEFAULT_DATABASE_STATEMENT_TIMEOUT_MS,
   DEFAULT_HOST,
   DEFAULT_LOG_LEVEL,
+  DEFAULT_MAIL_FROM,
+  DEFAULT_MAIL_HOST,
+  DEFAULT_MAIL_PORT,
   DEFAULT_PORT,
   DEFAULT_RATE_LIMIT_MAX_REQUESTS,
   DEFAULT_RATE_LIMIT_WINDOW_SECONDS,
@@ -83,6 +86,11 @@ describe('parseEnv', () => {
       DATABASE_LOCK_TIMEOUT_MS: DEFAULT_DATABASE_LOCK_TIMEOUT_MS,
       DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS:
         DEFAULT_DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS,
+      MAIL_HOST: DEFAULT_MAIL_HOST,
+      MAIL_PORT: DEFAULT_MAIL_PORT,
+      MAIL_SECURE: false,
+      MAIL_REQUIRE_TLS: false,
+      MAIL_FROM: DEFAULT_MAIL_FROM,
     })
   })
 
@@ -191,5 +199,60 @@ describe('parseEnv', () => {
 
     expect(result.success).toBe(true)
     expect(result.data?.TRUST_PROXY).toBe('10.0.0.0/8,loopback')
+  })
+})
+
+const NODE_ENV_PRODUCTION = 'production'
+const VALID_PRODUCTION_MAIL_HOST = 'smtp.example.com'
+const VALID_PRODUCTION_MAIL_PORT = '587'
+const VALID_PRODUCTION_MAIL_FROM = 'API <no-reply@example.com>'
+const MAIL_REQUIRE_TLS_ENABLED = 'true'
+const MAIL_REQUIRE_TLS_DISABLED = 'false'
+
+// `TEST_ENV` (src/infra/config/fixtures/test-env.ts) is deliberately not used
+// here: it is the already-PARSED `Env` shape, built for specs that construct a
+// server without going through `parseEnv`. Feeding it back into `parseEnv` as
+// raw input breaks on type alone — `TRUST_PROXY` is a `boolean` there where
+// this schema expects a raw string, and the database timeouts are `number`
+// where `timeoutMs()` expects a raw string — so every case below builds its
+// own minimal raw-environment object instead, the same way the suite above
+// does.
+describe('mail configuration in production', () => {
+  it('refuses to boot without an explicit sender address', () => {
+    const result = parseEnv({
+      DATABASE_URL: VALID_DATABASE_URL,
+      JWT_SECRET: VALID_JWT_SECRET,
+      NODE_ENV: NODE_ENV_PRODUCTION,
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  it('refuses to boot with STARTTLS disabled, which would send codes in the clear', () => {
+    const result = parseEnv({
+      DATABASE_URL: VALID_DATABASE_URL,
+      JWT_SECRET: VALID_JWT_SECRET,
+      NODE_ENV: NODE_ENV_PRODUCTION,
+      MAIL_HOST: VALID_PRODUCTION_MAIL_HOST,
+      MAIL_PORT: VALID_PRODUCTION_MAIL_PORT,
+      MAIL_FROM: VALID_PRODUCTION_MAIL_FROM,
+      MAIL_REQUIRE_TLS: MAIL_REQUIRE_TLS_DISABLED,
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  it('boots when every mail setting is explicit and STARTTLS is required', () => {
+    const result = parseEnv({
+      DATABASE_URL: VALID_DATABASE_URL,
+      JWT_SECRET: VALID_JWT_SECRET,
+      NODE_ENV: NODE_ENV_PRODUCTION,
+      MAIL_HOST: VALID_PRODUCTION_MAIL_HOST,
+      MAIL_PORT: VALID_PRODUCTION_MAIL_PORT,
+      MAIL_FROM: VALID_PRODUCTION_MAIL_FROM,
+      MAIL_REQUIRE_TLS: MAIL_REQUIRE_TLS_ENABLED,
+    })
+
+    expect(result.success).toBe(true)
   })
 })
