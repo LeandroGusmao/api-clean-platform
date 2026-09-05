@@ -925,8 +925,10 @@ artificialmente o trabalho de seis caminhos que são, por natureza, diferentes.
 | spec do Unit of Work, **§8** | o thunk `deliver` como o caso concreto da linha "I/O externo", e a distinção retry × rollback do §5 |
 | spec do Unit of Work, **§9** | hoje a regra manda declarar o `Pick` **só com leitura**. `incrementAttempts` a viola com razão. Passa a ser: o `Pick` lista o que o use case usa, e uma **escrita** só entra quando a linha 3 do §8 a justifica — com o porquê escrito no lugar |
 | `ARCHITECTURE.md` §11 | o que o nodemailer falhar em silêncio nos ensinar, começando pelo `requireTLS` |
-| `docs/local.md` | Mailpit em `http://127.0.0.1:8025` |
-| `docs/STRUCTURE.md` | os arquivos novos |
+| `docs/local.md` | ~~Mailpit em `http://127.0.0.1:8025`~~ — **não feito**: o arquivo é gitignored e guarda outro conteúdo. O serviço `mailpit` do `docker-compose.yml` documenta as portas no ponto de definição, e o `.env.example` traz a URL da UI |
+| `docs/STRUCTURE.md` | os arquivos novos, e duas correções que a revisão final achou: o glob da regra de fronteira não tinha `notifications/` nem `services/`, e o contrato de e-mail estava descrito em `providers/` do módulo quando o §7.1 o pôs em `shared/ports/` |
+| `.env.example` | as doze variáveis novas. Achado da revisão final: é o arquivo que um operador lê antes de subir, e ele não dizia que `MAIL_REQUIRE_TLS` é obrigatório em produção |
+| `ARCHITECTURE.md` §2 | `notifications` no glob de `pure` da tabela de fronteira. A pasta nasceu fora da tabela — e como a tabela **é** a config do lint de fronteira, ela ficou sem regra nenhuma até a auditoria apontar |
 
 ## 14. Próxima fatia
 
