@@ -217,6 +217,15 @@ const MAIL_REQUIRED_IN_PRODUCTION_MESSAGE =
 const MAIL_TLS_REQUIRED_MESSAGE =
   'must be true in production: without STARTTLS a man in the middle reads every verification code'
 
+/** The pair that authenticates against the relay: present together, or absent together. */
+const MAIL_USER_KEY = 'MAIL_USER'
+const MAIL_PASSWORD_KEY = 'MAIL_PASSWORD'
+const MAIL_CREDENTIALS_PAIR_MESSAGE =
+  'MAIL_USER and MAIL_PASSWORD must be set together or left unset together: ' +
+  'one without the other passes this validation and then hands nodemailer an ' +
+  'undefined password, so every send fails at runtime instead of the process ' +
+  'refusing to start'
+
 /**
  * Every module's schema merged, validated once at boot (decision 14). A module
  * declaring a variable and forgetting this line would ship an unvalidated
@@ -236,6 +245,22 @@ const MAIL_TLS_REQUIRED_MESSAGE =
 const envSchema = coreEnvSchema
   .extend(authEnvSchema.shape)
   .superRefine((value, ctx) => {
+    // Applies in EVERY environment, not just production — unlike the checks
+    // below this one, which the early `return` right after it skips outside
+    // production. Setting only one of the pair boots clean today (both are
+    // independent optionals) and only fails once a request tries to send,
+    // handing nodemailer `pass: undefined` — the opposite of this file's own
+    // rule, which is to fail loudly at boot with every problem listed at once.
+    const hasMailUser = value.MAIL_USER !== undefined
+    const hasMailPassword = value.MAIL_PASSWORD !== undefined
+    if (hasMailUser !== hasMailPassword) {
+      ctx.addIssue({
+        code: 'custom',
+        path: [hasMailUser ? MAIL_PASSWORD_KEY : MAIL_USER_KEY],
+        message: MAIL_CREDENTIALS_PAIR_MESSAGE,
+      })
+    }
+
     if (value.NODE_ENV !== NODE_ENV_PRODUCTION) return
 
     for (const key of REQUIRED_MAIL_KEYS_IN_PRODUCTION) {

@@ -16,11 +16,17 @@ export interface ErrorLogger {
  * Swallows a delivery failure instead of letting it fail the request.
  *
  * It exists because the two families of email in this system want OPPOSITE
- * policies. A verification code that fails to send should propagate: the account
- * is unusable without it, and registering again heals itself through the
- * collision path. A "your password was changed" notice must not: the password
- * has ALREADY changed, so a 500 would tell the user the change failed while
- * their old password no longer works — active misinformation, and worse than
+ * policies. A verification code that fails to send should propagate: the
+ * account is unusable without it, and whether registering again heals it
+ * depends on timing, not just on the collision path existing. OUTSIDE the
+ * resend cooldown, a retry issues a fresh code and resends for real. INSIDE
+ * it — the likely case for a retry attempted right away — the failed
+ * attempt's code row is already persisted, its `createdAt` still suppresses a
+ * fresh one, and the retry answers 202 and sends nothing until the cooldown
+ * lapses (§12 of the design spec records this as an accepted cost). A "your
+ * password was changed" notice must not propagate at all: the password has
+ * ALREADY changed, so a 500 would tell the user the change failed while their
+ * old password no longer works — active misinformation, and worse than
  * silence.
  *
  * The policy lives here, in infrastructure, and is applied by wiring, because

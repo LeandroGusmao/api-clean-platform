@@ -63,6 +63,11 @@ export async function buildApp(
   // never makes a module import another module.
   const guard = makeAuthGuard(container.auth.verifyAccessToken)
 
+  // Same teardown story as the database pool above: `app.close()` stays the
+  // single shutdown path, so nothing outside this module has to remember the
+  // SMTP transport is pooled and needs draining.
+  app.addHook('onClose', () => container.auth.closeEmailTransport())
+
   await app.register(authRoutes, {
     prefix: AUTH_PREFIX,
     container: container.auth,

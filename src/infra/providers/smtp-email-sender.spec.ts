@@ -16,6 +16,10 @@ const baseConfig: SmtpEmailSenderConfig = {
 }
 
 describe('smtpTransportOptions', () => {
+  it('pools connections rather than opening a fresh one per send', () => {
+    expect(smtpTransportOptions(baseConfig).pool).toBe(true)
+  })
+
   it('forces STARTTLS when required, so the connection fails closed', () => {
     expect(smtpTransportOptions({ ...baseConfig, requireTls: true }).requireTLS).toBe(
       true,

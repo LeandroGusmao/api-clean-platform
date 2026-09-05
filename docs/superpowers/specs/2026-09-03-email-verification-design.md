@@ -917,6 +917,32 @@ erro só" no corpo da resposta não é o mesmo que "um custo só" no servidor.
 Registrado, não corrigido: o ganho de fechar isto não paga o custo de igualar
 artificialmente o trabalho de seis caminhos que são, por natureza, diferentes.
 
+### 12.13 — Uma falha de envio pós-`COMMIT`, dentro do cooldown, não se cura sozinha
+
+Um comentário desta fatia dizia que uma falha de envio "se cura sozinha pelo
+caminho de colisão": basta a vítima se cadastrar de novo. Isso só é verdade
+FORA da janela de cooldown.
+
+O `send` do `register` roda depois que a transação já deu `COMMIT` — a linha do
+código já está gravada quando o SMTP falha. Um recadastro imediato entra no
+`#deliverForExistingAccount`, encontra a conta não verificada e olha o
+`createdAt` do código que acabou de falhar em ser entregue: se ainda está
+dentro do `EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS`, o cooldown responde
+antes de qualquer envio, e o ramo devolve `NO_DELIVERY` — 202, e nada sai pela
+rede. O usuário fica sem código algum, respondendo `202` a cada tentativa, até
+o cooldown vencer sozinho.
+
+Não é o mesmo custo do §12.3 (crash entre `COMMIT` e `send`, sem cooldown
+envolvido): aqui a via de escape que o design conta como conserto — "registrar
+de novo" — está fechada exatamente pelo mecanismo que existe para impedir
+abuso do reenvio. **Custo aceito**: o cooldown continua sendo a defesa certa
+contra flood, e a janela em que ele também bloqueia a autocura de uma falha de
+rede é curta (a duração do próprio cooldown) e rara (exige uma falha de envio
+bem no meio dela). Corrigir isso sem reabrir o abuso do §12.2 pede o outbox do
+§5.3, ainda adiado. O comentário em `best-effort-email-sender.ts` (e o espelho
+dele em `container.ts`) foi corrigido para descrever esta janela em vez de
+afirmar autocura incondicional.
+
 ## 13. Emendas de documentação
 
 | Onde | O quê |

@@ -278,3 +278,52 @@ describe('mail configuration in production', () => {
     expect(result.success).toBe(true)
   })
 })
+
+const MAIL_USER_VALUE = 'apikey'
+const MAIL_PASSWORD_VALUE = 'secret'
+
+// Not gated by NODE_ENV, unlike the suite above: setting only one of the pair
+// boots clean in EVERY environment today, because the two are declared as
+// independent optionals, and only fails once a request tries to send —
+// `smtpTransportOptions` hands nodemailer `pass: undefined`.
+describe('MAIL_USER and MAIL_PASSWORD must travel together', () => {
+  it('rejects MAIL_USER without MAIL_PASSWORD', () => {
+    const result = parseEnv({
+      DATABASE_URL: VALID_DATABASE_URL,
+      JWT_SECRET: VALID_JWT_SECRET,
+      MAIL_USER: MAIL_USER_VALUE,
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects MAIL_PASSWORD without MAIL_USER', () => {
+    const result = parseEnv({
+      DATABASE_URL: VALID_DATABASE_URL,
+      JWT_SECRET: VALID_JWT_SECRET,
+      MAIL_PASSWORD: MAIL_PASSWORD_VALUE,
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts both present together', () => {
+    const result = parseEnv({
+      DATABASE_URL: VALID_DATABASE_URL,
+      JWT_SECRET: VALID_JWT_SECRET,
+      MAIL_USER: MAIL_USER_VALUE,
+      MAIL_PASSWORD: MAIL_PASSWORD_VALUE,
+    })
+
+    expect(result.success).toBe(true)
+  })
+
+  it('accepts both absent together', () => {
+    const result = parseEnv({
+      DATABASE_URL: VALID_DATABASE_URL,
+      JWT_SECRET: VALID_JWT_SECRET,
+    })
+
+    expect(result.success).toBe(true)
+  })
+})

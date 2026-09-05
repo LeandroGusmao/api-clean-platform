@@ -93,9 +93,10 @@ export function makeAuthContainer(
     config.REFRESH_TOKEN_TTL_SECONDS,
   )
   /**
-   * One transport for the process: nodemailer pools connections across sends,
-   * so rebuilding it per request would open a fresh TCP and TLS handshake for
-   * every verification code.
+   * One transport for the process: `smtpTransportOptions` sets `pool: true`,
+   * so nodemailer actually pools connections across sends — rebuilding it per
+   * request would open a fresh TCP and TLS handshake for every verification
+   * code regardless. `closeEmailTransport` below is the matching teardown.
    */
   const emailSender = new SmtpEmailSender({
     host: config.MAIL_HOST,
@@ -115,10 +116,15 @@ export function makeAuthContainer(
   )
   /**
    * Wraps the bare sender for exactly one notification. A verification code
-   * must propagate its failure (the account is unusable without it, and a
-   * retry heals through the collision path); "your password was changed" must
-   * not, because the password has already changed and a 500 here would tell
-   * the owner the change failed while their old password no longer works.
+   * must propagate its failure — the account is unusable without it, and
+   * whether registering again heals it depends on timing: OUTSIDE the resend
+   * cooldown, a retry issues a fresh code and resends for real; INSIDE it (the
+   * common case for a retry attempted right away), the code row from the
+   * failed attempt is already persisted, so the retry answers 202 and sends
+   * nothing until the cooldown lapses (§12 of the design spec records this as
+   * an accepted cost). "Your password was changed" must not propagate at all:
+   * the password has already changed, and a 500 here would tell the owner the
+   * change failed while their old password no longer works.
    */
   const passwordChangedEmailSender = new BestEffortEmailSender(emailSender, logger)
 
@@ -275,6 +281,14 @@ export function makeAuthContainer(
      * exercise the primitive on its own.
      */
     uow,
+    /**
+     * Drains the SMTP transport's pooled connections. `buildApp` wires this
+     * into Fastify's `onClose`, next to the database pool's own `pool.end()` —
+     * `app.close()` is meant to be the ONE shutdown path, so nothing outside
+     * this module has to know the transport is pooled at all, only that it
+     * needs closing.
+     */
+    closeEmailTransport: () => emailSender.close(),
   }
 }
 
