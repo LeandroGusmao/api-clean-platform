@@ -100,6 +100,22 @@ jobs:
           PORT: 3000
           DATABASE_URL: postgres://api_clean_platform:api_clean_platform_local_dev@127.0.0.1:5433/api_clean_platform_test
           JWT_SECRET: a-ci-secret-with-at-least-32-characters
+          # Required in production by `env.ts`, so the process refuses to boot
+          # without them — which is the point of the guard, and is exactly how
+          # this step first failed.
+          #
+          # A deliberately unroutable host, NOT the mailpit service: this step
+          # only asks whether the built output boots and answers /health, and
+          # it never sends. Pointing at mailpit with MAIL_REQUIRE_TLS=true
+          # would be a contradiction dressed as coverage — mailpit offers no
+          # STARTTLS, so the pair could never complete a real send. Verified
+          # that the pooled transport connects on first send and not at
+          # construction, so an unreachable host cannot fail the boot.
+          MAIL_HOST: smtp.invalid
+          MAIL_PORT: 587
+          MAIL_FROM: API Clean Platform <no-reply@invalid>
+          # The production value, because this runs as production.
+          MAIL_REQUIRE_TLS: true
         run: |
           node dist/main/http.js &
           # `node` directly, not `pnpm start`: $! must be the server itself,
