@@ -74,8 +74,19 @@ const TWO_MESSAGES = 2
 const NO_MESSAGES = 0
 /** Matches `DEFAULT_EMAIL_VERIFICATION_MAX_ATTEMPTS` — the number under test. */
 const WRONG_ATTEMPTS_TO_EXHAUST_THE_CAP = 5
+/**
+ * Comfortably more than the cap, fired at once: if the cap were enforced by a
+ * read-then-write (read `attempts`, compare, then write), every one of these
+ * would read the same pre-guess value and all would pass, letting one live
+ * code absorb far more than `WRONG_ATTEMPTS_TO_EXHAUST_THE_CAP` guesses. The
+ * atomic `registerFailedAttempt` closes that window by making the read and
+ * the write one statement; a SEQUENTIAL loop of the same size could not tell
+ * the two implementations apart; it would pass against either.
+ */
+const CONCURRENT_WRONG_GUESSES = 10
 
 const ROW_MISSING_MESSAGE = 'no user row was stored'
+const TOKEN_ROW_MISSING_MESSAGE = 'no email verification token row was stored'
 
 /**
  * Elevated well past anything this suite spends, the same pattern
@@ -284,6 +295,54 @@ describe('the email verification flow, against a real SMTP server', () => {
 
     expect(withTheCorrectCode.statusCode).toBe(UNPROCESSABLE_ENTITY_STATUS_CODE)
     expect(withTheCorrectCode.json().error.code).toBe(EMAIL_VERIFICATION_FAILED_CODE)
+  })
+
+  it('holds the attempt cap under CONCURRENT wrong guesses against one live code', async () => {
+    const code = await registerAndFetchCode(EMAIL, PASSWORD)
+    const wrongCode = wrongCodeFor(code)
+
+    // `Promise.all` over calls that are never individually `await`ed first:
+    // that is what actually launches every `app.inject` before any of them
+    // resolves. Awaiting them one by one — even inside a loop that then waits
+    // on the whole array — would serialize the requests and could not exercise
+    // the race the attempt cap has to survive.
+    const responses = await Promise.all(
+      Array.from({ length: CONCURRENT_WRONG_GUESSES }, () =>
+        confirmEmail(EMAIL, wrongCode, { refreshTransport: BODY_TRANSPORT }),
+      ),
+    )
+
+    expect(
+      responses.every(
+        (response) => response.statusCode === UNPROCESSABLE_ENTITY_STATUS_CODE,
+      ),
+    ).toBe(true)
+
+    // The correct code must no longer work: the cap was reached (or the live
+    // code's TTL/consumption state was otherwise exhausted by the guesses),
+    // and `EmailVerificationFailedError` is the one answer for every mode.
+    const withTheCorrectCode = await confirmEmail(EMAIL, code, {
+      refreshTransport: BODY_TRANSPORT,
+    })
+    expect(withTheCorrectCode.statusCode).toBe(UNPROCESSABLE_ENTITY_STATUS_CODE)
+    expect(withTheCorrectCode.json().error.code).toBe(EMAIL_VERIFICATION_FAILED_CODE)
+
+    // The number that actually proves the fix: read straight from Postgres,
+    // bypassing the use case entirely. Before the atomic `WHERE ... AND
+    // attempts < maxAttempts`, `CONCURRENT_WRONG_GUESSES` concurrent guesses
+    // each read `attempts = 0`, each passed the pre-check, and each wrote —
+    // so this column would land at `CONCURRENT_WRONG_GUESSES`, past the
+    // configured cap.
+    const [userRow] = await db.select().from(users).where(eq(users.email, EMAIL))
+    if (userRow === undefined) throw new Error(ROW_MISSING_MESSAGE)
+
+    const [tokenRow] = await db
+      .select()
+      .from(emailVerificationTokens)
+      .where(eq(emailVerificationTokens.userId, userRow.id))
+    if (tokenRow === undefined) throw new Error(TOKEN_ROW_MISSING_MESSAGE)
+
+    expect(tokenRow.attempts).toBeLessThanOrEqual(WRONG_ATTEMPTS_TO_EXHAUST_THE_CAP)
   })
 
   it('delivers a new message on resend, and the old code stops working', async () => {

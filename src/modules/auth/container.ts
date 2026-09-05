@@ -175,7 +175,7 @@ export function makeAuthContainer(
       passwordChangedEmailSender,
     ),
     /**
-     * Takes the users repository AND `emailVerifications.incrementAttempts`
+     * Takes the users repository AND `emailVerifications.registerFailedAttempt`
      * directly, alongside the unit of work. §9 permits the first for the same
      * reason `changePassword` gets one; the second is the exception its own
      * constructor comment documents — a write outside the transaction, because

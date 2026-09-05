@@ -69,7 +69,7 @@ function makeIssuer() {
     invalidateActiveForUser: async () => {
       callLog.push(INVALIDATE)
     },
-    incrementAttempts: async () => {},
+    registerFailedAttempt: async () => false,
     consume: async () => false,
   }
 

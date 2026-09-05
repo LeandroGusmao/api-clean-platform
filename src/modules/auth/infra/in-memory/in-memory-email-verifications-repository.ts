@@ -39,13 +39,21 @@ export class InMemoryEmailVerificationsRepository
     })
   }
 
-  async incrementAttempts(id: string): Promise<void> {
-    const current = this.verifications.find((each) => each.id === id)
-    if (current === undefined) return
+  async registerFailedAttempt(id: string, maxAttempts: number): Promise<boolean> {
+    // Mirrors the Drizzle adapter's conditional `UPDATE`: only a row that is
+    // still unconsumed AND under the cap gets incremented. A unit test runs
+    // one call at a time, so there is no race to reproduce here — this exists
+    // so the SAME condition (not just the increment) is exercised by the
+    // in-memory adapter the unit tests use.
+    const current = this.verifications.find(
+      (each) => each.id === id && each.consumedAt === null && each.attempts < maxAttempts,
+    )
+    if (current === undefined) return false
 
     this.#replaceMatching((each) => each.id === id, {
       attempts: current.attempts + ONE_INCREMENT,
     })
+    return true
   }
 
   async consume(id: string, at: Date): Promise<boolean> {

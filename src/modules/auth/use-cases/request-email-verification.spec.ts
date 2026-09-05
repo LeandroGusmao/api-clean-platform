@@ -80,7 +80,8 @@ function trackedRepos(): AuthRepos {
         callLog.push(VERIFICATIONS_INVALIDATE)
         return verificationsRepository.invalidateActiveForUser(userId, at)
       },
-      incrementAttempts: (id) => verificationsRepository.incrementAttempts(id),
+      registerFailedAttempt: (id, maxAttempts) =>
+        verificationsRepository.registerFailedAttempt(id, maxAttempts),
       consume: (id, at) => verificationsRepository.consume(id, at),
     },
   }

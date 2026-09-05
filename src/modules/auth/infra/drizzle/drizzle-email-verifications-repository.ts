@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from 'drizzle-orm'
+import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm'
 import type { Database } from '#infra/database/client'
 import { toPersistenceError } from '#infra/database/driver-error'
 import type { EmailVerification } from '#modules/auth/entities/email-verification'
@@ -67,14 +67,30 @@ export class DrizzleEmailVerificationsRepository
       )
   }
 
-  async incrementAttempts(id: string): Promise<void> {
-    // `sql` tag, not read-then-write: a read-modify-write would lose
-    // increments under exactly the concurrency an attacker parallelising
-    // guesses would create.
-    await this.db
+  async registerFailedAttempt(id: string, maxAttempts: number): Promise<boolean> {
+    // The conditional `UPDATE`, not a read-then-write: a read-modify-write
+    // would let every one of N concurrent guesses read the same `attempts`
+    // value, all pass a comparison made against that read, and all write —
+    // which is exactly the bypass this method exists to close. Folding the
+    // read into the `WHERE` clause and letting Postgres's row lock serialize
+    // the writes is what makes the cap hold under concurrency, the same way
+    // `consume`'s conditional `UPDATE` makes single use hold.
+    const result = await this.db
       .update(emailVerificationTokens)
-      .set({ attempts: sql`${emailVerificationTokens.attempts} + ${ONE_INCREMENT}` })
-      .where(eq(emailVerificationTokens.id, id))
+      .set({
+        attempts: sql`${emailVerificationTokens.attempts} + ${ONE_INCREMENT}`,
+      })
+      .where(
+        and(
+          eq(emailVerificationTokens.id, id),
+          isNull(emailVerificationTokens.consumedAt),
+          lt(emailVerificationTokens.attempts, maxAttempts),
+        ),
+      )
+
+    // Same reasoning as `consume`'s `rowCount` handling below: fail closed if
+    // the driver ever surfaces `null` instead of a count.
+    return (result.rowCount ?? NO_ROW_AFFECTED) !== NO_ROW_AFFECTED
   }
 
   async consume(id: string, at: Date): Promise<boolean> {

@@ -28,6 +28,8 @@ const CODE_HASH_C = 'c'.repeat(CODE_HASH_LENGTH)
 const NO_ATTEMPTS = 0
 const ONE_ATTEMPT = 1
 const NO_ROWS = 0
+/** Arbitrary for this suite; only the arithmetic against it is under test. */
+const MAX_ATTEMPTS = 5
 const UNKNOWN_ID = '00000000-0000-4000-8000-000000000000'
 const ID_PAD_LENGTH = 12
 
@@ -169,16 +171,53 @@ describe('DrizzleEmailVerificationsRepository', () => {
     expect(ownedByOther?.consumedAt).toBeNull()
   })
 
-  it('incrementAttempts adds exactly one, in the database', async () => {
+  it('registerFailedAttempt adds exactly one, in the database', async () => {
     const saved = verification(userId, CODE_HASH_A)
 
     const found = await uow(async ({ emailVerifications: repo }) => {
       await repo.save(saved)
-      await repo.incrementAttempts(saved.id)
+      await repo.registerFailedAttempt(saved.id, MAX_ATTEMPTS)
       return repo.findActiveByUserId(userId)
     })
 
     expect(found?.attempts).toBe(ONE_ATTEMPT)
+  })
+
+  it('registerFailedAttempt returns true up to the cap and false once it is reached, against real Postgres', async () => {
+    const saved = verification(userId, CODE_HASH_A)
+
+    const outcomes = await uow(async ({ emailVerifications: repo }) => {
+      await repo.save(saved)
+
+      const results: boolean[] = []
+      for (let guess = 0; guess < MAX_ATTEMPTS + ONE_ATTEMPT; guess++) {
+        results.push(await repo.registerFailedAttempt(saved.id, MAX_ATTEMPTS))
+      }
+
+      return results
+    })
+
+    // The WHERE clause's own `attempts < maxAttempts`, not the caller, is what
+    // stops the count past the cap — this proves it against the real driver,
+    // the same way `consume returns FALSE on the second call` proves single use.
+    expect(outcomes).toEqual([true, true, true, true, true, false])
+
+    const found = await uow(({ emailVerifications: repo }) =>
+      repo.findActiveByUserId(userId),
+    )
+    expect(found?.attempts).toBe(MAX_ATTEMPTS)
+  })
+
+  it('registerFailedAttempt refuses a consumed row, even under the cap', async () => {
+    const saved = verification(userId, CODE_HASH_A)
+
+    const allowed = await uow(async ({ emailVerifications: repo }) => {
+      await repo.save(saved)
+      await repo.consume(saved.id, LATER)
+      return repo.registerFailedAttempt(saved.id, MAX_ATTEMPTS)
+    })
+
+    expect(allowed).toBe(false)
   })
 
   it('consume returns true on the first call', async () => {

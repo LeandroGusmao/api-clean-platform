@@ -72,7 +72,7 @@ const USER_MISSING_MESSAGE = 'the repository stored no user'
 const CONSUME_CALL = 'verifications.consume'
 const MARK_VERIFIED_CALL = 'users.markEmailVerified'
 const SAVE_TOKEN_CALL = 'refreshTokens.save'
-const INCREMENT_ATTEMPTS_CALL = 'verifications.incrementAttempts'
+const REGISTER_FAILED_ATTEMPT_CALL = 'verifications.registerFailedAttempt'
 const COMMIT = 'COMMIT'
 
 /**
@@ -95,7 +95,7 @@ let useCase: ConfirmEmailUseCase
 // Typed with the real signatures rather than a bare `ReturnType<typeof vi.fn>`,
 // which erases them: the erased form compiles at the declaration and then fails
 // where the spy is handed to a port, several lines away.
-let incrementAttemptsSpy: Mock<IEmailVerificationsRepository['incrementAttempts']>
+let registerFailedAttemptSpy: Mock<IEmailVerificationsRepository['registerFailedAttempt']>
 let signSpy: Mock<ITokenSigner['sign']>
 let uowSpy: Mock<(work: (repos: AuthRepos) => Promise<unknown>) => Promise<unknown>>
 
@@ -136,7 +136,8 @@ function trackedRepos(): AuthRepos {
       findActiveByUserId: (userId) => verificationsRepository.findActiveByUserId(userId),
       invalidateActiveForUser: (userId, at) =>
         verificationsRepository.invalidateActiveForUser(userId, at),
-      incrementAttempts: (id) => verificationsRepository.incrementAttempts(id),
+      registerFailedAttempt: (id, maxAttempts) =>
+        verificationsRepository.registerFailedAttempt(id, maxAttempts),
       consume: async (id, at) => {
         callLog.push(CONSUME_CALL)
         if (consumeOutcome === LOST_RACE) return LOST_RACE
@@ -152,7 +153,7 @@ function buildUseCase(clock: IClock): ConfirmEmailUseCase {
     usersRepository,
     {
       findActiveByUserId: (userId) => verificationsRepository.findActiveByUserId(userId),
-      incrementAttempts: incrementAttemptsSpy,
+      registerFailedAttempt: registerFailedAttemptSpy,
     },
     // Cast because `IAuthUnitOfWork` is generic in the callback's return type
     // and `vi.fn` cannot produce a generic function. The spy's own signature is
@@ -179,9 +180,9 @@ beforeEach(() => {
   verificationsRepository = new InMemoryEmailVerificationsRepository()
   refreshTokensRepository = new InMemoryRefreshTokensRepository()
 
-  incrementAttemptsSpy = vi.fn(async (id) => {
-    callLog.push(INCREMENT_ATTEMPTS_CALL)
-    await verificationsRepository.incrementAttempts(id)
+  registerFailedAttemptSpy = vi.fn(async (id, maxAttempts) => {
+    callLog.push(REGISTER_FAILED_ATTEMPT_CALL)
+    return verificationsRepository.registerFailedAttempt(id, maxAttempts)
   })
 
   // Records the payload. A fake that ignored it would let the use case sign for
@@ -382,14 +383,37 @@ describe('ConfirmEmailUseCase', () => {
 
     // Exactly one: a counter incremented twice per guess halves the budget a
     // legitimate user has for a typo.
-    expect(incrementAttemptsSpy).toHaveBeenCalledTimes(ONE_CALL)
+    expect(registerFailedAttemptSpy).toHaveBeenCalledTimes(ONE_CALL)
+    expect(registerFailedAttemptSpy).toHaveBeenCalledWith(VERIFICATION_ID, MAX_ATTEMPTS)
     expect(storedVerification()?.attempts).toBe(NO_ATTEMPTS_SPENT + ONE_CALL)
 
     // The whole log, so the absence of COMMIT is asserted rather than assumed:
     // inside a transaction that rolls back — and this path always throws — the
     // brute-force counter would be erased exactly when it matters (§8, line 3).
-    expect(callLog).toEqual([INCREMENT_ATTEMPTS_CALL])
+    expect(callLog).toEqual([REGISTER_FAILED_ATTEMPT_CALL])
     expect(uowSpy).not.toHaveBeenCalled()
+  })
+
+  it('refuses the sixth wrong guess with the same error, having spent only five attempts', async () => {
+    storeVerifiableAccount()
+
+    for (let guess = 0; guess < MAX_ATTEMPTS; guess++) {
+      await failureFrom(confirm({ code: WRONG_CODE }))
+    }
+    expect(storedVerification()?.attempts).toBe(MAX_ATTEMPTS)
+
+    // Same error, same message — no distinguishing branch is introduced for
+    // "cap just spent" versus any other failure mode.
+    expect(await failureFrom(confirm({ code: WRONG_CODE }))).toEqual({
+      message: FAILURE_MESSAGE,
+      code: FAILURE_CODE,
+    })
+
+    // The cheap pre-filter (`isUsable`) is what stops the sixth guess before it
+    // ever reaches the repository: attempts stays at the cap, and the atomic
+    // write is never even attempted a sixth time.
+    expect(registerFailedAttemptSpy).toHaveBeenCalledTimes(MAX_ATTEMPTS)
+    expect(storedVerification()?.attempts).toBe(MAX_ATTEMPTS)
   })
 
   it('spends no attempt on a code that was never usable', async () => {
@@ -400,7 +424,7 @@ describe('ConfirmEmailUseCase', () => {
 
     // The counter exists to price guessing against a LIVE code. Charging an
     // expired one costs the caller nothing and only wears out a row.
-    expect(incrementAttemptsSpy).not.toHaveBeenCalled()
+    expect(registerFailedAttemptSpy).not.toHaveBeenCalled()
     expect(callLog).toEqual([])
   })
 

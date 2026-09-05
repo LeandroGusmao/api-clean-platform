@@ -142,7 +142,7 @@ beforeEach(() => {
       save: async () => {},
       findActiveByUserId: async () => null,
       invalidateActiveForUser: async () => {},
-      incrementAttempts: async () => {},
+      registerFailedAttempt: async () => false,
       consume: async () => false,
     },
   }

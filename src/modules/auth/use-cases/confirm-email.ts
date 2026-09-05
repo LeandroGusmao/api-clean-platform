@@ -36,7 +36,7 @@ export class ConfirmEmailUseCase {
   constructor(
     private readonly usersRepository: Pick<IUsersRepository, 'findByEmail'>,
     /**
-     * `incrementAttempts` is a WRITE, and it is in this Pick on purpose.
+     * `registerFailedAttempt` is a WRITE, and it is in this Pick on purpose.
      *
      * §9 of the unit of work design tells a use case holding the UoW to declare
      * its direct repository with the READ methods it uses. This is the first
@@ -47,7 +47,7 @@ export class ConfirmEmailUseCase {
      */
     private readonly verifications: Pick<
       IEmailVerificationsRepository,
-      'findActiveByUserId' | 'incrementAttempts'
+      'findActiveByUserId' | 'registerFailedAttempt'
     >,
     private readonly uow: IAuthUnitOfWork,
     private readonly refreshTokenIssuer: RefreshTokenIssuer,
@@ -82,7 +82,15 @@ export class ConfirmEmailUseCase {
       // survive the throw two lines below, and a write inside a transaction
       // that always rolls back on this path would be erased exactly when it
       // matters, turning the attempt cap into a no-op.
-      await this.verifications.incrementAttempts(verification.id)
+      //
+      // The return is not branched on. A wrong guess throws the same error
+      // whether or not this call was the one that spent the cap's last slot —
+      // that is what keeps this endpoint from distinguishing "still has
+      // guesses left" from "just ran out" for an anonymous caller. What makes
+      // the cap actually hold under N concurrent guesses is the atomic
+      // `WHERE ... AND attempts < maxAttempts` inside `registerFailedAttempt`
+      // itself, not anything done with its result here.
+      await this.verifications.registerFailedAttempt(verification.id, this.maxAttempts)
       throw new EmailVerificationFailedError()
     }
 
