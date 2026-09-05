@@ -27,6 +27,7 @@ const POST_METHOD = 'POST'
 const ACCEPTED_STATUS_CODE = 202
 const OK_STATUS_CODE = 200
 const FORBIDDEN_STATUS_CODE = 403
+const UNAUTHORIZED_STATUS_CODE = 401
 const UNPROCESSABLE_ENTITY_STATUS_CODE = 422
 
 // `send(null)` on a 202 puts these four bytes on the wire, with a JSON content
@@ -41,7 +42,26 @@ const EMAIL_VERIFICATION_FAILED_CODE = 'EMAIL_VERIFICATION_FAILED'
 const EMAIL = 'joao@example.com'
 const UNKNOWN_EMAIL = 'nobody@example.com'
 const PASSWORD = 'sup3r-s3cr3t!'
-const WRONG_CODE = '000000'
+/**
+ * Two distinct passwords for the pre-hijack test below: whoever's registration
+ * attempt ends up bound to the live code must be the one whose password
+ * survives, and two DIFFERENT passwords is what makes login prove which one
+ * that was.
+ */
+const ATTACKER_PASSWORD = 'attacker-p4ssw0rd!'
+const VICTIM_PASSWORD = 'victim-p4ssw0rd!'
+
+/**
+ * A wrong code, guaranteed to differ from the real one: flipping the first
+ * digit means it can never collide, unlike a fixed literal such as
+ * `'000000'`, which is a real six-digit code once in 10^6 tries and would
+ * make the attempt-cap test flaky against a live generator.
+ */
+function wrongCodeFor(code: string): string {
+  const firstDigit = Number(code[0])
+  const flippedFirstDigit = (firstDigit + 1) % 10
+  return `${flippedFirstDigit}${code.slice(1)}`
+}
 
 const REFRESH_COOKIE_NAME = 'refresh_token'
 const BODY_TRANSPORT = 'body'
@@ -67,6 +87,13 @@ const ROW_MISSING_MESSAGE = 'no user row was stored'
  * exercises the cooldown itself belongs to a narrower, dedicated suite — this
  * one is proving the confirm/resend WIRING against a real mailbox, not the
  * cooldown's own arithmetic.
+ *
+ * `0` is outside the valid domain `authEnvSchema` declares for this variable
+ * (`.positive()` in `config.ts` — a real deployment could never boot with
+ * this value). That is safe ONLY here: `buildApp` takes an already-parsed
+ * config object and never re-runs it through `authEnvSchema`, so nothing
+ * re-validates this override. Do not copy this fixture into a test that
+ * exercises `parseEnv` or boots the app from raw `process.env` strings.
  */
 const CEILING_ABOVE_WHAT_THIS_SUITE_SPENDS = 1000
 const NO_RESEND_COOLDOWN_SECONDS = 0
@@ -189,6 +216,43 @@ describe('the email verification flow, against a real SMTP server', () => {
     expect(response.statusCode).toBe(OK_STATUS_CODE)
   })
 
+  it('binds the live code to the password of the registration that issued it, not an earlier one', async () => {
+    // The attack this pins: an attacker registers an address first, with
+    // THEIR password. The victim, unaware the address is taken, registers for
+    // real afterwards — the insert collides, and the 202 response gives no
+    // sign the address was ever taken. Before the fix, the collision path
+    // issued a fresh code but left the ATTACKER's password hash in place; the
+    // victim would confirm the mail they just received, believe the account
+    // was theirs, and the attacker — not the victim — would be the one able
+    // to log in.
+    await register(EMAIL, ATTACKER_PASSWORD)
+    await waitForMessageCount(ONE_MESSAGE)
+
+    const victimRegistration = await register(EMAIL, VICTIM_PASSWORD)
+    expect(victimRegistration.statusCode).toBe(ACCEPTED_STATUS_CODE)
+    await waitForMessageCount(TWO_MESSAGES)
+
+    // The victim reads the mail that just arrived and confirms with the code
+    // it carries — the one the collision path issued for THEIR request.
+    const message = await latestMessage()
+    const code = extractVerificationCode(message.text)
+    const confirmation = await confirmEmail(EMAIL, code, {
+      refreshTransport: BODY_TRANSPORT,
+    })
+    expect(confirmation.statusCode).toBe(OK_STATUS_CODE)
+
+    // The fix: the collision path rewrote the password hash in the SAME
+    // transaction that issued this code, so the victim's password — the one
+    // bound to the code they just confirmed with — is the one that survives.
+    const withVictimPassword = await login(EMAIL, VICTIM_PASSWORD)
+    expect(withVictimPassword.statusCode).toBe(OK_STATUS_CODE)
+
+    // And the attacker's earlier password, which created the row but never
+    // proved control of the mailbox, must no longer work.
+    const withAttackerPassword = await login(EMAIL, ATTACKER_PASSWORD)
+    expect(withAttackerPassword.statusCode).toBe(UNAUTHORIZED_STATUS_CODE)
+  })
+
   it('refuses to confirm the same code a second time', async () => {
     const code = await registerAndFetchCode(EMAIL, PASSWORD)
     const first = await confirmEmail(EMAIL, code, { refreshTransport: BODY_TRANSPORT })
@@ -202,12 +266,13 @@ describe('the email verification flow, against a real SMTP server', () => {
 
   it('exhausts the attempt cap on five wrong codes, and then refuses the correct one too', async () => {
     const code = await registerAndFetchCode(EMAIL, PASSWORD)
+    const wrongCode = wrongCodeFor(code)
 
-    let lastWrongAttempt = await confirmEmail(EMAIL, WRONG_CODE, {
+    let lastWrongAttempt = await confirmEmail(EMAIL, wrongCode, {
       refreshTransport: BODY_TRANSPORT,
     })
     for (let spent = 1; spent < WRONG_ATTEMPTS_TO_EXHAUST_THE_CAP; spent++) {
-      lastWrongAttempt = await confirmEmail(EMAIL, WRONG_CODE, {
+      lastWrongAttempt = await confirmEmail(EMAIL, wrongCode, {
         refreshTransport: BODY_TRANSPORT,
       })
     }

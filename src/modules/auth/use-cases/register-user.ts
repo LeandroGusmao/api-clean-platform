@@ -109,7 +109,7 @@ export class RegisterUserUseCase {
       // have been written.
       if (!(error instanceof EmailAlreadyInUseError)) throw error
 
-      deliver = await this.#deliverForExistingAccount(email, now)
+      deliver = await this.#deliverForExistingAccount(email, passwordHash, now)
     }
 
     // One line, one call, for every branch: this is where "indistinguishable"
@@ -125,9 +125,16 @@ export class RegisterUserUseCase {
    * registered, lost the email, and tried again would be told they already have
    * an account and would be stuck forever. With it, registering again IS
    * resending — subject to the same cooldown, so it cannot be used to flood.
+   *
+   * `passwordHash` is threaded all the way from the request that triggered
+   * this collision. It is written ONLY on the branch that also issues a fresh
+   * code (see the comment there) — never on the cooldown branch and never on
+   * the verified branch, or the password and the live code could come from two
+   * different registrations.
    */
   async #deliverForExistingAccount(
     email: Email,
+    passwordHash: string,
     now: Date,
   ): Promise<DeliverVerification> {
     const existing = await this.usersRepository.findByEmail(email)
@@ -164,8 +171,25 @@ export class RegisterUserUseCase {
     // Still a transaction, and not two autocommit writes: the two writes inside
     // `issueFor` invalidate the previous code and insert the new one, and a
     // failure between them would leave the account with no live code at all.
-    return this.uow((repos) =>
-      this.issuer.issueFor(existing, repos.emailVerifications, now),
-    )
+    return this.uow(async (repos) => {
+      // The invariant this closes: the live code and the current password MUST
+      // come from the SAME registration attempt. Confirming an address proves
+      // control of the inbox, and it must therefore verify a password chosen
+      // by whoever controls that inbox — not by whoever registered it first.
+      //
+      // An unverified account has no proven owner, so the latest registrant's
+      // password is the honest one to keep: nobody has demonstrated ownership
+      // yet, and the login gate already keeps the account unusable either way.
+      // Writing the hash here, in the SAME transaction that issues the fresh
+      // code, is what binds the two together. Writing it on the cooldown
+      // branch instead (where no code is issued) would decouple them again:
+      // an attacker registering inside the victim's cooldown would then set
+      // their own password onto a code already sitting in the victim's inbox
+      // — the identical hijack, with the roles swapped. Do NOT "simplify" this
+      // by moving the write outside this branch.
+      await repos.users.updatePasswordHash(existing.id, passwordHash, now)
+
+      return this.issuer.issueFor(existing, repos.emailVerifications, now)
+    })
   }
 }

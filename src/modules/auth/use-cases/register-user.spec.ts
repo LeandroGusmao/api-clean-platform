@@ -63,10 +63,14 @@ class NotACollisionError extends Error {}
 
 /** Records the order in which collaborators were touched. */
 const USERS_SAVE = 'users.save'
+const USERS_UPDATE_PASSWORD_HASH = 'users.updatePasswordHash'
 const VERIFICATIONS_INVALIDATE = 'verifications.invalidateActiveForUser'
 const VERIFICATIONS_SAVE = 'verifications.save'
 const COMMIT = 'COMMIT'
 const EMAIL_SEND = 'email.send'
+
+/** The password chosen by whoever sends the SECOND, colliding request. */
+const NEW_PASSWORD = 'a-different-s3cret!'
 
 // One-method ports do not deserve their own file: an object literal here keeps
 // the double next to the assertions it serves, and out of `dist/`.
@@ -113,8 +117,14 @@ function trackedRepos(): AuthRepos {
       },
       findByEmail: (email) => usersRepository.findByEmail(email),
       findById: (id) => usersRepository.findById(id),
-      updatePasswordHash: (id, passwordHash, updatedAt) =>
-        usersRepository.updatePasswordHash(id, passwordHash, updatedAt),
+      updatePasswordHash: async (id, passwordHash, updatedAt) => {
+        await usersRepository.updatePasswordHash(id, passwordHash, updatedAt)
+
+        // Logged AFTER the delegate, matching `USERS_SAVE`'s convention above:
+        // this write is what the hijack fix binds to `issueFor` in the same
+        // transaction, and the call-log order is the proof of that binding.
+        callLog.push(USERS_UPDATE_PASSWORD_HASH)
+      },
       markEmailVerified: (id, verifiedAt, updatedAt) =>
         usersRepository.markEmailVerified(id, verifiedAt, updatedAt),
     },
@@ -326,9 +336,16 @@ describe('RegisterUserUseCase', () => {
     // account that was already there.
     expect(usersRepository.users).toHaveLength(1)
     expect(verificationsRepository.verifications[0]?.userId).toBe(EXISTING_USER_ID)
+    // The security fix, pinned directly: whoever's registration attempt wins
+    // the live code also owns the stored password. `EXISTING_PASSWORD_HASH`
+    // belonged to whoever created the row first; it must not survive.
+    expect(storedUser().passwordHash).toBe(`${HASH_PREFIX}${PASSWORD}`)
     // The send still happens after the second transaction commits, exactly as
-    // on the success path. `USERS_SAVE` is absent because the insert failed.
+    // on the success path. `USERS_SAVE` is absent because the insert failed —
+    // `USERS_UPDATE_PASSWORD_HASH` replaces it, in the SAME transaction as the
+    // code it is bound to.
     expect(callLog).toEqual([
+      USERS_UPDATE_PASSWORD_HASH,
       VERIFICATIONS_INVALIDATE,
       VERIFICATIONS_SAVE,
       COMMIT,
@@ -358,19 +375,32 @@ describe('RegisterUserUseCase', () => {
     // put a live credential in a verified owner's inbox.
     expect(sent[0]?.text).not.toContain(CODE)
     expect(verificationsRepository.verifications).toHaveLength(0)
+    // A verified account has a PROVEN owner. The whole point of this email is
+    // that nothing about the account changes — including, and especially, its
+    // password.
+    expect(storedUser().passwordHash).toBe(EXISTING_PASSWORD_HASH)
+    expect(callLog).toEqual([EMAIL_SEND])
   })
 
   it('sends nothing when an unverified account got a code inside the cooldown', async () => {
     storeExistingUser(null)
     storeActiveVerification(INSIDE_COOLDOWN_AGE_MS)
 
-    await useCase.execute({ email: EMAIL, password: PASSWORD })
+    await useCase.execute({ email: EMAIL, password: NEW_PASSWORD })
 
     // The cooldown is what stops registration from being used to flood a
     // stranger's inbox, and from minting fresh attempt budget on demand.
     expect(sent).toHaveLength(0)
     expect(verificationsRepository.verifications).toHaveLength(1)
     expect(callLog).toEqual([])
+    // This is the test that pins the reasoning behind the security fix: the
+    // cooldown branch issues NO fresh code, so it must write NO password hash
+    // either. Writing it here would decouple the password from the live code
+    // — an attacker registering inside the victim's cooldown would set THEIR
+    // password onto a code already sitting in the victim's inbox, which is the
+    // same hijack with the roles swapped. A later "cleanup" that moves this
+    // write out of the issuing branch must fail this assertion.
+    expect(storedUser().passwordHash).toBe(EXISTING_PASSWORD_HASH)
   })
 
   it('sends nothing when the row vanished between the violation and the read', async () => {
