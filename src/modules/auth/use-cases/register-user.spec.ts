@@ -120,9 +120,8 @@ function trackedRepos(): AuthRepos {
       updatePasswordHash: async (id, passwordHash, updatedAt) => {
         await usersRepository.updatePasswordHash(id, passwordHash, updatedAt)
 
-        // Logged AFTER the delegate, matching `USERS_SAVE`'s convention above:
-        // this write is what the hijack fix binds to `issueFor` in the same
-        // transaction, and the call-log order is the proof of that binding.
+        // Logged AFTER the delegate, like `USERS_SAVE`. The order is the proof
+        // that this write shares a transaction with `issueFor`.
         callLog.push(USERS_UPDATE_PASSWORD_HASH)
       },
       markEmailVerified: (id, verifiedAt, updatedAt) =>

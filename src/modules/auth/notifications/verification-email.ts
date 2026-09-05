@@ -8,9 +8,9 @@ const ALREADY_EXISTS_SUBJECT = 'Someone tried to register with your address'
 const PASSWORD_CHANGED_SUBJECT = 'Your password was changed'
 
 /**
- * The bodies live here, as pure functions, rather than inline in the use cases:
- * they are the one thing in this slice a non-engineer may want to reword, and a
- * reviewer should be able to read every message the system can send in one file.
+ * Pure functions rather than bodies inlined in the use cases: this is the one
+ * file a non-engineer may want to reword, and it holds every message the system
+ * can send.
  */
 export function verificationEmail(
   to: Email,
@@ -48,9 +48,9 @@ export function accountAlreadyExistsEmail(to: Email): EmailMessage {
 }
 
 /**
- * The real defence behind the password change endpoint (§11.1 of the slice 9
- * design): an attacker holding a stolen access token can change the password,
- * and the owner finding out is what makes that recoverable.
+ * The real defence behind the password change endpoint: an attacker holding a
+ * stolen access token can change the password, and the owner finding out is what
+ * makes that recoverable.
  */
 export function passwordChangedEmail(to: Email): EmailMessage {
   return {

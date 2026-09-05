@@ -20,16 +20,10 @@ const MILLISECONDS_PER_SECOND = 1000
  * What this module is allowed to see of the environment: its OWN variables,
  * plus the `MAIL_*` keys the SMTP adapter needs.
  *
- * WIDENED rather than joined by a second parameter. `makeContainer` already
- * passes `env` whole and structural typing narrows it at the boundary
- * (decision 23) — so listing the mail keys here keeps that mechanism intact and
- * changes no call site. `Pick<Env, ...>` and never `Env`: with the whole type,
- * this module could read `DATABASE_URL`, and the rule would rest on nobody
- * doing it rather than on the compiler.
- *
- * The mail keys are core and not the module's own because sending mail is a
- * cross-cutting capability, not a concept of authentication — the same reason
- * `IEmailSender` lives in `shared/` and not in `modules/auth/ports/`.
+ * `Pick<Env, ...>` and never `Env`: with the whole type this module could read
+ * `DATABASE_URL`, and decision 23 would rest on nobody doing it rather than on
+ * the compiler. `makeContainer` still passes `env` whole and structural typing
+ * narrows it here, so no call site changes.
  */
 export type AuthContainerConfig = AuthConfig &
   Pick<
@@ -93,10 +87,8 @@ export function makeAuthContainer(
     config.REFRESH_TOKEN_TTL_SECONDS,
   )
   /**
-   * One transport for the process: `smtpTransportOptions` sets `pool: true`,
-   * so nodemailer actually pools connections across sends — rebuilding it per
-   * request would open a fresh TCP and TLS handshake for every verification
-   * code regardless. `closeEmailTransport` below is the matching teardown.
+   * One transport for the process — `smtpTransportOptions` sets `pool: true`,
+   * so connections are reused across sends. `closeEmailTransport` tears it down.
    */
   const emailSender = new SmtpEmailSender({
     host: config.MAIL_HOST,
@@ -115,26 +107,12 @@ export function makeAuthContainer(
     config.EMAIL_VERIFICATION_TTL_SECONDS,
   )
   /**
-   * Wraps the bare sender for exactly one notification. A verification code
-   * must propagate its failure — the account is unusable without it, and
-   * whether registering again heals it depends on timing: OUTSIDE the resend
-   * cooldown, a retry issues a fresh code and resends for real; INSIDE it (the
-   * common case for a retry attempted right away), the code row from the
-   * failed attempt is already persisted, so the retry answers 202 and sends
-   * nothing until the cooldown lapses (§12 of the design spec records this as
-   * an accepted cost). "Your password was changed" must not propagate at all:
-   * the password has already changed, and a 500 here would tell the owner the
-   * change failed while their old password no longer works.
+   * Wrapped for exactly one notification. Everything else gets the bare sender,
+   * so a verification code that cannot be delivered still fails loudly.
    */
   const passwordChangedEmailSender = new BestEffortEmailSender(emailSender, logger)
 
   return {
-    /**
-     * Takes two autocommit repositories AND the unit of work, for the reason
-     * §9 permits: both are READS on the collision path, made after the failed
-     * transaction has already rolled back. The constructor's `Pick`s are what
-     * make a write through either of them a compile error.
-     */
     registerUser: new RegisterUserUseCase(
       usersRepository,
       emailVerificationsRepository,
@@ -165,12 +143,6 @@ export function makeAuthContainer(
     ),
     logout: new LogoutUseCase(uow, tokenDigest, clock),
     logoutAll: new LogoutAllUseCase(uow, clock),
-    /**
-     * Takes the users repository AND the unit of work. §9 of the unit of work
-     * design permits that for a READ: the argon2 compare needs the stored hash,
-     * and argon2 may not run inside the transaction. Every write goes through
-     * the callback's `repos`.
-     */
     changePassword: new ChangePasswordUseCase(
       usersRepository,
       uow,
@@ -180,14 +152,6 @@ export function makeAuthContainer(
       clock,
       passwordChangedEmailSender,
     ),
-    /**
-     * Takes the users repository AND `emailVerifications.registerFailedAttempt`
-     * directly, alongside the unit of work. §9 permits the first for the same
-     * reason `changePassword` gets one; the second is the exception its own
-     * constructor comment documents — a write outside the transaction, because
-     * §8's third line says a brute-force counter written inside one that rolls
-     * back is erased exactly when it matters.
-     */
     confirmEmail: new ConfirmEmailUseCase(
       usersRepository,
       emailVerificationsRepository,
@@ -198,12 +162,6 @@ export function makeAuthContainer(
       clock,
       config.EMAIL_VERIFICATION_MAX_ATTEMPTS,
     ),
-    /**
-     * Takes the users repository AND the email verifications repository
-     * DIRECTLY, alongside the unit of work — both narrowed to `Pick`, per §9:
-     * one is the lookup, the other the cooldown check, and neither is ever a
-     * write outside the transaction the issuer opens.
-     */
     requestEmailVerification: new RequestEmailVerificationUseCase(
       usersRepository,
       emailVerificationsRepository,
@@ -232,10 +190,9 @@ export function makeAuthContainer(
      * endpoint.
      */
     /**
-     * The registration route declares its own ceiling now that it sends mail:
-     * an anonymous request putting a message in an arbitrary inbox is a spam
-     * amplifier, and it inherited only the global 300/min before this slice.
-     * Its own numbers, not login's, for the reason login already documents.
+     * Its own ceiling because it sends mail: an anonymous request putting a
+     * message in an arbitrary inbox is a spam amplifier. Its own numbers, not
+     * login's, for the reason login already documents.
      */
     registerRateLimit: {
       max: config.REGISTER_RATE_LIMIT_MAX_REQUESTS,

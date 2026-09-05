@@ -18,19 +18,13 @@ export type DeliverVerification = () => Promise<void>
 /**
  * Mints a verification code, persists its digest, and returns the send.
  *
- * **Returning the send is the whole point, and it is what makes the first line
- * of §8 of the unit of work design structural instead of advisory.** The rule
- * says external I/O must happen AFTER the commit, for two independent reasons:
- * the transaction runner re-executes its callback on a deadlock, so a send in
- * there goes out up to three times; and a rollback after a send means an email
- * about an account that does not exist. Because this method hands the send back
- * rather than performing it, there is nothing inside the callback that could
- * send — the caller has to reach the returned function, outside, to do it.
+ * **Returning the send is what makes §8 structural instead of advisory:** with
+ * nothing here that sends, a caller cannot put an email on the wire from inside
+ * a transaction — where a deadlock retry would send it up to three times, and a
+ * rollback would describe an account that does not exist.
  *
- * `verifications` is a PARAMETER and not a constructor dependency, so the caller
- * chooses which one: pass the transaction-bound repository from the `uow`
- * callback, and the writes join the transaction; pass the autocommit singleton,
- * and they stand alone.
+ * `verifications` is a parameter so the caller picks: the transaction-bound
+ * repository joins the writes to its transaction, the singleton does not.
  */
 export class EmailVerificationIssuer {
   constructor(

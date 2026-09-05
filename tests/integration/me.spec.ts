@@ -93,10 +93,8 @@ describe('GET /auth/me', () => {
     expect(response.json()).toEqual({
       id: userId,
       email: EMAIL,
-      // Not `null` any more: login now gates on a verified email (Task 11), so
-      // every account this fixture logs in with has to be verified — the
-      // `emailVerifiedAt: null` this assertion pinned before that gate landed
-      // no longer describes a state `getMe` can actually be called from.
+      // Not `null`: login gates on a verified email, so no account that can
+      // reach this endpoint is unverified.
       emailVerifiedAt: verifiedAt?.toISOString(),
       createdAt: expect.stringMatching(ISO_DATE_PATTERN),
     })

@@ -9,21 +9,10 @@ import type { EmailMessage, IEmailSender } from '#shared/ports/email-sender'
 const MINIMUM_TLS_VERSION = 'TLSv1.2'
 
 /**
- * Pooling is on (`pool: true`) rather than left at nodemailer's default
- * (a fresh connection per send): this adapter serves request paths —
- * `register`, `resend`, `changePassword` — and a transactional mailer on a
- * request path is exactly the case connection pooling exists for. Without it,
- * every send pays a fresh TCP handshake, and for anything but Mailpit's
- * plaintext localhost link, a fresh STARTTLS negotiation and AUTH round trip
- * on top — latency a concurrent request has to wait through for no reason
- * other than a socket that could have been kept open.
- *
- * `maxConnections` and `maxMessages` are left at nodemailer's own defaults (5
- * and 100): this process sends a handful of verification and notification
- * emails per request, never a bulk campaign, so five simultaneous connections
- * to the relay is already generous headroom rather than a bottleneck. Revisit
- * only if production traffic actually saturates it — there is no evidence to
- * pre-tune against yet.
+ * Pooled: this adapter sends from request paths, and without it every send pays
+ * a fresh TCP handshake plus STARTTLS and AUTH. `maxConnections` and
+ * `maxMessages` stay at nodemailer's defaults — this process sends a handful of
+ * messages per request, never a campaign.
  */
 const POOL_ENABLED = true
 
@@ -71,10 +60,8 @@ export function smtpTransportOptions(config: SmtpEmailSenderConfig): SMTPPool.Op
  * production (a real provider): only the configuration differs, which is what
  * makes swapping providers an environment change rather than a code change.
  *
- * The transport is built once and reused — with `pool: true` above, this is
- * what actually gets nodemailer to pool connections across repeated sends,
- * rather than merely sharing one configuration object that opens a fresh
- * connection every time regardless.
+ * The transport is built once and reused, which with `pool: true` is what
+ * actually keeps connections open across sends.
  */
 export class SmtpEmailSender implements IEmailSender {
   readonly #transport: Transporter
@@ -95,11 +82,8 @@ export class SmtpEmailSender implements IEmailSender {
   }
 
   /**
-   * Drains the pool at shutdown. A connection with a send already in flight is
-   * closed only after that send finishes (nodemailer's own guarantee for
-   * `SMTPPool#close`); idle ones close immediately. `buildApp` wires this into
-   * Fastify's `onClose`, the same hook that ends the database pool — `app.close()`
-   * stays the single teardown path, so nothing has to end this by hand.
+   * Drains the pool at shutdown; an in-flight send finishes first. Wired into
+   * Fastify's `onClose`, so `app.close()` stays the single teardown path.
    */
   close(): void {
     this.#transport.close()

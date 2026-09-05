@@ -71,10 +71,10 @@ export const DEFAULT_EMAIL_VERIFICATION_MAX_ATTEMPTS = 5
 export const DEFAULT_EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS = 60
 
 /**
- * Registration now sends mail to an arbitrary address from an anonymous request,
- * which makes it a spam amplifier. Until this slice it inherited only the global
- * 300/min. Its own pair, not a shared one, for the reason the login pair already
- * documents: a field named for one route, used by another, is a comment that lies.
+ * Registration sends mail to an arbitrary address from an anonymous request,
+ * which makes it a spam amplifier; the global 300/min is not a ceiling for that.
+ * Its own pair, not a shared one, for the reason the login pair documents: a
+ * field named for one route, used by another, is a comment that lies.
  */
 export const DEFAULT_REGISTER_RATE_LIMIT_MAX_REQUESTS = 10
 export const DEFAULT_REGISTER_RATE_LIMIT_WINDOW_SECONDS = 60
