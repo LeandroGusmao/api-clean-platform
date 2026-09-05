@@ -114,7 +114,7 @@ consegue dizer de qual módulo uma peça é, ela é global.
 | `entities/` | puro | Estado e comportamento de domínio |
 | `value-objects/` | puro | Valor com regra própria e autovalidável |
 | `repositories/` | puro | **Contratos** de persistência e o Unit of Work |
-| `providers/` | puro | **Contratos** de serviço externo (hash, token, e-mail) |
+| `providers/` | puro | **Contratos** de serviço externo do módulo (hash, token) — o de e-mail (`IEmailSender`) é comum a todos os módulos e mora em `src/shared/ports/`, não aqui (§7.1 do design de verificação) |
 | `use-cases/` | puro | Orquestra a regra; uma operação por arquivo |
 | `dtos/` | puro | Entrada e saída do use case |
 | `errors/` | puro | Erros do módulo, estendendo a taxonomia |
@@ -141,7 +141,7 @@ Cinco tipos de elemento, **avaliados nesta ordem**:
 | 2 | `composition` | `src/modules/*/container.ts` · `src/main/**` | tudo |
 | 3 | `module-infra` | `src/modules/*/infra/**` | `pure` · `global-infra` · `module-infra` **do próprio módulo** |
 | 4 | `global-infra` | `src/infra/**` | `pure` · `global-infra` |
-| 5 | `pure` | `src/modules/*/{entities,value-objects,repositories,providers,use-cases,dtos,errors}/**` · `src/modules/*/config.ts` · `src/shared/**` | só `pure` |
+| 5 | `pure` | `src/modules/*/{entities,value-objects,repositories,providers,use-cases,services,dtos,errors,notifications}/**` · `src/modules/*/config.ts` · `src/shared/**` | só `pure` |
 
 ### As quatro coisas que isso garante
 

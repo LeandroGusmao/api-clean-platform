@@ -40,11 +40,22 @@ jobs:
 
       # Same image as docker-compose.yml. The integration suite reads sent
       # messages back through its HTTP API on 8025.
+      #
+      # The health check is what stops the suite from starting before Mailpit
+      # is actually accepting SMTP connections on 1025: `waitForMessageCount`
+      # only covers the message being indexed AFTER a send succeeds, not the
+      # container being up for the first send — without this, a cold start
+      # can race `sendMail` into a connection refusal and a 500 on `register`.
       mailpit:
         image: axllent/mailpit:v1.30.2
         ports:
           - 1025:1025
           - 8025:8025
+        options: >-
+          --health-cmd "wget -q -O- http://localhost:8025/readyz"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       # Actions are pinned by commit SHA: a tag is a movable pointer and

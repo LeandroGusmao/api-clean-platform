@@ -11,15 +11,21 @@ export interface RequestEmailVerificationCommand {
 }
 
 /**
- * Resends the six-digit verification code — and **answers the same way for an
- * unknown address, an already-verified account, a request inside the
- * cooldown, and a code that is actually sent.**
+ * Resends the six-digit verification code — and **answers with the same
+ * status and body for an unknown address, an already-verified account, a
+ * request inside the cooldown, and a code that is actually sent.**
  *
- * That is the whole point, same as `RegisterUserUseCase`: a status or a delay
- * that told the four cases apart would turn this endpoint into the account
- * oracle Task 8's rewrite of `register` spent a wire-contract change closing.
- * Every branch below is a plain `return`, and the one branch that does
- * something ends in the same `await deliver()` as every other route out.
+ * That is the whole point, same as `RegisterUserUseCase`: a status that told
+ * the four cases apart would turn this endpoint into the account oracle
+ * Task 8's rewrite of `register` spent a wire-contract change closing. Every
+ * branch below is a plain `return`, and the one branch that does something
+ * ends in the same `await deliver()` as every other route out.
+ *
+ * **This closes the response, not the timing.** The branch that actually
+ * sends pays a transaction and a full SMTP round trip that the other three do
+ * not — a real, unmeasured latency gap, not a status or a body difference.
+ * See §12 of the design spec for the accepted cost, and the outbox in §5.3
+ * for the actual fix.
  *
  * The send happens after the transaction commits, through the thunk
  * `issueFor` returns — §8 of the unit of work design forbids I/O inside the
@@ -48,7 +54,13 @@ export class RequestEmailVerificationUseCase {
     const user = await this.usersRepository.findByEmail(Email.create(command.email))
 
     // Unknown address, or already verified: nothing truthful to send, and the
-    // response must not say which. Silence here costs the same as a send.
+    // response must not say which. The STATUS and BODY are identical to every
+    // other branch — but not the latency: this branch returns after one
+    // indexed SELECT, while the branch that actually sends pays a second
+    // SELECT, a transaction, and a full SMTP round trip. That gap is real and
+    // unmeasured; closing it means taking the send off the request path
+    // entirely (the outbox deferred in §5.3 of the design). See §12 of the
+    // design spec for the accepted cost.
     if (user === null || user.emailVerifiedAt !== null) return
 
     // Read ONCE — R7 — and used for both the cooldown comparison and the new

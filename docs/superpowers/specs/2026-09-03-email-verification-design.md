@@ -773,10 +773,14 @@ durante a implementação; a terceira ficou de fora e continua suposta.
    que nunca teve store nenhum. Fixado por um teste permanente em
    [`src/infra/database/transaction-runner.spec.ts`](../../../src/infra/database/transaction-runner.spec.ts)
    (`'allows a second run opened from the catch of a failed one'`).
-2. **[suposto]** Os dois caminhos do `register` custam tempo parecido: ambos pagam
-   argon2, que domina. Se a diferença for mensurável, o `202` volta a ser um
-   oráculo — só que por timing. **Isto não foi medido** — fica suposto, e dito
-   com todas as letras.
+2. **[suposto, e só sobre o `register`]** Os dois caminhos do `register` custam
+   tempo parecido: ambos pagam argon2, que domina. Se a diferença for
+   mensurável, o `202` volta a ser um oráculo — só que por timing. **Isto não
+   foi medido** — fica suposto, e dito com todas as letras. **E esta suposição
+   nunca cobriu o `resend`** — o endpoint cuja razão de existir é justamente a
+   paridade de resposta, e que a revisão final mostrou ser distinguível por
+   latência sem precisar medir nada: um ramo paga uma `SELECT`, o outro paga
+   duas mais uma transação mais um round-trip SMTP inteiro. Ver §12.10.
 3. **[medido]** `drizzle-orm@1.0.0-rc.4` sobre `node-postgres` devolve, num
    `update`, o `pg.QueryResult` bruto do driver, com `rowCount` `1` num acerto e
    `0` numa falta — nunca `null` na prática observada. O tipo do próprio `pg`
@@ -820,15 +824,25 @@ que a fatia 9 já havia acelerado. A poda que estava no roteiro passa a ter
 
 Ver §9.5.
 
-### 12.7 — Uma falha de envio ainda propaga do `register`, e sobra um oráculo estreito
+### 12.7 — Uma falha de envio ainda propaga do `register` E do `resend`, e sobra um oráculo estreito
 
-O envio não é best-effort no `register`: se o `send` rejeitar, a exceção sobe e
-o cliente vê. Isso deixa um oráculo residual e específico — contra um relay que
-recusa deterministicamente um destinatário, um endereço livre responde `500` e
-um endereço com código não expirado recente responde `202`. Tornar o envio
-best-effort fecharia essa fresta, mas reabriria a falha que o §9.5 rejeitou: um
-SMTP mal configurado responderia `202` para sempre, e ninguém conseguiria
-verificar nada. O conserto de verdade é o outbox que o §5.3 já adiou.
+O envio não é best-effort, nem no `register` nem no `resend`: se o `send`
+rejeitar, a exceção sobe e o cliente vê. Isso deixa um oráculo residual e
+específico — contra um relay que recusa deterministicamente um destinatário,
+um endereço livre responde `500` e um endereço com código não expirado recente
+responde `202`.
+
+O `resend` tem a forma idêntica, e é o caso mais limpo dos dois porque não cria
+nada: durante qualquer indisponibilidade de e-mail, o endpoint que existe
+especificamente para responder `202` sempre passa a responder, por código de
+status, à pergunta "esta conta existe e está sem código recente?" — o oráculo
+que ele foi desenhado para fechar volta pela porta dos fundos de uma
+indisponibilidade, não de um bug.
+
+Tornar o envio best-effort em qualquer um dos dois fecharia essa fresta, mas
+reabriria a falha que o §9.5 rejeitou: um SMTP mal configurado responderia
+`202` para sempre, e ninguém conseguiria verificar nada. O conserto de verdade
+continua sendo o outbox que o §5.3 já adiou.
 
 ### 12.8 — "Recadastrar é reenviar" também serve para invalidar o código da vítima
 
@@ -845,6 +859,63 @@ de verificação. Um atacante que gire de IP em IP pode encher a caixa de um
 endereço verificado conhecido com esse aviso. Manter o e-mail é deliberado: sem
 ele, alguém que esqueceu que já tinha conta recebe um `202` e silêncio, o que
 lê como cadastro quebrado.
+
+### 12.10 — O `resend` é distinguível por LATÊNCIA, não só por status
+
+§6.5 e a descrição publicada do endpoint afirmavam que nada — nem status, nem
+atraso — separa os quatro casos do `resend`. A primeira metade é verdade; a
+segunda não é, e a revisão final do branch pegou isso por escrito no próprio
+código, não como hipótese.
+
+O trabalho antes do `202` diverge por caso:
+
+| Caso | Trabalho feito |
+|---|---|
+| endereço desconhecido | 1 `SELECT` indexado |
+| conta já verificada | 1 `SELECT` indexado |
+| não verificada, dentro do cooldown | 2 `SELECT` |
+| não verificada, fora do cooldown | 2 `SELECT` + transação com 2 escritas + **um round-trip SMTP completo** |
+
+O último ramo paga a ida ao relay — dezenas de milissegundos contra frações de
+milissegundo dos outros três. Não é ruído: é uma operação de rede inteira
+presente num ramo e ausente nos demais, e um chamador anônimo com uma única
+requisição cronometrada distingue "este endereço tem conta não verificada sem
+código recente" de todo o resto.
+
+O mesmo vale, de forma mais fraca, para o `register`: argon2 domina os dois
+ramos ali, mas é custo ADITIVO, não um teto — o ramo que envia ainda paga o
+round-trip SMTP por cima. Ver §11, item 2.
+
+**Custo aceito**, pela mesma razão do §12.7: a paridade de latência real exige
+tirar o envio do caminho da requisição, que é o outbox do §5.3, ainda adiado.
+Os dois comentários que afirmavam paridade de latência (em
+`request-email-verification.ts` e na descrição de `resend-verification.ts`)
+foram corrigidos para dizer o que o código faz — status e corpo idênticos, e a
+LATÊNCIA que não é.
+
+### 12.11 — Um anônimo pode manter um endereço permanentemente não verificável
+
+Depois de cada emissão, qualquer um que saiba o endereço pode gastar as cinco
+tentativas do código vivo com palpites errados, sem nunca precisar de reenvio:
+o código da vítima morre antes que ela chegue a lê-lo. Repetível a cada
+cooldown, e sem deixar rastro na caixa da vítima — diferente do §12.2, que
+precisa de um reenvio (e portanto de um e-mail extra) para invalidar o código.
+É o custo MAIS FORTE dos dois, porque não depende de reenviar nada. Contido
+pelo teto de rate limit por IP e pelo próprio cooldown; não eliminado. O
+conserto de verdade é um throttle por CONTA — não por IP — nas tentativas de
+`confirm`, e é fatia própria.
+
+### 12.12 — `confirm` também distingue seis modos de falha pelo trabalho feito
+
+Todos os seis modos de falha de `ConfirmEmailUseCase` respondem `422` com o
+mesmo corpo (§6.3) — mas não custam o mesmo. Um endereço desconhecido custa uma
+`SELECT`; um código utilizável com um palpite errado custa duas `SELECT`, um
+sha256 e um `UPDATE` autocommit adicional (o `incrementAttempts`). A diferença
+é sub-milissegundo, muito abaixo do ruído de rede normal, e por isso muito menos
+explorável que o `resend` do §12.10 — mas é a mesma classe de problema, e "um
+erro só" no corpo da resposta não é o mesmo que "um custo só" no servidor.
+Registrado, não corrigido: o ganho de fechar isto não paga o custo de igualar
+artificialmente o trabalho de seis caminhos que são, por natureza, diferentes.
 
 ## 13. Emendas de documentação
 

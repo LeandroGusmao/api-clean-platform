@@ -18,6 +18,7 @@ import {
   setRefreshCookie,
 } from '#modules/auth/infra/http/refresh-cookie'
 import { sessionTokensSchema } from '#modules/auth/infra/http/session-tokens'
+import { VERIFICATION_CODE_DIGITS } from '#modules/auth/services/email-verification-issuer'
 import { MAX_EMAIL_LENGTH } from '#modules/auth/value-objects/email'
 
 const CONFIRM_EMAIL_PATH = '/email/verify'
@@ -26,9 +27,13 @@ const CONFIRM_EMAIL_DESCRIPTION =
   'Redeems the six-digit code emailed at registration, marks the account ' +
   'verified, and opens a session — the same pair `login` issues.'
 
-const VERIFICATION_CODE_PATTERN = /^[0-9]{6}$/
+// Built from `VERIFICATION_CODE_DIGITS`, the issuer's own constant, rather
+// than a hardcoded `6`: the two would otherwise be free to drift, and a drift
+// here means every code the issuer actually generates fails this route's own
+// shape check with a 400, before `ConfirmEmailUseCase` is ever reached.
+const VERIFICATION_CODE_PATTERN = new RegExp(`^[0-9]{${VERIFICATION_CODE_DIGITS}}$`)
 const EXAMPLE_VERIFICATION_CODE = '042317'
-const VERIFICATION_CODE_REASON = 'must be exactly six digits'
+const VERIFICATION_CODE_REASON = `must be exactly ${VERIFICATION_CODE_DIGITS} digits`
 
 /**
  * `email`, in the same shape `register` validates it: presence and format at

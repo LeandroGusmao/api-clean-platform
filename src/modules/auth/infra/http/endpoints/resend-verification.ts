@@ -19,9 +19,10 @@ const RESEND_VERIFICATION_DESCRIPTION =
   'Requests a fresh six-digit verification code. Always answers 202 with an ' +
   'empty body — for an address with no account, an account that is already ' +
   'verified, a request made inside the resend cooldown, and a code actually ' +
-  'sent, the response is identical. A status or a delay that told these apart ' +
-  'would turn this endpoint into the account oracle `register` was rewritten ' +
-  'to close.'
+  'sent, the status and body are identical. The LATENCY is not: the branch ' +
+  'that actually sends pays a transaction and an SMTP round trip the other ' +
+  'three do not, and closing that gap needs the mail send off the request ' +
+  'path entirely — accepted for now, and recorded in the design spec.'
 
 const bodySchema = z.object({
   email: z

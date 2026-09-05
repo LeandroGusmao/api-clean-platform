@@ -154,7 +154,7 @@ escrita antes, não depois.
 
 | Elemento | Padrão | Pode importar |
 |---|---|---|
-| `pure` | `src/modules/*/{entities,value-objects,repositories,ports,use-cases,services,dtos,errors}/**` · `src/modules/*/config.ts` · `src/shared/**` | só `pure` |
+| `pure` | `src/modules/*/{entities,value-objects,repositories,ports,use-cases,services,dtos,errors,notifications}/**` · `src/modules/*/config.ts` · `src/shared/**` | só `pure` |
 | `module-infra` | `src/modules/*/infra/**` | `pure` · `global-infra` · o `module-infra` **do próprio módulo** |
 | `global-infra` | `src/infra/**` | `pure` · `global-infra` |
 | `composition` | `src/modules/*/container.ts` · `src/main/**` | tudo |

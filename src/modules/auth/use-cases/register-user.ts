@@ -22,11 +22,18 @@ export interface RegisterUserCommand {
 }
 
 /**
- * Nothing truthful to send, and silence must cost the same as sending.
+ * Nothing truthful to send.
  *
  * A branch that returned nothing at all would make the caller write `if
  * (deliver !== undefined)`, and every such branch is a place where the response
  * could start to differ by case. One uniform `await deliver()` cannot.
+ *
+ * This does NOT make silence cost the same as a send. Argon2 dominates every
+ * branch here — it runs before the `try`, so every request pays it regardless
+ * — but that cost is additive, not a ceiling: the branch that actually sends
+ * still pays a transaction and a full SMTP round trip on top of it. The gap
+ * is real and unmeasured (§11 of the design spec calls this out as assumed,
+ * not measured; §12 records it as an accepted cost).
  */
 const NO_DELIVERY: DeliverVerification = async () => {}
 
