@@ -1,4 +1,3 @@
-import { eq } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -7,9 +6,9 @@ import { createDatabase, type Database } from '#infra/database/client'
 import { buildApp } from '#main/app'
 import { refreshTokens } from '#modules/auth/infra/drizzle/schema/refresh-tokens'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
+import { arrangeAccount } from './setup/arrange-account.js'
 
 // Spelled out rather than imported: these values ARE the wire contract.
-const REGISTER_PATH = '/auth/register'
 const LOGIN_PATH = '/auth/login'
 const REFRESH_PATH = '/auth/refresh'
 const LOGOUT_PATH = '/auth/logout'
@@ -48,29 +47,18 @@ afterAll(async () => {
 })
 
 /**
- * Registers AND marks the row verified — every caller in this file logs the
- * account in right after, and login now gates on a verified email. Marked
- * directly at the row rather than through a real code: the real,
- * SMTP-delivered confirm flow is `verify-email.spec.ts`'s job, and this file's
- * own concern — logout — only needs the account to already BE verified.
+ * Inserts a verified account directly — every caller in this file logs it in
+ * right after, and login gates on a verified email. Since slice 11 `register`
+ * writes a `pending_registrations` row; the real SMTP-delivered confirm flow is
+ * `verify-email.spec.ts`'s job, and logout only needs the account to already BE
+ * verified.
  */
-const register = async (email: string) => {
-  const response = await app.inject({
-    method: POST_METHOD,
-    url: REGISTER_PATH,
-    payload: { email, password: PASSWORD },
-  })
-  await db
-    .update(users)
-    .set({ emailVerifiedAt: new Date() })
-    .where(eq(users.email, email))
-  return response
-}
+const arrange = (email: string) => arrangeAccount(db, { email, password: PASSWORD })
 
 beforeEach(async () => {
   await db.delete(refreshTokens)
   await db.delete(users)
-  await register(EMAIL)
+  await arrange(EMAIL)
 })
 
 const loginAs = (email: string, payload: object = {}) =>
@@ -188,7 +176,7 @@ describe('POST /auth/logout-all', () => {
   })
 
   it('never touches another account', async () => {
-    await register(OTHER_EMAIL)
+    await arrange(OTHER_EMAIL)
     const stranger = (await loginAs(OTHER_EMAIL)).json()
     const mine = (await login()).json()
 

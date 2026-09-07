@@ -72,6 +72,7 @@ export function makeAuthContainer(
     users: usersRepository,
     refreshTokens: refreshTokensRepository,
     emailVerifications: emailVerificationsRepository,
+    pendingRegistrations: pendingRegistrationsRepository,
   } = authRepositories(db)
   const hashProvider = new Argon2HashProvider()
   const clock = new SystemClock()
@@ -115,14 +116,14 @@ export function makeAuthContainer(
   return {
     registerUser: new RegisterUserUseCase(
       usersRepository,
-      emailVerificationsRepository,
-      uow,
+      pendingRegistrationsRepository,
       emailVerificationIssuer,
       emailSender,
-      hashProvider,
       clock,
       idGenerator,
       config.EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS * MILLISECONDS_PER_SECOND,
+      config.EMAIL_VERIFICATION_MAX_ATTEMPTS,
+      config.EMAIL_VERIFICATION_TTL_SECONDS,
     ),
     loginUser: new LoginUserUseCase(
       usersRepository,

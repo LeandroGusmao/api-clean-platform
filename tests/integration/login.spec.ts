@@ -1,4 +1,3 @@
-import { eq } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -8,10 +7,10 @@ import { buildApp } from '#main/app'
 import { DEFAULT_REFRESH_TOKEN_TTL_SECONDS } from '#modules/auth/config'
 import { refreshTokens } from '#modules/auth/infra/drizzle/schema/refresh-tokens'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
+import { arrangeAccount } from './setup/arrange-account.js'
 
 // Spelled out rather than imported from the endpoint: these values ARE the wire
 // contract. Importing them would make the assertions tautological.
-const REGISTER_PATH = '/auth/register'
 const LOGIN_PATH = '/auth/login'
 const POST_METHOD = 'POST'
 
@@ -83,21 +82,12 @@ beforeEach(async () => {
   // dependency order keeps this hook honest about what it does.
   await db.delete(refreshTokens)
   await db.delete(users)
-  await app.inject({
-    method: POST_METHOD,
-    url: REGISTER_PATH,
-    payload: { email: EMAIL, password: PASSWORD },
-  })
-  // Login now gates on a verified email (403 EMAIL_NOT_VERIFIED otherwise), so
-  // every scenario below that expects a successful login needs a verified
-  // account. Marked directly at the row rather than through a real code: the
-  // real, SMTP-delivered confirm flow is `verify-email.spec.ts`'s job, and this
-  // file's own concern — `login` — only needs the account to already BE
-  // verified, not a demonstration of how it got that way.
-  await db
-    .update(users)
-    .set({ emailVerifiedAt: new Date() })
-    .where(eq(users.email, EMAIL))
+  // Login gates on a verified email, so every scenario below that expects a
+  // successful login needs a verified account. Inserted directly: since slice
+  // 11 `register` writes a `pending_registrations` row, and the real
+  // SMTP-delivered confirm flow is `verify-email.spec.ts`'s job — this file's
+  // concern is `login`, which only needs the account to already BE verified.
+  await arrangeAccount(db, { email: EMAIL, password: PASSWORD })
 })
 
 const login = (payload: object) =>
@@ -150,10 +140,10 @@ describe('POST /auth/login', () => {
   })
 
   it('answers 403 EMAIL_NOT_VERIFIED for an account whose email is not confirmed yet', async () => {
-    await app.inject({
-      method: POST_METHOD,
-      url: REGISTER_PATH,
-      payload: { email: UNVERIFIED_EMAIL, password: PASSWORD },
+    await arrangeAccount(db, {
+      email: UNVERIFIED_EMAIL,
+      password: PASSWORD,
+      verified: false,
     })
 
     const response = await login({ email: UNVERIFIED_EMAIL, password: PASSWORD })

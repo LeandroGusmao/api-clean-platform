@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -7,9 +7,9 @@ import { createDatabase, type Database } from '#infra/database/client'
 import { buildApp } from '#main/app'
 import { refreshTokens } from '#modules/auth/infra/drizzle/schema/refresh-tokens'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
+import { arrangeAccount } from './setup/arrange-account.js'
 
 // Spelled out rather than imported: these values ARE the wire contract.
-const REGISTER_PATH = '/auth/register'
 const LOGIN_PATH = '/auth/login'
 const REFRESH_PATH = '/auth/refresh'
 const POST_METHOD = 'POST'
@@ -47,20 +47,10 @@ afterAll(async () => {
 beforeEach(async () => {
   await db.delete(refreshTokens)
   await db.delete(users)
-  await app.inject({
-    method: POST_METHOD,
-    url: REGISTER_PATH,
-    payload: { email: EMAIL, password: PASSWORD },
-  })
-  // Login now gates on a verified email, and every case here logs in first.
-  // Marked directly at the row rather than through a real code: the real,
-  // SMTP-delivered confirm flow is `verify-email.spec.ts`'s job, and this
-  // file's own concern — refresh rotation — only needs the account to already
-  // BE verified.
-  await db
-    .update(users)
-    .set({ emailVerifiedAt: new Date() })
-    .where(eq(users.email, EMAIL))
+  // Inserted directly: since slice 11 `register` writes a `pending_registrations`
+  // row, and the real SMTP-delivered confirm flow is `verify-email.spec.ts`'s
+  // job — refresh rotation only needs the account to already BE verified.
+  await arrangeAccount(db, { email: EMAIL, password: PASSWORD })
 })
 
 const login = (payload: object = {}) =>

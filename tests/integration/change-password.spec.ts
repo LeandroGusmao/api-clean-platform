@@ -1,4 +1,3 @@
-import { eq } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -8,10 +7,10 @@ import { buildApp } from '#main/app'
 import { DEFAULT_REFRESH_TOKEN_TTL_SECONDS } from '#modules/auth/config'
 import { refreshTokens } from '#modules/auth/infra/drizzle/schema/refresh-tokens'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
+import { arrangeAccount } from './setup/arrange-account.js'
 
 // Spelled out rather than imported: these values ARE the wire contract, and
 // importing them would make the assertions tautological.
-const REGISTER_PATH = '/auth/register'
 const LOGIN_PATH = '/auth/login'
 const REFRESH_PATH = '/auth/refresh'
 const CHANGE_PASSWORD_PATH = '/auth/password'
@@ -89,20 +88,10 @@ afterAll(async () => {
 beforeEach(async () => {
   await db.delete(refreshTokens)
   await db.delete(users)
-  await app.inject({
-    method: POST_METHOD,
-    url: REGISTER_PATH,
-    payload: { email: EMAIL, password: PASSWORD },
-  })
-  // Login now gates on a verified email, and every case here logs in before
-  // changing the password. Marked directly at the row rather than through a
-  // real code: the real, SMTP-delivered confirm flow is
-  // `verify-email.spec.ts`'s job, and this file's own concern — changing a
-  // password — only needs the account to already BE verified.
-  await db
-    .update(users)
-    .set({ emailVerifiedAt: new Date() })
-    .where(eq(users.email, EMAIL))
+  // Inserted directly: since slice 11 `register` writes a `pending_registrations`
+  // row, and the real SMTP-delivered confirm flow is `verify-email.spec.ts`'s
+  // job — changing a password only needs the account to already BE verified.
+  await arrangeAccount(db, { email: EMAIL, password: PASSWORD })
 })
 
 const login = (password: string = PASSWORD) =>

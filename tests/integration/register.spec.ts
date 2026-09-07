@@ -1,11 +1,11 @@
 import { Writable } from 'node:stream'
-import { eq } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { env } from '#infra/config/env'
 import { createDatabase, type Database } from '#infra/database/client'
 import { buildApp } from '#main/app'
+import { pendingRegistrations } from '#modules/auth/infra/drizzle/schema/pending-registrations'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
 
 // Spelled out rather than imported from the endpoint: these values ARE the wire
@@ -16,8 +16,7 @@ const ACCEPTED_STATUS_CODE = 202
 const BAD_REQUEST_STATUS_CODE = 400
 
 // `send(null)` on a 202 puts these four bytes on the wire, with a JSON content
-// type — unlike a 204, where Fastify strips the body entirely. Pinned exactly,
-// rather than described as "empty", so the contract stops being ambiguous.
+// type — unlike a 204, where Fastify strips the body entirely.
 const NULL_BODY = 'null'
 const JSON_CONTENT_TYPE = 'application/json; charset=utf-8'
 const CONTENT_TYPE_HEADER = 'content-type'
@@ -28,12 +27,19 @@ const EMAIL_DIFFERING_ONLY_BY_CASE = 'JOAO@example.com'
 const NEW_EMAIL = 'maria@example.com'
 const VERIFIED_EMAIL = 'ana@example.com'
 const PASSWORD = 'sup3r-s3cr3t!'
-const WEAK_PASSWORD = 'abcdefghij'
 
 const VALIDATION_ERROR_CODE = 'VALIDATION_ERROR'
-const PASSWORD_FIELD = 'password'
 
-const ROW_MISSING_MESSAGE = 'no user row was stored'
+const ROW_MISSING_MESSAGE = 'no pending registration row was stored'
+const ONE_ROW = 1
+const NO_ROWS = 0
+
+/**
+ * Elevated past anything this suite spends: it fires many `register` calls from
+ * one address, and the shipped 10/min ceiling would 429 a later SETUP call for
+ * a reason that has nothing to do with what the case is testing.
+ */
+const CEILING_ABOVE_WHAT_THIS_SUITE_SPENDS = 1000
 
 let app: FastifyInstance
 let db: Database
@@ -50,7 +56,10 @@ beforeAll(async () => {
 
   // The same function `main/http.ts` calls: whatever is composed there is
   // exercised here, with no second list to keep in sync by hand.
-  app = await buildApp(env, { logStream })
+  app = await buildApp(
+    { ...env, REGISTER_RATE_LIMIT_MAX_REQUESTS: CEILING_ABOVE_WHAT_THIS_SUITE_SPENDS },
+    { logStream },
+  )
   await app.ready()
   ;({ db, pool } = createDatabase(env))
 })
@@ -62,62 +71,72 @@ afterAll(async () => {
 
 beforeEach(async () => {
   logLines.length = 0
+  await db.delete(pendingRegistrations)
   await db.delete(users)
 })
 
-function register(email: string, password: string) {
-  return app.inject({
-    method: POST_METHOD,
-    url: REGISTER_PATH,
-    payload: { email, password },
-  })
+function register(email: string) {
+  return app.inject({ method: POST_METHOD, url: REGISTER_PATH, payload: { email } })
 }
 
 /**
- * Registers through the real endpoint, then marks the row verified directly.
- * The confirm flow itself — a real code travelling through a real SMTP
- * server — is `verify-email.spec.ts`'s job; this file's concern is `register`'s
- * own behaviour, and it only needs an account that IS verified, not a
- * demonstration of how it got that way.
+ * Registers through the real endpoint, then inserts a verified `users` row
+ * directly. The confirm flow — a real code through a real SMTP server — is
+ * `verify-email.spec.ts`'s job; here it only needs an account that IS verified.
  */
-async function registerVerifiedAccount(email: string, password: string): Promise<void> {
-  await register(email, password)
+async function makeVerifiedAccount(email: string): Promise<void> {
+  await register(email)
   await db
-    .update(users)
-    .set({ emailVerifiedAt: new Date() })
-    .where(eq(users.email, email))
+    .insert(users)
+    .values({ email, passwordHash: 'unused', emailVerifiedAt: new Date() })
 }
 
 describe('POST /auth/register', () => {
   it('answers 202 with the literal `null` body', async () => {
-    const response = await register(EMAIL, PASSWORD)
+    const response = await register(EMAIL)
 
     expect(response.statusCode).toBe(ACCEPTED_STATUS_CODE)
     expect(response.body).toBe(NULL_BODY)
     expect(response.headers[CONTENT_TYPE_HEADER]).toBe(JSON_CONTENT_TYPE)
   })
 
-  it('answers 202 when the email is taken, ignoring case', async () => {
-    await register(EMAIL, PASSWORD)
+  it('writes a pending registration and no user row', async () => {
+    await register(EMAIL)
 
-    const response = await register(EMAIL_DIFFERING_ONLY_BY_CASE, PASSWORD)
+    const [pending] = await db.select().from(pendingRegistrations)
+    if (pending === undefined) throw new Error(ROW_MISSING_MESSAGE)
+    expect(pending.email).toBe(EMAIL)
+    expect(pending.consumedAt).toBeNull()
+
+    expect(await db.select().from(users)).toHaveLength(NO_ROWS)
+  })
+
+  it('answers 202 and adds no second pending when re-registered inside the cooldown', async () => {
+    await register(EMAIL)
+    const response = await register(EMAIL)
+
+    expect(response.statusCode).toBe(ACCEPTED_STATUS_CODE)
+    expect(await db.select().from(pendingRegistrations)).toHaveLength(ONE_ROW)
+  })
+
+  it('answers 202 when the email already has a pending, ignoring case', async () => {
+    await register(EMAIL)
+
+    const response = await register(EMAIL_DIFFERING_ONLY_BY_CASE)
 
     expect(response.statusCode).toBe(ACCEPTED_STATUS_CODE)
     expect(response.body).toBe(NULL_BODY)
   })
 
   it('answers with the same status, body and content headers for a brand-new address and one with an already verified account', async () => {
-    await registerVerifiedAccount(VERIFIED_EMAIL, PASSWORD)
+    await makeVerifiedAccount(VERIFIED_EMAIL)
 
-    const brandNew = await register(NEW_EMAIL, PASSWORD)
-    const alreadyVerified = await register(VERIFIED_EMAIL, PASSWORD)
+    const brandNew = await register(NEW_EMAIL)
+    const alreadyVerified = await register(VERIFIED_EMAIL)
 
-    // Compared to EACH OTHER, not to a literal: a test that pinned each
-    // response separately would still pass if the two drifted apart together.
-    // `date` and the rate-limit headers are excluded on purpose — they change
-    // between any two sequential requests regardless of which address was
-    // sent, so comparing them would fail for a reason that has nothing to do
-    // with enumeration.
+    // Compared to EACH OTHER, not to a literal: a test that pinned each response
+    // separately would still pass if the two drifted apart together. `date` and
+    // the rate-limit headers are excluded on purpose.
     expect(brandNew.statusCode).toBe(alreadyVerified.statusCode)
     expect(brandNew.statusCode).toBe(ACCEPTED_STATUS_CODE)
     expect(brandNew.body).toBe(alreadyVerified.body)
@@ -129,38 +148,28 @@ describe('POST /auth/register', () => {
     )
   })
 
-  it('answers 400 with a per-field detail when the password breaks the policy', async () => {
-    const response = await register(EMAIL, WEAK_PASSWORD)
+  it('answers 400 when a `password` field is sent: the schema is strict', async () => {
+    const response = await app.inject({
+      method: POST_METHOD,
+      url: REGISTER_PATH,
+      payload: { email: EMAIL, password: PASSWORD },
+    })
 
     expect(response.statusCode).toBe(BAD_REQUEST_STATUS_CODE)
-    expect(response.json()).toMatchObject({
-      error: {
-        code: VALIDATION_ERROR_CODE,
-        details: [{ field: PASSWORD_FIELD }],
-      },
-    })
+    expect(response.json()).toMatchObject({ error: { code: VALIDATION_ERROR_CODE } })
   })
 
-  it('keeps the password and its hash out of the body and the log', async () => {
-    const response = await register(EMAIL, PASSWORD)
+  it('keeps the stored code digest out of the body and the log', async () => {
+    const response = await register(EMAIL)
 
-    const [row] = await db.select().from(users)
-    if (row === undefined) throw new Error(ROW_MISSING_MESSAGE)
+    const [pending] = await db.select().from(pendingRegistrations)
+    if (pending === undefined) throw new Error(ROW_MISSING_MESSAGE)
 
     const log = logLines.join('')
 
-    // The two `log` assertions hold today for a reason that is not this
-    // endpoint's doing: Fastify logs no request body, so a 202 emits only
-    // `incoming request` and `request completed`, neither of which carries the
-    // password or the hash. They are kept as a canary for the day someone adds
-    // body logging — at which point both would need to start failing. The leak
-    // that actually existed lived in a `DrizzleQueryError`'s bound query
-    // parameters, reachable only through a failing INSERT, which `app.inject`
-    // cannot be made to produce here; that path is guarded in
-    // `src/infra/http/server.spec.ts` instead.
-    expect(response.body).not.toContain(PASSWORD)
-    expect(log).not.toContain(PASSWORD)
-    expect(response.body).not.toContain(row.passwordHash)
-    expect(log).not.toContain(row.passwordHash)
+    // A canary for the day someone adds body logging, and for a driver-error
+    // leak of bound parameters: the pending insert binds `code_hash`.
+    expect(response.body).not.toContain(pending.codeHash)
+    expect(log).not.toContain(pending.codeHash)
   })
 })

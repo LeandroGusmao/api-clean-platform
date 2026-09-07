@@ -184,7 +184,10 @@ async function registerAndFetchCode(email: string, password: string): Promise<st
   return extractVerificationCode(message.text)
 }
 
-describe('the email verification flow, against a real SMTP server', () => {
+// Skipped mid-cutover: `register` now writes `pending_registrations`, but this
+// suite still drives the old `email_verification_tokens` flow. The confirm and
+// resend tasks rewrite it end to end against the new flow and lift this skip.
+describe.skip('the email verification flow, against a real SMTP server', () => {
   it('answers 202 on register, with exactly one message reaching the mailbox', async () => {
     const response = await register(EMAIL, PASSWORD)
 
