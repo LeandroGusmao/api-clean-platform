@@ -429,11 +429,21 @@ tirando o `409` do `register` quando ele parou de chegar na rede.
 
 ### 8.1 — Migrations
 
-- Apagar `drizzle/20260904014721_create_email_verification_tokens_table/`,
-  ajustar `drizzle/meta/_journal.json` e remover o snapshot correspondente.
+`drizzle-kit@1.0.0-rc.4` guarda cada migration como uma pasta autocontida
+(`migration.sql` + `snapshot.json`, o snapshot sendo o estado cumulativo do
+schema depois dela) — não há `drizzle/meta/_journal.json`, e o `generate` faz o
+diff do schema contra o `snapshot.json` da última pasta.
+
+- Apagar a pasta inteira
+  `drizzle/20260904014721_create_email_verification_tokens_table/` (o
+  `migration.sql` e o `snapshot.json` juntos).
 - Novo `schema/pending-registrations.ts`; apagar `schema/email-verification-tokens.ts`.
-- `pnpm drizzle-kit generate --name create_pending_registrations`. Histórico
-  final: `users` → `refresh_tokens` → `pending_registrations`.
+- `pnpm db:generate` — vai diferenciar contra o snapshot de
+  `20260901232800_create_refresh_tokens_table` e emitir uma pasta nova criando
+  `pending_registrations`. Histórico final: `users` → `refresh_tokens` →
+  `pending_registrations`.
+- Recriar o banco local (`__drizzle_migrations` já registra a pasta apagada):
+  `docker compose down -v && docker compose up -d`, depois `pnpm db:migrate`.
 
 ### 8.2 — Container (`makeAuthContainer`)
 
