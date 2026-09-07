@@ -5,6 +5,9 @@ import {
   DEFAULT_EMAIL_VERIFICATION_TTL_SECONDS,
   DEFAULT_EMAIL_VERIFY_RATE_LIMIT_MAX_REQUESTS,
   DEFAULT_EMAIL_VERIFY_RESEND_RATE_LIMIT_MAX_REQUESTS,
+  DEFAULT_PASSWORD_RESET_TOKEN_PRUNE_RETENTION_SECONDS,
+  DEFAULT_PENDING_REGISTRATION_PRUNE_RETENTION_SECONDS,
+  DEFAULT_REFRESH_TOKEN_PRUNE_RETENTION_SECONDS,
   DEFAULT_REGISTER_RATE_LIMIT_MAX_REQUESTS,
 } from '#modules/auth/config'
 
@@ -91,6 +94,31 @@ describe('authEnvSchema', () => {
   it('rejects a zero TTL for the reset token', () => {
     expect(() =>
       authEnvSchema.parse({ JWT_SECRET: VALID_SECRET, PASSWORD_RESET_TTL_SECONDS: '0' }),
+    ).toThrow()
+  })
+
+  it('defaults the per-table prune retention windows', () => {
+    const config = authEnvSchema.parse({ JWT_SECRET: VALID_SECRET })
+
+    expect(config.REFRESH_TOKEN_PRUNE_RETENTION_SECONDS).toBe(
+      DEFAULT_REFRESH_TOKEN_PRUNE_RETENTION_SECONDS,
+    )
+    expect(config.PENDING_REGISTRATION_PRUNE_RETENTION_SECONDS).toBe(
+      DEFAULT_PENDING_REGISTRATION_PRUNE_RETENTION_SECONDS,
+    )
+    expect(config.PASSWORD_RESET_TOKEN_PRUNE_RETENTION_SECONDS).toBe(
+      DEFAULT_PASSWORD_RESET_TOKEN_PRUNE_RETENTION_SECONDS,
+    )
+  })
+
+  it('rejects an empty prune retention instead of coercing it to zero', () => {
+    // A retention of zero deletes rows the instant they expire, taking the
+    // post-mortem window with them.
+    expect(() =>
+      authEnvSchema.parse({
+        JWT_SECRET: VALID_SECRET,
+        PENDING_REGISTRATION_PRUNE_RETENTION_SECONDS: '',
+      }),
     ).toThrow()
   })
 })

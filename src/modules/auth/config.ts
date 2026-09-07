@@ -117,6 +117,16 @@ export const DEFAULT_PASSWORD_RESET_RATE_LIMIT_MAX_REQUESTS = 10
 export const DEFAULT_PASSWORD_RESET_RATE_LIMIT_WINDOW_SECONDS = 60
 
 /**
+ * How long a dead token row survives past `expires_at` before the cron prunes
+ * it (design §3.4). One window per table: the trail worth keeping differs, and
+ * seven days of dead reset tokens is more clutter than their 30-minute TTL
+ * warrants.
+ */
+export const DEFAULT_REFRESH_TOKEN_PRUNE_RETENTION_SECONDS = 604_800
+export const DEFAULT_PENDING_REGISTRATION_PRUNE_RETENTION_SECONDS = 86_400
+export const DEFAULT_PASSWORD_RESET_TOKEN_PRUNE_RETENTION_SECONDS = 86_400
+
+/**
  * The module owns its own variables (decision 14). `infra/config/env.ts` merges
  * this into the core schema so the process dies at boot listing every problem
  * at once, instead of revealing one per restart.
@@ -252,6 +262,24 @@ export const authEnvSchema = z.object({
     .int()
     .positive()
     .default(DEFAULT_PASSWORD_RESET_RATE_LIMIT_WINDOW_SECONDS),
+  // `.int().positive()` for the reason every value here carries it: bare
+  // `z.coerce.number()` turns an empty value into 0, and a retention of zero
+  // prunes a row the moment it expires, taking the post-mortem window with it.
+  REFRESH_TOKEN_PRUNE_RETENTION_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_REFRESH_TOKEN_PRUNE_RETENTION_SECONDS),
+  PENDING_REGISTRATION_PRUNE_RETENTION_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_PENDING_REGISTRATION_PRUNE_RETENTION_SECONDS),
+  PASSWORD_RESET_TOKEN_PRUNE_RETENTION_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_PASSWORD_RESET_TOKEN_PRUNE_RETENTION_SECONDS),
 })
 
 export type AuthConfig = z.infer<typeof authEnvSchema>
