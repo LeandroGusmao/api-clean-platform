@@ -10,7 +10,7 @@ import { PasswordUnchangedError } from '#modules/auth/errors/password-unchanged-
 import { UserNotFoundError } from '#modules/auth/errors/user-not-found-error'
 import { InMemoryRefreshTokensRepository } from '#modules/auth/infra/in-memory/in-memory-refresh-tokens-repository'
 import { InMemoryUsersRepository } from '#modules/auth/infra/in-memory/in-memory-users-repository'
-import { passwordChangedEmail } from '#modules/auth/notifications/verification-email'
+import { passwordChangedEmail } from '#modules/auth/notifications/emails'
 import type { IHashProvider } from '#modules/auth/ports/hash-provider'
 import type { ITokenSigner } from '#modules/auth/ports/token-signer'
 import type { AuthRepos, IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
