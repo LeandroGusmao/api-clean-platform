@@ -2,6 +2,7 @@ import { EmailVerification } from '#modules/auth/entities/email-verification'
 import type { User } from '#modules/auth/entities/user'
 import { verificationEmail } from '#modules/auth/notifications/verification-email'
 import type { IEmailVerificationsRepository } from '#modules/auth/repositories/email-verifications-repository'
+import type { Email } from '#modules/auth/value-objects/email'
 import type { IEmailSender } from '#shared/ports/email-sender'
 import type { IIdGenerator } from '#shared/ports/id-generator'
 import type { ITokenDigest } from '#shared/ports/token-digest'
@@ -60,5 +61,21 @@ export class EmailVerificationIssuer {
     // Returned, NOT awaited. See the class comment.
     return () =>
       this.emailSender.send(verificationEmail(user.email, code, this.ttlSeconds))
+  }
+
+  /**
+   * Mints a fresh six-digit code, returns its digest for the caller to persist,
+   * and the deferred send. Nothing here persists or sends — one `await
+   * deliver()` per branch is what keeps the 202 responses indistinguishable in
+   * the caller's control flow (§5.4 of the slice 11 design).
+   */
+  issue(email: Email): { codeHash: string; deliver: DeliverVerification } {
+    const code = this.tokenGenerator.numericCode(VERIFICATION_CODE_DIGITS)
+
+    return {
+      codeHash: this.tokenDigest.hash(code),
+      deliver: () =>
+        this.emailSender.send(verificationEmail(email, code, this.ttlSeconds)),
+    }
   }
 }

@@ -134,3 +134,29 @@ describe('EmailVerificationIssuer', () => {
     expect(sent[0]?.text).not.toContain(saved[0]?.codeHash)
   })
 })
+
+describe('EmailVerificationIssuer.issue', () => {
+  it('returns the digest of a fresh code and persists nothing, sends nothing, until the thunk is called', async () => {
+    const { issuer, callLog, saved } = makeIssuer()
+
+    const { codeHash, deliver } = issuer.issue(Email.create(EMAIL))
+
+    expect(saved).toHaveLength(0)
+    expect(callLog).toEqual([])
+    expect(codeHash).toBe(fakeDigest.hash(CODE))
+
+    await deliver()
+    expect(callLog).toEqual([SEND])
+  })
+
+  it('emails the plaintext code to the given address, never its digest', async () => {
+    const { issuer, sent } = makeIssuer()
+
+    const { codeHash, deliver } = issuer.issue(Email.create(EMAIL))
+    await deliver()
+
+    expect(extractCode(sent[0]?.text ?? '')).toBe(CODE)
+    expect(sent[0]?.text).not.toContain(codeHash)
+    expect(sent[0]?.to).toBe(EMAIL)
+  })
+})
