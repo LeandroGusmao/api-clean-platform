@@ -78,8 +78,7 @@ export class RequestPasswordResetUseCase {
     })
 
     // wrote === false: inside the cooldown. The minted token is discarded —
-    // random bytes plus a digest, noise — the same way `confirm` discards its
-    // decoy hash on a no-match.
+    // random bytes plus a digest, noise.
     return wrote ? deliver : NO_DELIVERY
   }
 }

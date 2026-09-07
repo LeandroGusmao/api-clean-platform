@@ -60,6 +60,10 @@ export class PasswordResetToken {
    * Born unconsumed. `expiresAt` comes from the injected clock plus the ttl,
    * not a column default: `isUsable` compares instants and both sides must
    * share a source.
+   *
+   * Kept for symmetry with `PendingRegistration.create` (§5.1); production
+   * writes go through the adapter's column mapping, so only tests construct via
+   * this path.
    */
   static create(props: CreatePasswordResetTokenProps): PasswordResetToken {
     return new PasswordResetToken({

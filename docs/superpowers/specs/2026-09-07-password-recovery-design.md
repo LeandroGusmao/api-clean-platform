@@ -437,6 +437,22 @@ mas o ramo "com conta dentro do cooldown" também retorna `NO_DELIVERY`, então 
 tempo não separa "existe" de "não existe" de forma estável. O rate limit por IP
 (`PASSWORD_FORGOT_RATE_LIMIT_*`) é o teto de custo.
 
+Duas ressalvas, aceitas. O argumento do parágrafo acima ("o ramo do cooldown
+também volta sem envio") só cobre uma sonda **repetida**; a **primeira** sonda de
+um endereço qualquer separa limpo, porque o `forgot` usa o `emailSender` **nu**
+(não o wrapper best-effort) e **aguarda** o envio:
+
+- **Latência da primeira sonda.** Um endereço com conta e fora do cooldown paga
+  um round trip SMTP inteiro antes do `202`; um endereço sem conta volta logo
+  após o `findByEmail`.
+- **Status com SMTP degradado.** Com o servidor de e-mail fora do ar, um endereço
+  com conta estoura em `500` (o `deliver()` propaga); um sem conta ainda responde
+  `202`.
+
+Ambas são herdadas do `register` (mesmo sender nu, mesmo envio aguardado) — são
+módulo-inteiro, não novas desta fatia — e o outbox transacional adiado (§5.3 /
+§11) as fecharia, do mesmo jeito que fecharia o crash entre commit e envio.
+
 ## 7. Camada HTTP e erros
 
 ### 7.1 — Endpoints
@@ -570,7 +586,11 @@ Rodados separadamente. `pnpm vitest run --project unit <arquivo>` para um só.
   em silêncio. O `forgot` tem o mesmo modo de falha entre o `issueOrRefresh` e o
   `send` do `passwordResetEmail` — e aí o conserto barato **não** existe (não há
   "reenviar reset" fora de outro `forgot`, que o cooldown segura). O usuário
-  reenvia manualmente após o cooldown. Registrado, não consertado aqui.
+  reenvia manualmente após o cooldown. Registrado, não consertado aqui. O mesmo
+  sender nu e aguardado deixa a **primeira** sonda do `forgot` separar endereço
+  com conta de endereço sem conta, por latência (round trip SMTP antes do `202`)
+  e por status (`500` vs `202` com o SMTP fora do ar) — herdado do `register`,
+  módulo-inteiro, e fechado pelo mesmo outbox (§6.3).
 - **Rate limit só por IP** (decisão §6 do `DECISIONS.md`). Uma botnet distribuída
   contra o `reset` gasta `PASSWORD_RESET_RATE_LIMIT_MAX` por IP e nada no
   servidor nota — mas contra 256 bits de token isso não leva a lugar nenhum, ao

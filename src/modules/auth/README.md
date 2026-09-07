@@ -103,8 +103,9 @@ todas as outras sessões** e envia um e-mail avisando o dono da conta.
 **`POST /auth/password/forgot`** — corpo `{ email }`. Responde **`202` sempre**,
 sem corpo. Se o endereço tem conta, um token de reset vai para a caixa dele. Se
 não tem, **nada acontece** — mesma resposta. Um token vivo por conta, substituído
-a cada `forgot`, com TTL de 30 minutos. Resgate bloqueado por cooldown de 60
-segundos.
+a cada `forgot`, com TTL de 30 minutos. Novo envio bloqueado por cooldown de 60
+segundos: o cooldown limita com que frequência o `forgot` reenvia um token, não o
+resgate pelo `reset`.
 
 **`POST /auth/password/reset`** — corpo `{ token, newPassword }`. Redefine a
 senha, **revoga todas as sessões** da conta e responde `204` sem corpo. Token

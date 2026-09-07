@@ -31,6 +31,8 @@ const UNAUTHORIZED_STATUS_CODE = 401
 const UNPROCESSABLE_ENTITY_STATUS_CODE = 422
 
 const PASSWORD_RESET_FAILED_CODE = 'PASSWORD_RESET_FAILED'
+/** The exact subject of `passwordResetCompletedEmail`; spelled out, not imported. */
+const PASSWORD_RESET_COMPLETED_SUBJECT = 'Your password was reset'
 
 const EMAIL = 'joao@example.com'
 const PASSWORD = 'sup3r-s3cr3t!'
@@ -116,6 +118,7 @@ describe('POST /auth/password/reset', () => {
     const token = await forgotAndFetchToken()
     await resetWith(token)
     await waitForMessageCount(TWO_MESSAGES)
+    expect((await latestMessage()).subject).toBe(PASSWORD_RESET_COMPLETED_SUBJECT)
   })
 
   it('rejects a replay of a spent token with 422 PASSWORD_RESET_FAILED', async () => {

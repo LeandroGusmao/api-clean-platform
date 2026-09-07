@@ -1737,9 +1737,13 @@ tokens). Cinco decisões do desenho:
 3. **`forgot` envia nada para endereço sem conta** (spec §3.4). Responde `202`
    sempre. O ramo "sem conta" não enumera e o ramo "dentro do cooldown" também
    retorna sem envio — o tempo não separa "existe" de "não existe" de forma
-   estável.
+   estável. A *primeira* sonda de um endereço ainda separa — um endereço
+   conhecido fora do cooldown paga um round trip SMTP antes do `202` e, com o
+   SMTP fora do ar, estoura em `500` enquanto o desconhecido responde `202` —,
+   divergências aceitas, herdadas do `register` (mesmo sender nu, mesmo envio
+   aguardado) e pendentes do outbox transacional (spec §5.3 / §11).
 
-4. **`reset` roda argon2 só no ramo de token válido** (spec §3.5 / §12.4). Digeri
+4. **`reset` roda argon2 só no ramo de token válido** (spec §3.5 / §12.4). Digest
    do token e lookup primeiros; token inexistente / expirado / gasto → `throw
    PasswordResetFailedError()` **sem argon2**. O oráculo de latência "esse token
    era válido" só serve para quem consegue enumerar tokens; com 256 bits, não

@@ -111,6 +111,21 @@ describe('DrizzlePasswordResetTokensRepository', () => {
     expect(rows[0]?.createdAt).toEqual(NOW)
   })
 
+  it('refreshes when the cooldown cutoff exactly equals the stored issued_at', async () => {
+    await repo.issueOrRefresh(params())
+
+    // cooldownCutoff === the stored issued_at: the `lte` in the DO UPDATE's
+    // WHERE takes this instant; an `lt` would drop it and write nothing.
+    const wrote = await repo.issueOrRefresh(
+      params({ id: ID_SECOND, tokenHash: DIGEST_B, cooldownCutoff: NOW }),
+    )
+
+    expect(wrote).toBe(true)
+    const rows = await db.select().from(passwordResetTokens)
+    expect(rows).toHaveLength(ONE_ROW)
+    expect(rows[0]?.tokenHash).toBe(DIGEST_B)
+  })
+
   it('does not write and returns false inside the cooldown', async () => {
     await repo.issueOrRefresh(params())
 

@@ -29,10 +29,10 @@ export const authRoutes: FastifyPluginAsync<{
   await app.register(resendVerificationRoute, { container })
   await app.register(loginRoute, { container })
   await app.register(refreshRoute, { container })
+  await app.register(forgotPasswordRoute, { container })
+  await app.register(resetPasswordRoute, { container })
   await app.register(logoutRoute, { container })
   await app.register(logoutAllRoute, { container, guard })
   await app.register(changePasswordRoute, { container, guard })
-  await app.register(forgotPasswordRoute, { container })
-  await app.register(resetPasswordRoute, { container })
   await app.register(meRoute, { container, guard })
 }

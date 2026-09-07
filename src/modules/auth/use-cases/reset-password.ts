@@ -24,10 +24,7 @@ export interface ResetPasswordCommand {
  * expired, already consumed, and losing the race to consume. Branches that
  * reported differently would make this a token oracle for an anonymous caller.
  *
- * argon2 runs ONLY on the valid-token branch, and deliberately so: the secret
- * presented here carries 256 bits of entropy, so the timing signal "that token
- * was valid" buys an attacker nothing he could act on, while hashing for every
- * junk request would put ~7ms of CPU behind an unauthenticated endpoint.
+ * argon2 runs ONLY on the valid-token branch (§3.5).
  *
  * The order of the steps is normative, not stylistic. See the comments inline.
  */
@@ -74,7 +71,7 @@ export class ResetPasswordUseCase {
     const user = await this.usersRepository.findById(token.userId)
     if (user === null) throw new PasswordResetFailedError()
 
-    // argon2, outside the transaction, and only on this branch.
+    // argon2, outside the transaction (§8), and only on this branch.
     const passwordHash = await this.hashProvider.hash(newPassword.value)
 
     await this.uow(async ({ users, refreshTokens, passwordResetTokens }) => {
@@ -90,7 +87,7 @@ export class ResetPasswordUseCase {
       await refreshTokens.revokeAllForUser(token.userId, now)
     })
 
-    // After the commit, like every other send in this module. The wiring — not
+    // After the commit, like every other send in this module (§8). The wiring — not
     // this line — is what makes a failure here harmless: the composition root
     // hands this use case a best-effort sender, because the password has
     // already changed and a 500 would misinform.
