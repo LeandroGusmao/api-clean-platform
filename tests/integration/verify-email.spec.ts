@@ -12,6 +12,7 @@ import {
   clearMailpit,
   extractVerificationCode,
   latestMessage,
+  messageCount,
   waitForMessageCount,
 } from './setup/mailpit.js'
 
@@ -20,6 +21,7 @@ import {
 const REGISTER_PATH = '/auth/register'
 const LOGIN_PATH = '/auth/login'
 const CONFIRM_EMAIL_PATH = '/auth/email/verify'
+const RESEND_PATH = '/auth/email/verify/resend'
 const POST_METHOD = 'POST'
 
 const ACCEPTED_STATUS_CODE = 202
@@ -118,6 +120,10 @@ function confirmEmail(email: string, code: string, password: string) {
     url: CONFIRM_EMAIL_PATH,
     payload: { email, code, password, refreshTransport: BODY_TRANSPORT },
   })
+}
+
+function resend(email: string) {
+  return app.inject({ method: POST_METHOD, url: RESEND_PATH, payload: { email } })
 }
 
 /** Registers, waits for the message, returns the six-digit code it carries. */
@@ -264,5 +270,36 @@ describe('the email verification flow, against a real SMTP server', () => {
     const second = await confirmEmail(EMAIL, code, PASSWORD)
     expect(second.statusCode).toBe(UNPROCESSABLE_ENTITY_STATUS_CODE)
     expect(second.json().error.code).toBe(EMAIL_VERIFICATION_FAILED_CODE)
+  })
+
+  it('resend delivers a fresh code for a pending registration, and it confirms', async () => {
+    await registerAndFetchCode(EMAIL)
+
+    const response = await resend(EMAIL)
+    expect(response.statusCode).toBe(ACCEPTED_STATUS_CODE)
+    await waitForMessageCount(TWO_MESSAGES)
+
+    const freshCode = extractVerificationCode((await latestMessage()).text)
+    expect((await confirmEmail(EMAIL, freshCode, PASSWORD)).statusCode).toBe(
+      OK_STATUS_CODE,
+    )
+  })
+
+  it('resend answers 202 and delivers nothing for an address with no pending registration', async () => {
+    const response = await resend(EMAIL)
+
+    expect(response.statusCode).toBe(ACCEPTED_STATUS_CODE)
+    expect(await messageCount()).toBe(0)
+  })
+
+  it('resend answers 202 and delivers nothing once the address has a verified account', async () => {
+    const code = await registerAndFetchCode(EMAIL)
+    await confirmEmail(EMAIL, code, PASSWORD)
+    await clearMailpit()
+
+    const response = await resend(EMAIL)
+
+    expect(response.statusCode).toBe(ACCEPTED_STATUS_CODE)
+    expect(await messageCount()).toBe(0)
   })
 })

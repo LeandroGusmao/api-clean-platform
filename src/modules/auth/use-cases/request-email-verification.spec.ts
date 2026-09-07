@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { EmailVerification } from '#modules/auth/entities/email-verification'
+import { PendingRegistration } from '#modules/auth/entities/pending-registration'
 import { User } from '#modules/auth/entities/user'
-import { InMemoryEmailVerificationsRepository } from '#modules/auth/infra/in-memory/in-memory-email-verifications-repository'
+import { InMemoryPendingRegistrationsRepository } from '#modules/auth/infra/in-memory/in-memory-pending-registrations-repository'
 import { InMemoryUsersRepository } from '#modules/auth/infra/in-memory/in-memory-users-repository'
-import type { AuthRepos, IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
 import { EmailVerificationIssuer } from '#modules/auth/services/email-verification-issuer'
 import { RequestEmailVerificationUseCase } from '#modules/auth/use-cases/request-email-verification'
 import { Email } from '#modules/auth/value-objects/email'
@@ -12,8 +11,11 @@ import type { EmailMessage, IEmailSender } from '#shared/ports/email-sender'
 import type { IIdGenerator } from '#shared/ports/id-generator'
 
 const USER_ID = '9b8a7c6d-5e4f-4a3b-9c8d-7e6f5a4b3c2d'
-const VERIFICATION_ID = '3a2b1c0d-9e8f-4a7b-8c6d-5e4f3a2b1c0d'
-const NOW = new Date('2026-09-03T12:00:00.000Z')
+const ISSUER_ID = '3a2b1c0d-9e8f-4a7b-8c6d-5e4f3a2b1c0d'
+const PENDING_ID = '2b3c4d5e-6f70-4812-9a3b-4c5d6e7f8091'
+const OLD_PENDING_ID = '11111111-1111-4111-8111-111111111111'
+const NEW_PENDING_ID = '22222222-2222-4222-8222-222222222222'
+const NOW = new Date('2026-09-07T12:00:00.000Z')
 const CREATED_AT = new Date('2026-01-01T08:00:00.000Z')
 const HASH_PREFIX = 'hashed:'
 const DIGEST_PREFIX = 'digest:'
@@ -22,152 +24,102 @@ const EMAIL = 'joao@example.com'
 const UNKNOWN_EMAIL = 'ninguem@example.com'
 const PASSWORD_HASH = `${HASH_PREFIX}whatever-they-chose`
 
-/** Six digits, like the real generator's. Its presence in a body is asserted. */
 const CODE = '123456'
-const VERIFICATION_TTL_SECONDS = 900
+const OLD_CODE = 'aaa'
+const TTL_SECONDS = 900
+const MAX_ATTEMPTS = 5
+const MILLISECONDS_PER_SECOND = 1000
 const COOLDOWN_MS = 60_000
 /** Younger than the cooldown, so a resend must be refused. */
 const INSIDE_COOLDOWN_AGE_MS = 1
 /**
- * EXACTLY the cooldown, which pins the boundary as exclusive:
- * `now - createdAt < cooldown` refuses, so an age equal to it must send. A
- * test using a comfortably older code would leave `<=` and `<` indistinguishable.
+ * EXACTLY the cooldown, which pins the boundary as exclusive: `now -
+ * codeIssuedAt < cooldown` refuses, so an age equal to it must send.
  */
 const OUTSIDE_COOLDOWN_AGE_MS = COOLDOWN_MS
+const OLDER_AGE_MS = 300_000
 
 const VERIFICATION_SUBJECT = 'Confirm your email address'
 
-const idGenerator: IIdGenerator = { generate: () => VERIFICATION_ID }
-const clock: IClock = { now: () => NOW }
-
 /** Records the order in which collaborators were touched. */
-const VERIFICATIONS_INVALIDATE = 'verifications.invalidateActiveForUser'
-const VERIFICATIONS_SAVE = 'verifications.save'
-const COMMIT = 'COMMIT'
+const REISSUE_CALL = 'pendingRegistrations.reissueCode'
 const EMAIL_SEND = 'email.send'
+
+const idGenerator: IIdGenerator = { generate: () => ISSUER_ID }
+const clock: IClock = { now: () => NOW }
 
 let callLog: string[]
 let sent: EmailMessage[]
 let usersRepository: InMemoryUsersRepository
-let verificationsRepository: InMemoryEmailVerificationsRepository
+let pendingRepo: InMemoryPendingRegistrationsRepository
 let emailSender: IEmailSender
 let issuer: EmailVerificationIssuer
 let useCase: RequestEmailVerificationUseCase
 
-/**
- * The repositories as the transaction hands them out, wrapping the SAME
- * in-memory instance the use case reads directly for the cooldown check —
- * one database, two handles.
- */
-function trackedRepos(): AuthRepos {
-  return {
-    users: usersRepository,
-    refreshTokens: {
-      save: async () => {},
-      findByHashForUpdate: async () => null,
-      markRotated: async () => {},
-      revoke: async () => {},
-      revokeFamily: async () => {},
-      revokeAllForUser: async () => {},
-    },
-    emailVerifications: {
-      save: (verification) => {
-        callLog.push(VERIFICATIONS_SAVE)
-        return verificationsRepository.save(verification)
-      },
-      findActiveByUserId: (userId) => verificationsRepository.findActiveByUserId(userId),
-      invalidateActiveForUser: (userId, at) => {
-        callLog.push(VERIFICATIONS_INVALIDATE)
-        return verificationsRepository.invalidateActiveForUser(userId, at)
-      },
-      registerFailedAttempt: (id, maxAttempts) =>
-        verificationsRepository.registerFailedAttempt(id, maxAttempts),
-      consume: (id, at) => verificationsRepository.consume(id, at),
-    },
-    pendingRegistrations: {
-      save: async () => {},
-      findUnconsumedByEmail: async () => [],
-      reissueCode: async () => {},
-      registerFailedAttempt: async () => false,
-      consume: async () => false,
-      deleteExpiredByEmail: async () => {},
-    },
-  }
-}
-
-/**
- * The `uow` fake appends `COMMIT` when — and only when — the callback
- * resolves. That marker is what turns the order assertion below into a
- * statement about §8: a send recorded before it would be a send inside the
- * transaction.
- */
-function committingUow(): IAuthUnitOfWork {
-  const repos = trackedRepos()
-
-  const uow = async (work: (repos: AuthRepos) => Promise<unknown>) => {
-    const result = await work(repos)
-    callLog.push(COMMIT)
-
-    return result
-  }
-
-  // Cast because `IAuthUnitOfWork` is generic in the callback's return type
-  // and a plain function cannot be generic here. Only the generic
-  // instantiation is waived; the callback's parameter type is still checked
-  // above.
-  return uow as unknown as IAuthUnitOfWork
-}
-
-/**
- * A `uow` that must never be reached: every early-return branch resolves
- * before the transaction opens, and calling this proves that boundary broke.
- */
-const NEVER_CALLED_UOW_MESSAGE = 'the use case opened a transaction it should not have'
-const untouchableUow: IAuthUnitOfWork = (() => {
-  throw new Error(NEVER_CALLED_UOW_MESSAGE)
-}) as unknown as IAuthUnitOfWork
-
-function buildUseCase(uow: IAuthUnitOfWork): RequestEmailVerificationUseCase {
+function buildUseCase(): RequestEmailVerificationUseCase {
   return new RequestEmailVerificationUseCase(
     usersRepository,
-    verificationsRepository,
-    uow,
+    {
+      findUnconsumedByEmail: (email) => pendingRepo.findUnconsumedByEmail(email),
+      reissueCode: (id, codeHash, codeIssuedAt, expiresAt) => {
+        callLog.push(REISSUE_CALL)
+        return pendingRepo.reissueCode(id, codeHash, codeIssuedAt, expiresAt)
+      },
+    },
     issuer,
     clock,
     COOLDOWN_MS,
+    MAX_ATTEMPTS,
+    TTL_SECONDS,
   )
 }
 
-function storeUser(emailVerifiedAt: Date | null) {
+function storeUser(): void {
   usersRepository.users.push(
     User.fromTrusted({
       id: USER_ID,
       email: Email.fromTrusted(EMAIL),
       passwordHash: PASSWORD_HASH,
-      emailVerifiedAt,
+      emailVerifiedAt: NOW,
       createdAt: CREATED_AT,
       updatedAt: CREATED_AT,
     }),
   )
 }
 
-function storeActiveVerification(ageMs: number) {
-  verificationsRepository.verifications.push(
-    EmailVerification.create({
-      id: VERIFICATION_ID,
-      userId: USER_ID,
-      codeHash: `${DIGEST_PREFIX}${CODE}`,
-      now: new Date(NOW.getTime() - ageMs),
-      ttlSeconds: VERIFICATION_TTL_SECONDS,
+function storePending({
+  id = PENDING_ID,
+  ageMs,
+  codeHash = `${DIGEST_PREFIX}${OLD_CODE}`,
+  attempts = 0,
+}: {
+  id?: string
+  ageMs: number
+  codeHash?: string
+  attempts?: number
+}): void {
+  const issuedAt = new Date(NOW.getTime() - ageMs)
+  pendingRepo.rows.push(
+    PendingRegistration.fromTrusted({
+      id,
+      email: Email.fromTrusted(EMAIL),
+      codeHash,
+      attempts,
+      codeIssuedAt: issuedAt,
+      expiresAt: new Date(issuedAt.getTime() + TTL_SECONDS * MILLISECONDS_PER_SECOND),
+      consumedAt: null,
+      createdAt: issuedAt,
     }),
   )
 }
+
+const pendingById = (id: string) => pendingRepo.rows.find((p) => p.id === id)
 
 beforeEach(() => {
   callLog = []
   sent = []
   usersRepository = new InMemoryUsersRepository()
-  verificationsRepository = new InMemoryEmailVerificationsRepository()
+  pendingRepo = new InMemoryPendingRegistrationsRepository()
 
   emailSender = {
     send: async (message) => {
@@ -176,90 +128,86 @@ beforeEach(() => {
     },
   }
 
-  // The REAL issuer, not a double: what is under test here is that the use
-  // case defers the send it is handed, and a fake issuer would let the use
-  // case pass while the deferral it depends on was gone.
+  // The REAL issuer, not a double: what is under test is that the use case
+  // defers the send it is handed.
   issuer = new EmailVerificationIssuer(
     emailSender,
     { opaque: () => CODE, numericCode: () => CODE },
     { hash: (value: string) => `${DIGEST_PREFIX}${value}` },
     idGenerator,
-    VERIFICATION_TTL_SECONDS,
+    TTL_SECONDS,
   )
 
-  useCase = buildUseCase(committingUow())
+  useCase = buildUseCase()
 })
 
 describe('RequestEmailVerificationUseCase', () => {
-  it('resolves and sends nothing for an unknown address', async () => {
-    await expect(
-      buildUseCase(untouchableUow).execute({ email: UNKNOWN_EMAIL }),
-    ).resolves.toBeUndefined()
+  it('resolves and does nothing for an unknown address', async () => {
+    await expect(useCase.execute({ email: UNKNOWN_EMAIL })).resolves.toBeUndefined()
+
+    expect(sent).toHaveLength(0)
+    expect(callLog).toEqual([])
+  })
+
+  it('resolves and does nothing when a real account exists for the address', async () => {
+    storeUser()
+    storePending({ ageMs: OUTSIDE_COOLDOWN_AGE_MS })
+
+    await expect(useCase.execute({ email: EMAIL })).resolves.toBeUndefined()
+
+    expect(sent).toHaveLength(0)
+    expect(callLog).toEqual([])
+  })
+
+  it('resolves and does nothing when there is no usable pending', async () => {
+    await expect(useCase.execute({ email: EMAIL })).resolves.toBeUndefined()
 
     expect(sent).toHaveLength(0)
   })
 
-  it('resolves and sends nothing for an already-verified account', async () => {
-    storeUser(NOW)
-
-    await expect(
-      buildUseCase(untouchableUow).execute({ email: EMAIL }),
-    ).resolves.toBeUndefined()
-
-    expect(sent).toHaveLength(0)
-  })
-
-  it('resolves and sends nothing when the active code is inside the cooldown', async () => {
-    storeUser(null)
-    storeActiveVerification(INSIDE_COOLDOWN_AGE_MS)
-
-    await expect(
-      buildUseCase(untouchableUow).execute({ email: EMAIL }),
-    ).resolves.toBeUndefined()
-
-    expect(sent).toHaveLength(0)
-    // The stale code is still the only one on file: nothing new was minted.
-    expect(verificationsRepository.verifications).toHaveLength(1)
-  })
-
-  it('issues and sends once the active code has left the cooldown', async () => {
-    storeUser(null)
-    storeActiveVerification(OUTSIDE_COOLDOWN_AGE_MS)
+  it('resolves and does nothing when the most recent usable pending is inside the cooldown', async () => {
+    storePending({ ageMs: INSIDE_COOLDOWN_AGE_MS })
 
     await useCase.execute({ email: EMAIL })
 
-    expect(sent).toHaveLength(1)
+    expect(sent).toHaveLength(0)
+    expect(callLog).toEqual([])
+  })
+
+  it('reissues onto the most recent pending once it leaves the cooldown, then sends', async () => {
+    storePending({ id: PENDING_ID, ageMs: OUTSIDE_COOLDOWN_AGE_MS })
+
+    await useCase.execute({ email: EMAIL })
+
+    expect(callLog).toEqual([REISSUE_CALL, EMAIL_SEND])
+    const pending = pendingById(PENDING_ID)
+    expect(pending?.codeHash).toBe(`${DIGEST_PREFIX}${CODE}`)
+    expect(pending?.attempts).toBe(0)
+    expect(pending?.codeIssuedAt).toEqual(NOW)
+    expect(pending?.expiresAt).toEqual(
+      new Date(NOW.getTime() + TTL_SECONDS * MILLISECONDS_PER_SECOND),
+    )
     expect(sent[0]?.to).toBe(EMAIL)
     expect(sent[0]?.subject).toBe(VERIFICATION_SUBJECT)
     expect(sent[0]?.text).toContain(CODE)
-    // toEqual and not toContain: this single assertion kills a deleted
-    // `deliver()`, a send moved inside the callback, and any reordering of
-    // the two writes.
-    expect(callLog).toEqual([
-      VERIFICATIONS_INVALIDATE,
-      VERIFICATIONS_SAVE,
-      COMMIT,
-      EMAIL_SEND,
-    ])
   })
 
-  it('issues and sends when there is no active code at all', async () => {
-    storeUser(null)
+  it('targets the most recent usable pending among several', async () => {
+    storePending({ id: OLD_PENDING_ID, ageMs: OLDER_AGE_MS })
+    storePending({ id: NEW_PENDING_ID, ageMs: OUTSIDE_COOLDOWN_AGE_MS })
 
     await useCase.execute({ email: EMAIL })
 
-    expect(sent).toHaveLength(1)
-    expect(sent[0]?.subject).toBe(VERIFICATION_SUBJECT)
+    expect(pendingById(NEW_PENDING_ID)?.codeIssuedAt).toEqual(NOW)
+    expect(pendingById(OLD_PENDING_ID)?.codeIssuedAt).not.toEqual(NOW)
   })
 
-  it('sends AFTER the transaction commits, never before', async () => {
-    storeUser(null)
+  it('skips a pending that has exhausted its attempts', async () => {
+    storePending({ ageMs: OUTSIDE_COOLDOWN_AGE_MS, attempts: MAX_ATTEMPTS })
 
     await useCase.execute({ email: EMAIL })
 
-    // The marker only `committingUow` appends, once the callback has
-    // resolved: a send recorded before it would be a send inside the
-    // transaction, which §8 of the unit of work design forbids.
-    expect(callLog.indexOf(COMMIT)).toBeLessThan(callLog.indexOf(EMAIL_SEND))
+    expect(sent).toHaveLength(0)
+    expect(callLog).toEqual([])
   })
 })
