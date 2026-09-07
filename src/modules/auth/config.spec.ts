@@ -76,4 +76,21 @@ describe('authEnvSchema', () => {
       DEFAULT_EMAIL_VERIFY_RESEND_RATE_LIMIT_MAX_REQUESTS,
     )
   })
+
+  it('defaults the password recovery knobs', () => {
+    const config = authEnvSchema.parse({ JWT_SECRET: VALID_SECRET })
+
+    expect(config.PASSWORD_RESET_TTL_SECONDS).toBe(1800)
+    expect(config.PASSWORD_FORGOT_RESEND_COOLDOWN_SECONDS).toBe(60)
+    expect(config.PASSWORD_FORGOT_RATE_LIMIT_MAX_REQUESTS).toBe(10)
+    expect(config.PASSWORD_FORGOT_RATE_LIMIT_WINDOW_SECONDS).toBe(60)
+    expect(config.PASSWORD_RESET_RATE_LIMIT_MAX_REQUESTS).toBe(10)
+    expect(config.PASSWORD_RESET_RATE_LIMIT_WINDOW_SECONDS).toBe(60)
+  })
+
+  it('rejects a zero TTL for the reset token', () => {
+    expect(() =>
+      authEnvSchema.parse({ JWT_SECRET: VALID_SECRET, PASSWORD_RESET_TTL_SECONDS: '0' }),
+    ).toThrow()
+  })
 })

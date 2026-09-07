@@ -1,13 +1,14 @@
 # O que falta
 
-> Reescrito em 2026-09-07, ao fim da fatia 11. A versão anterior (2026-09-06)
-> listava o account pre-hijacking como o único **buraco aberto** e a próxima
-> fatia — a fatia 11 o fechou. Quem abrisse a versão anterior começaria pelo
-> lugar errado.
+> Reescrito em 2026-09-07, ao fim da fatia 12. A versão anterior, do fim da
+> fatia 11, recomendava a recuperação de senha como próximo passo — a fatia 12
+> a fechou, e com ela o `auth` está completo como boilerplate v1. Quem abrisse
+> a versão anterior começaria por algo que já está entregue.
 >
-> A versão de 2026-09-06 já havia corrigido uma anterior que listava rate
-> limiting, troca de senha e verificação de e-mail como pendentes — as três
-> entregues nas fatias 8, 9 e 10.
+> Aquela versão já havia corrigido as anteriores: uma que listava o account
+> pre-hijacking como o único **buraco aberto** (fechado pela fatia 11), e outra
+> que dava rate limiting, troca de senha e verificação de e-mail como pendentes
+> — as três entregues nas fatias 8, 9 e 10.
 
 ## ✅ Sequestro de conta antes da verificação — fechado pela fatia 11
 
@@ -23,29 +24,21 @@ Decisões 27 e 28 no [`DECISIONS.md`](DECISIONS.md); desenho completo em
 contexto de continuação em
 [`superpowers/2026-09-05-handoff-account-pre-hijacking.md`](superpowers/2026-09-05-handoff-account-pre-hijacking.md).
 
-## 🟡 Recuperação de senha — o último endpoint do fluxo de auth, e agora desbloqueado
+## ✅ Recuperação de senha — fechada pela fatia 12
 
-`POST /auth/password/forgot` e `POST /auth/password/reset`. É o único item do
-roteiro que ainda é **endpoint ausente**; os outros nove existem. Hoje uma conta
-com senha esquecida — ou tomada por qualquer outra via — **não tem caminho de
-volta**: `POST /auth/password` exige a senha atual.
+`POST /auth/password/forgot` e `POST /auth/password/reset` entregues. O fluxo de
+`auth` está completo como boilerplate v1: cadastro, verificação, login, sessão
+com rotação, troca de senha **e** recuperação. O próximo grande bloco é o login
+social.
 
-Estava travada atrás do pre-hijacking por um motivo concreto (construir
-recuperação sobre um desenho vulnerável amplia a superfície). Com a fatia 11
-fechada, **está desbloqueada e é a próxima fatia**.
-
-Ficou barato: a fatia 10 pagou o provedor de e-mail e o thunk que mantém o envio
-fora da transação; a fatia 11 deixou `EmailVerificationIssuer.issue`, o padrão de
-tabela com hash/expiração/uso único e os `consume`/`registerFailedAttempt`
-atômicos, o helper de teste `arrangeAccount` e a conta que **sempre** nasce
-verificada. Contexto de continuação em
-[`superpowers/2026-09-07-handoff-password-recovery.md`](superpowers/2026-09-07-handoff-password-recovery.md).
+Decisão 29 no [`DECISIONS.md`](DECISIONS.md); desenho completo em
+[`superpowers/specs/2026-09-07-password-recovery-design.md`](superpowers/specs/2026-09-07-password-recovery-design.md).
 
 ## O resto, em ordem decrescente de urgência
 
 | Item | Depende de | Nota |
 |---|---|---|
-| Poda de tokens expirados | `cron.ts` | **duas** tabelas crescem: `refresh_tokens` (nada apaga) e `pending_registrations` (a poda oportunista da fatia 11 só limpa endereços que veem tráfego; abandonados ficam). A recuperação de senha adiciona uma terceira |
+| Poda de tokens expirados | `cron.ts` | **três** tabelas crescem: `refresh_tokens` (nada apaga), `pending_registrations` (a poda oportunista da fatia 11 só limpa endereços que veem tráfego; abandonados ficam) e `password_reset_tokens` (idem). Cron futuro poda as três |
 | Login social / OAuth (Google) | decisão em aberto | três sub-perguntas já resolvidas — ver `DECISIONS.md` §6. **Não** haverá troca de e-mail, por causa disto. Interage com a recuperação de senha (conta ligada ao Google não tem senha para "recuperar") |
 | Throttle de `confirm` por e-mail | nada | um anônimo pode manter um endereço não-confirmável queimando o teto de cinco tentativas do código a cada cooldown — o teto por IP não segura. Conserto: throttle por conta/e-mail |
 | CORS | primeiro front web | sem ele o modo cookie não funciona cross-origin |
@@ -79,7 +72,13 @@ permanentemente não-resgatável.
 
 ## O que eu faria a seguir
 
-Recuperação de senha. É o último endpoint ausente do fluxo de auth, está
-desbloqueada agora que o pre-hijacking fechou, e a fatia 11 deixou quase toda a
-infra pronta. Depois dela o `auth` está completo como boilerplate v1, e o próximo
-grande bloco é o login social.
+Login social / OAuth com Google. Com a recuperação de senha fechada, o `auth`
+está completo como boilerplate v1 e o próximo grande bloco de valor é entrar sem
+senha — as sub-perguntas de design já estão resolvidas (`DECISIONS.md` §6), e ele
+encosta na recuperação: conta ligada ao Google não tem senha para "recuperar".
+
+Antes disso, a dívida técnica mais urgente é a poda de tokens expirados no
+`cron.ts`: são **três** tabelas que hoje crescem sem teto — `refresh_tokens`,
+`pending_registrations` e `password_reset_tokens` — e o mesmo worker de cron
+destrava o outbox transacional. É trabalho pequeno que só encarece a cada fatia
+nova.

@@ -1,6 +1,10 @@
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import type { Database } from '#infra/database/client'
-import { findDriverError, toPersistenceError } from '#infra/database/driver-error'
+import {
+  findDriverError,
+  PG_UNIQUE_VIOLATION,
+  toPersistenceError,
+} from '#infra/database/driver-error'
 import type { RefreshToken } from '#modules/auth/entities/refresh-token'
 import type { IRefreshTokensRepository } from '#modules/auth/repositories/refresh-tokens-repository'
 import {
@@ -14,9 +18,6 @@ import {
 
 /** Every lookup here returns at most one row. */
 const SINGLE_ROW = 1
-
-/** Postgres `unique_violation`. */
-const PG_UNIQUE_VIOLATION = '23505'
 
 /**
  * Deliberately shorter than the connection-wide 5s of the connection-limits
@@ -91,25 +92,34 @@ export class DrizzleRefreshTokensRepository implements IRefreshTokensRepository 
   }
 
   async findByHashForUpdate(tokenHash: string): Promise<RefreshToken | null> {
-    // `sql.raw`, not a bound parameter: Postgres rejects `SET LOCAL x = $1`
-    // with 42601 — SET takes no parameters. Safe only because the value is a
-    // compile-time constant; never interpolate anything that came from a
-    // request. `SET LOCAL` reverts at COMMIT, so the pooled connection goes
-    // back with the connection-wide default intact (verified).
-    await this.db.execute(
-      sql`SET LOCAL lock_timeout = ${sql.raw(String(ROTATION_LOCK_TIMEOUT_MS))}`,
-    )
+    try {
+      // `sql.raw`, not a bound parameter: Postgres rejects `SET LOCAL x = $1`
+      // with 42601 — SET takes no parameters. Safe only because the value is a
+      // compile-time constant; never interpolate anything that came from a
+      // request. `SET LOCAL` reverts at COMMIT, so the pooled connection goes
+      // back with the connection-wide default intact (verified).
+      await this.db.execute(
+        sql`SET LOCAL lock_timeout = ${sql.raw(String(ROTATION_LOCK_TIMEOUT_MS))}`,
+      )
 
-    const [row] = await this.db
-      .select()
-      .from(refreshTokens)
-      .where(eq(refreshTokens.tokenHash, tokenHash))
-      .limit(SINGLE_ROW)
-      // The whole reuse detection rests on this. Without it, two simultaneous
-      // refreshes of the same token both read it as active and both rotate.
-      .for('update')
+      const [row] = await this.db
+        .select()
+        .from(refreshTokens)
+        .where(eq(refreshTokens.tokenHash, tokenHash))
+        .limit(SINGLE_ROW)
+        // The whole reuse detection rests on this. Without it, two simultaneous
+        // refreshes of the same token both read it as active and both rotate.
+        .for('update')
 
-    return row === undefined ? null : toDomainRefreshToken(row)
+      return row === undefined ? null : toDomainRefreshToken(row)
+    } catch (error) {
+      // Never re-throw what the driver gave us: Drizzle's error glues every
+      // bound parameter into its own message, and this SELECT binds the digest
+      // that IS the lookup key for a live session. Safe on this in-transaction
+      // path because `toPersistenceError` preserves `code` — the `55P03` from
+      // the `SET LOCAL` above still reaches the runner as transient.
+      throw toPersistenceError(error)
+    }
   }
 
   async markRotated(id: string, replacedBy: string, revokedAt: Date): Promise<void> {

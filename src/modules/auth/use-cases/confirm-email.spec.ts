@@ -8,6 +8,7 @@ import { InMemoryRefreshTokensRepository } from '#modules/auth/infra/in-memory/i
 import { InMemoryUsersRepository } from '#modules/auth/infra/in-memory/in-memory-users-repository'
 import type { IHashProvider } from '#modules/auth/ports/hash-provider'
 import type { ITokenSigner } from '#modules/auth/ports/token-signer'
+import { noopAuthRepos } from '#modules/auth/repositories/noop-auth-repos'
 import type { IPendingRegistrationsRepository } from '#modules/auth/repositories/pending-registrations-repository'
 import type { AuthRepos, IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
 import { RefreshTokenIssuer } from '#modules/auth/services/refresh-token-issuer'
@@ -104,6 +105,7 @@ const hashProvider: IHashProvider = {
  */
 function trackedRepos(): AuthRepos {
   return {
+    ...noopAuthRepos(),
     users: {
       save: async (user) => {
         await usersRepository.save(user)

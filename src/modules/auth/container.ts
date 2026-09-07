@@ -41,6 +41,7 @@ import { authRepositories } from './infra/drizzle/auth-repositories.js'
 import { Argon2HashProvider } from './infra/providers/argon2-hash-provider.js'
 import { JwtTokenSigner } from './infra/providers/jwt-token-signer.js'
 import { EmailVerificationIssuer } from './services/email-verification-issuer.js'
+import { PasswordResetIssuer } from './services/password-reset-issuer.js'
 import { RefreshTokenIssuer } from './services/refresh-token-issuer.js'
 import { ChangePasswordUseCase } from './use-cases/change-password.js'
 import { ConfirmEmailUseCase } from './use-cases/confirm-email.js'
@@ -51,6 +52,8 @@ import { LogoutAllUseCase } from './use-cases/logout-all.js'
 import { RefreshTokenUseCase } from './use-cases/refresh-token.js'
 import { RegisterUserUseCase } from './use-cases/register-user.js'
 import { RequestEmailVerificationUseCase } from './use-cases/request-email-verification.js'
+import { RequestPasswordResetUseCase } from './use-cases/request-password-reset.js'
+import { ResetPasswordUseCase } from './use-cases/reset-password.js'
 
 /**
  * The module's slice of the dependency graph. This file is `composition`: it is
@@ -72,6 +75,7 @@ export function makeAuthContainer(
     users: usersRepository,
     refreshTokens: refreshTokensRepository,
     pendingRegistrations: pendingRegistrationsRepository,
+    passwordResetTokens: passwordResetTokensRepository,
   } = authRepositories(db)
   const hashProvider = new Argon2HashProvider()
   const clock = new SystemClock()
@@ -105,11 +109,19 @@ export function makeAuthContainer(
     tokenDigest,
     config.EMAIL_VERIFICATION_TTL_SECONDS,
   )
+  const passwordResetIssuer = new PasswordResetIssuer(
+    emailSender,
+    tokenGenerator,
+    tokenDigest,
+    config.PASSWORD_RESET_TTL_SECONDS,
+  )
   /**
-   * Wrapped for exactly one notification. Everything else gets the bare sender,
-   * so a verification code that cannot be delivered still fails loudly.
+   * The shared best-effort wrapper: used by the password-change and
+   * password-reset notifications, where the state has already changed and a
+   * failed send must not fail the request. Everything else gets the bare
+   * sender, so an undeliverable verification code still fails loudly.
    */
-  const passwordChangedEmailSender = new BestEffortEmailSender(emailSender, logger)
+  const bestEffortEmailSender = new BestEffortEmailSender(emailSender, logger)
 
   return {
     registerUser: new RegisterUserUseCase(
@@ -149,7 +161,7 @@ export function makeAuthContainer(
       tokenSigner,
       refreshTokenIssuer,
       clock,
-      passwordChangedEmailSender,
+      bestEffortEmailSender,
     ),
     confirmEmail: new ConfirmEmailUseCase(
       pendingRegistrationsRepository,
@@ -170,6 +182,24 @@ export function makeAuthContainer(
       config.EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS * MILLISECONDS_PER_SECOND,
       config.EMAIL_VERIFICATION_MAX_ATTEMPTS,
       config.EMAIL_VERIFICATION_TTL_SECONDS,
+    ),
+    forgotPassword: new RequestPasswordResetUseCase(
+      usersRepository,
+      passwordResetTokensRepository,
+      passwordResetIssuer,
+      clock,
+      idGenerator,
+      config.PASSWORD_FORGOT_RESEND_COOLDOWN_SECONDS * MILLISECONDS_PER_SECOND,
+      config.PASSWORD_RESET_TTL_SECONDS,
+    ),
+    resetPassword: new ResetPasswordUseCase(
+      usersRepository,
+      passwordResetTokensRepository,
+      uow,
+      hashProvider,
+      tokenDigest,
+      clock,
+      bestEffortEmailSender,
     ),
     /**
      * Not a use case: there is nothing to orchestrate. Decision 11 keeps the
@@ -231,6 +261,24 @@ export function makeAuthContainer(
       max: config.PASSWORD_CHANGE_RATE_LIMIT_MAX_REQUESTS,
       timeWindow:
         config.PASSWORD_CHANGE_RATE_LIMIT_WINDOW_SECONDS * MILLISECONDS_PER_SECOND,
+    },
+    /**
+     * `forgot` declares its own ceiling, like `register`: an anonymous request
+     * that puts mail in an arbitrary inbox is a spam amplifier.
+     */
+    forgotPasswordRateLimit: {
+      max: config.PASSWORD_FORGOT_RATE_LIMIT_MAX_REQUESTS,
+      timeWindow:
+        config.PASSWORD_FORGOT_RATE_LIMIT_WINDOW_SECONDS * MILLISECONDS_PER_SECOND,
+    },
+    /**
+     * `reset` declares its own ceiling, like `confirm`: a request here carries
+     * a token guess.
+     */
+    resetPasswordRateLimit: {
+      max: config.PASSWORD_RESET_RATE_LIMIT_MAX_REQUESTS,
+      timeWindow:
+        config.PASSWORD_RESET_RATE_LIMIT_WINDOW_SECONDS * MILLISECONDS_PER_SECOND,
     },
     /**
      * Still published, and now it has consumers: the rotation, both logouts and

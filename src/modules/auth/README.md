@@ -25,6 +25,8 @@ Todos sob o prefixo `/auth`.
 | `POST /logout` | Encerra esta sessão | refresh token |
 | `POST /logout-all` | Encerra **todas** as sessões da conta | access token |
 | `POST /password` | Troca a senha; encerra as outras sessões | access token |
+| `POST /password/forgot` | Inicia a recuperação de senha; envia um token por e-mail | não |
+| `POST /password/reset` | Redefine a senha com o token; encerra **todas** as sessões | não |
 | `GET /me` | Perfil do usuário autenticado | access token |
 
 Rota protegida = manda o access token no header `Authorization: Bearer <token>`.
@@ -96,6 +98,26 @@ afeta os outros.
 novo. Exige a senha atual (`422 INVALID_CURRENT_PASSWORD` se errada), **encerra
 todas as outras sessões** e envia um e-mail avisando o dono da conta.
 
+### Recuperação de senha
+
+**`POST /auth/password/forgot`** — corpo `{ email }`. Responde **`202` sempre**,
+sem corpo. Se o endereço tem conta, um token de reset vai para a caixa dele. Se
+não tem, **nada acontece** — mesma resposta. Um token vivo por conta, substituído
+a cada `forgot`, com TTL de 30 minutos. Novo envio bloqueado por cooldown de 60
+segundos: o cooldown limita com que frequência o `forgot` reenvia um token, não o
+resgate pelo `reset`.
+
+**`POST /auth/password/reset`** — corpo `{ token, newPassword }`. Redefine a
+senha, **revoga todas as sessões** da conta e responde `204` sem corpo. Token
+inexistente / errado / expirado / já usado → um erro só, genérico (`422
+PASSWORD_RESET_FAILED`). A resposta não carrega tokens — o cliente entra de novo
+com a senha recém-definida.
+
+O token é um **valor opaco de 256 bits**, determinístico para lookup por índice
+único. Código de 6 dígitos não seria seguro neste contexto (grau de takeover) e
+teto de tentativas apertado paga proteção fraca contra botnet distribuída — 256
+bits fecham força bruta por construção.
+
 ### Logout
 
 - **`POST /auth/logout`** — corpo `{ refreshToken? }` (ou o cookie). Responde
@@ -134,7 +156,6 @@ quando um conflito no banco sobrevive às retentativas.
 
 ## O que este módulo **não** faz (ainda)
 
-- **Recuperação de senha** ("esqueci minha senha") — próxima fatia do roteiro.
 - **Login social / OAuth** (Google) — decisões já tomadas no `DECISIONS.md §6`,
   fatia futura.
 - **Deleção de conta.**
@@ -147,6 +168,10 @@ quando um conflito no banco sobrevive às retentativas.
   contas por eles.
 - `confirm` tem **um erro só** (`422 EMAIL_VERIFICATION_FAILED`) para todos os
   modos de falha de código.
+- `forgot` **sempre** responde `202` — endereço com ou sem conta, resposta
+  idêntica.
+- `reset` tem **um erro só** (`422 PASSWORD_RESET_FAILED`) para todos os modos
+  de falha de token.
 - A conta só existe **depois** da confirmação; antes disso, `login` naquele
   e-mail responde `401` (a conta não existe).
 - O hash da senha nunca aparece em resposta nem em log.

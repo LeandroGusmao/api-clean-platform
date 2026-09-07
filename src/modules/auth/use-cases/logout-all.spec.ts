@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { RefreshToken } from '#modules/auth/entities/refresh-token'
 import { InMemoryRefreshTokensRepository } from '#modules/auth/infra/in-memory/in-memory-refresh-tokens-repository'
+import { noopAuthRepos } from '#modules/auth/repositories/noop-auth-repos'
 import type { AuthRepos, IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
 import { LogoutAllUseCase } from '#modules/auth/use-cases/logout-all'
 
@@ -16,24 +17,6 @@ const STRANGER_ID = 'stranger'
 const NOW = new Date('2026-08-31T12:00:00.000Z')
 const LATER = new Date('2026-08-31T12:05:00.000Z')
 const TTL_SECONDS = 3600
-
-const NO_USERS = {
-  save: async () => {},
-  findByEmail: async () => null,
-  findById: async () => null,
-  updatePasswordHash: async () => {},
-  markEmailVerified: async () => {},
-}
-
-/** Nothing here reads pending registrations; the shape only satisfies AuthRepos. */
-const NO_PENDING_REGISTRATIONS = {
-  save: async () => {},
-  findUnconsumedByEmail: async () => [],
-  reissueCode: async () => {},
-  registerFailedAttempt: async () => false,
-  consume: async () => false,
-  deleteExpiredByEmail: async () => {},
-}
 
 let repository: InMemoryRefreshTokensRepository
 let useCase: LogoutAllUseCase
@@ -63,14 +46,8 @@ beforeEach(() => {
   clockReading = NOW
   repository = new InMemoryRefreshTokensRepository()
   useCase = new LogoutAllUseCase(
-    makeUow({
-      users: NO_USERS,
-      refreshTokens: repository,
-      pendingRegistrations: NO_PENDING_REGISTRATIONS,
-    }),
-    {
-      now: () => clockReading,
-    },
+    makeUow({ ...noopAuthRepos(), refreshTokens: repository }),
+    { now: () => clockReading },
   )
 })
 

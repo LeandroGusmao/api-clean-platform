@@ -88,6 +88,35 @@ export const DEFAULT_EMAIL_VERIFY_RESEND_RATE_LIMIT_MAX_REQUESTS = 5
 export const DEFAULT_EMAIL_VERIFY_RESEND_RATE_LIMIT_WINDOW_SECONDS = 60
 
 /**
+ * 30 minutes. The token is 256 bits of entropy, so brute force is not the
+ * threat the TTL answers — it caps how long a reset link left in an inbox
+ * stays live. Longer than the six-digit code's 15 minutes on purpose.
+ */
+export const DEFAULT_PASSWORD_RESET_TTL_SECONDS = 1800
+
+/**
+ * One minute between reset emails for the same account. Without it, `forgot` is
+ * a way to fill a stranger's inbox from an anonymous request.
+ */
+export const DEFAULT_PASSWORD_FORGOT_RESEND_COOLDOWN_SECONDS = 60
+
+/**
+ * `forgot` sends mail to an arbitrary address from an anonymous request — a
+ * spam amplifier, like `register`. Its own pair, not a shared one: a field
+ * named for one route and used by another is a comment that lies.
+ */
+export const DEFAULT_PASSWORD_FORGOT_RATE_LIMIT_MAX_REQUESTS = 10
+export const DEFAULT_PASSWORD_FORGOT_RATE_LIMIT_WINDOW_SECONDS = 60
+
+/**
+ * `reset` carries a token guess. Same shape as `confirm`: it counts requests,
+ * not failures, and sits far above human retry and far below anything useful
+ * to an attacker.
+ */
+export const DEFAULT_PASSWORD_RESET_RATE_LIMIT_MAX_REQUESTS = 10
+export const DEFAULT_PASSWORD_RESET_RATE_LIMIT_WINDOW_SECONDS = 60
+
+/**
  * The module owns its own variables (decision 14). `infra/config/env.ts` merges
  * this into the core schema so the process dies at boot listing every problem
  * at once, instead of revealing one per restart.
@@ -190,6 +219,39 @@ export const authEnvSchema = z.object({
     .int()
     .positive()
     .default(DEFAULT_EMAIL_VERIFY_RESEND_RATE_LIMIT_WINDOW_SECONDS),
+  // `.positive()` for the reason every value here carries it: a value of zero
+  // would expire the token before it could be used, and rejecting zero is what
+  // rejects an empty value.
+  PASSWORD_RESET_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_PASSWORD_RESET_TTL_SECONDS),
+  PASSWORD_FORGOT_RESEND_COOLDOWN_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_PASSWORD_FORGOT_RESEND_COOLDOWN_SECONDS),
+  PASSWORD_FORGOT_RATE_LIMIT_MAX_REQUESTS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_PASSWORD_FORGOT_RATE_LIMIT_MAX_REQUESTS),
+  PASSWORD_FORGOT_RATE_LIMIT_WINDOW_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_PASSWORD_FORGOT_RATE_LIMIT_WINDOW_SECONDS),
+  PASSWORD_RESET_RATE_LIMIT_MAX_REQUESTS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_PASSWORD_RESET_RATE_LIMIT_MAX_REQUESTS),
+  PASSWORD_RESET_RATE_LIMIT_WINDOW_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_PASSWORD_RESET_RATE_LIMIT_WINDOW_SECONDS),
 })
 
 export type AuthConfig = z.infer<typeof authEnvSchema>

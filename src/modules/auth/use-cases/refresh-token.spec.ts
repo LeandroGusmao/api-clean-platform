@@ -3,6 +3,7 @@ import { RefreshToken } from '#modules/auth/entities/refresh-token'
 import { InvalidRefreshTokenError } from '#modules/auth/errors/invalid-refresh-token-error'
 import { RefreshTokenReusedError } from '#modules/auth/errors/refresh-token-reused-error'
 import { InMemoryRefreshTokensRepository } from '#modules/auth/infra/in-memory/in-memory-refresh-tokens-repository'
+import { noopAuthRepos } from '#modules/auth/repositories/noop-auth-repos'
 import type { AuthRepos, IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
 import { RefreshTokenIssuer } from '#modules/auth/services/refresh-token-issuer'
 import { RefreshTokenUseCase } from '#modules/auth/use-cases/refresh-token'
@@ -29,25 +30,6 @@ const NO_TOKENS = 0
 
 const digestOf = (value: string) => `digest:${value}`
 const at = (offsetMs: number) => new Date(NOW.getTime() + offsetMs)
-
-/** Nothing in this suite reads users; the shape only has to satisfy AuthRepos. */
-const NO_USERS = {
-  save: async () => {},
-  findByEmail: async () => null,
-  findById: async () => null,
-  updatePasswordHash: async () => {},
-  markEmailVerified: async () => {},
-}
-
-/** Nothing here reads pending registrations; the shape only satisfies AuthRepos. */
-const NO_PENDING_REGISTRATIONS = {
-  save: async () => {},
-  findUnconsumedByEmail: async () => [],
-  reissueCode: async () => {},
-  registerFailedAttempt: async () => false,
-  consume: async () => false,
-  deleteExpiredByEmail: async () => {},
-}
 
 /**
  * Passthrough, exactly like the unit of work fake of slice 4: it runs the
@@ -81,11 +63,7 @@ const build = () => {
   )
 
   useCase = new RefreshTokenUseCase(
-    makeUow({
-      users: NO_USERS,
-      refreshTokens: repository,
-      pendingRegistrations: NO_PENDING_REGISTRATIONS,
-    }),
+    makeUow({ ...noopAuthRepos(), refreshTokens: repository }),
     issuer,
     { sign: async () => ACCESS_TOKEN, verify: async () => ({ sub: USER_ID }) },
     { hash: digestOf },
@@ -333,11 +311,7 @@ describe('RefreshTokenUseCase — grace window', () => {
       const snapshot = [...repository.tokens]
 
       try {
-        return await work({
-          users: NO_USERS,
-          refreshTokens: repository,
-          pendingRegistrations: NO_PENDING_REGISTRATIONS,
-        })
+        return await work({ ...noopAuthRepos(), refreshTokens: repository })
       } catch (error) {
         repository.tokens.length = 0
         repository.tokens.push(...snapshot)

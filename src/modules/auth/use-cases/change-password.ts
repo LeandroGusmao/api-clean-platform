@@ -1,7 +1,7 @@
 import { InvalidCurrentPasswordError } from '#modules/auth/errors/invalid-current-password-error'
 import { PasswordUnchangedError } from '#modules/auth/errors/password-unchanged-error'
 import { UserNotFoundError } from '#modules/auth/errors/user-not-found-error'
-import { passwordChangedEmail } from '#modules/auth/notifications/verification-email'
+import { passwordChangedEmail } from '#modules/auth/notifications/emails'
 import type { IHashProvider } from '#modules/auth/ports/hash-provider'
 import type { ITokenSigner } from '#modules/auth/ports/token-signer'
 import type { IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
