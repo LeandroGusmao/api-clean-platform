@@ -2,11 +2,17 @@ import type { Pool } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { env } from '#infra/config/env'
 import { createDatabase, type Database } from '#infra/database/client'
-import { DrizzlePasswordResetTokensRepository } from '#modules/auth/infra/drizzle/drizzle-password-reset-tokens-repository'
+import { PersistenceError } from '#infra/database/driver-error'
+import {
+  DrizzlePasswordResetTokensRepository,
+  PasswordResetTokenHashCollisionError,
+} from '#modules/auth/infra/drizzle/drizzle-password-reset-tokens-repository'
 import { passwordResetTokens } from '#modules/auth/infra/drizzle/schema/password-reset-tokens'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
 
 const EMAIL = 'joao@example.com'
+/** A second account, for the collisions that need two `user_id` values. */
+const OTHER_EMAIL = 'maria@example.com'
 const PASSWORD_HASH = 'argon2-irrelevant'
 const NOW = new Date('2026-09-07T12:00:00.000Z')
 const TTL_SECONDS = 1800
@@ -48,6 +54,15 @@ beforeEach(async () => {
     .returning({ id: users.id })
   userId = created?.id ?? ''
 })
+
+const insertOtherUser = async (): Promise<string> => {
+  const [created] = await db
+    .insert(users)
+    .values({ email: OTHER_EMAIL, passwordHash: PASSWORD_HASH })
+    .returning({ id: users.id })
+
+  return created?.id ?? ''
+}
 
 const params = (
   overrides: Partial<Parameters<typeof repo.issueOrRefresh>[0]> = {},
@@ -145,8 +160,48 @@ describe('DrizzlePasswordResetTokensRepository', () => {
   it('findByHash matches by digest and returns null for an absent one', async () => {
     await repo.issueOrRefresh(params())
 
-    expect((await repo.findByHash(DIGEST_A))?.userId).toBe(userId)
+    const found = await repo.findByHash(DIGEST_A)
+
+    expect(found?.id).toBe(ID_FIRST)
+    expect(found?.userId).toBe(userId)
+    expect(found?.tokenHash).toBe(DIGEST_A)
+    // Every timestamp, column by column: two of them transposed would leave
+    // `isUsable` comparing the wrong instants and nothing else would notice.
+    expect(found?.issuedAt).toEqual(NOW)
+    expect(found?.expiresAt).toEqual(EXPIRES_AT)
+    expect(found?.consumedAt).toBeNull()
+    expect(found?.createdAt).toEqual(NOW)
+
     expect(await repo.findByHash(DIGEST_B)).toBeNull()
+  })
+
+  it('raises the alarm when two accounts land on the same digest', async () => {
+    // Unreachable with 32 bytes of randomBytes, and that is exactly the point:
+    // what produces this in practice is a generator that regressed, which means
+    // issued tokens are predictable. A security incident, not a database error.
+    await repo.issueOrRefresh(params())
+    const otherUserId = await insertOtherUser()
+
+    await expect(
+      repo.issueOrRefresh(params({ id: ID_SECOND, userId: otherUserId })),
+    ).rejects.toBeInstanceOf(PasswordResetTokenHashCollisionError)
+  })
+
+  it('lets an id collision bubble as an ordinary persistence failure', async () => {
+    // Three unique constraints on this table raise 23505: the primary key,
+    // `user_id` and `token_hash`. Matching the CODE alone would report a broken
+    // `IIdGenerator` as a compromised token generator — this keeps them apart.
+    // A fresh `user_id` and a fresh digest leave the primary key as the only
+    // constraint this second insert can violate.
+    await repo.issueOrRefresh(params())
+    const otherUserId = await insertOtherUser()
+
+    const failure = repo.issueOrRefresh(
+      params({ userId: otherUserId, tokenHash: DIGEST_B }),
+    )
+
+    await expect(failure).rejects.toBeInstanceOf(PersistenceError)
+    await expect(failure).rejects.not.toBeInstanceOf(PasswordResetTokenHashCollisionError)
   })
 
   it('lets exactly one of two concurrent consumes win', async () => {
