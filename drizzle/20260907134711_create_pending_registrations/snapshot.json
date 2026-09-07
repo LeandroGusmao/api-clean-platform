@@ -1,14 +1,14 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "27d97538-b4e9-403b-a839-258371a97e93",
+  "id": "db2e2e24-25e7-4b99-8dab-15621ba174c9",
   "prevIds": [
     "08814cbf-493b-4742-8baa-94f0f662f2e1"
   ],
   "ddl": [
     {
       "isRlsEnabled": false,
-      "name": "email_verification_tokens",
+      "name": "pending_registrations",
       "entityType": "tables",
       "schema": "public"
     },
@@ -35,20 +35,20 @@
       "name": "id",
       "entityType": "columns",
       "schema": "public",
-      "table": "email_verification_tokens"
+      "table": "pending_registrations"
     },
     {
-      "type": "uuid",
+      "type": "text",
       "typeSchema": null,
       "notNull": true,
       "dimensions": 0,
       "default": null,
       "generated": null,
       "identity": null,
-      "name": "user_id",
+      "name": "email",
       "entityType": "columns",
       "schema": "public",
-      "table": "email_verification_tokens"
+      "table": "pending_registrations"
     },
     {
       "type": "text",
@@ -61,33 +61,7 @@
       "name": "code_hash",
       "entityType": "columns",
       "schema": "public",
-      "table": "email_verification_tokens"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "expires_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "email_verification_tokens"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "consumed_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "email_verification_tokens"
+      "table": "pending_registrations"
     },
     {
       "type": "integer",
@@ -100,7 +74,46 @@
       "name": "attempts",
       "entityType": "columns",
       "schema": "public",
-      "table": "email_verification_tokens"
+      "table": "pending_registrations"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "code_issued_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "pending_registrations"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "expires_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "pending_registrations"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "consumed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "pending_registrations"
     },
     {
       "type": "timestamp with time zone",
@@ -113,7 +126,7 @@
       "name": "created_at",
       "entityType": "columns",
       "schema": "public",
-      "table": "email_verification_tokens"
+      "table": "pending_registrations"
     },
     {
       "type": "uuid",
@@ -301,8 +314,8 @@
       "nameExplicit": true,
       "columns": [
         {
-          "value": "user_id",
-          "isExpression": false,
+          "value": "lower(\"email\")",
+          "isExpression": true,
           "asc": true,
           "nullsFirst": false,
           "opclass": null
@@ -313,17 +326,17 @@
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "email_verification_tokens_user_id_idx",
+      "name": "pending_registrations_email_lower_idx",
       "entityType": "indexes",
       "schema": "public",
-      "table": "email_verification_tokens"
+      "table": "pending_registrations"
     },
     {
       "nameExplicit": true,
       "columns": [
         {
-          "value": "user_id",
-          "isExpression": false,
+          "value": "lower(\"email\")",
+          "isExpression": true,
           "asc": true,
           "nullsFirst": false,
           "opclass": null
@@ -334,10 +347,10 @@
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "email_verification_tokens_active_idx",
+      "name": "pending_registrations_active_idx",
       "entityType": "indexes",
       "schema": "public",
-      "table": "email_verification_tokens"
+      "table": "pending_registrations"
     },
     {
       "nameExplicit": true,
@@ -435,23 +448,6 @@
       ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
-      "name": "email_verification_tokens_user_id_users_id_fkey",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "email_verification_tokens"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
-        "user_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "users",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
       "name": "refresh_tokens_user_id_users_id_fkey",
       "entityType": "fks",
       "schema": "public",
@@ -462,9 +458,9 @@
         "id"
       ],
       "nameExplicit": false,
-      "name": "email_verification_tokens_pkey",
+      "name": "pending_registrations_pkey",
       "schema": "public",
-      "table": "email_verification_tokens",
+      "table": "pending_registrations",
       "entityType": "pks"
     },
     {

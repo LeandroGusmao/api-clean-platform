@@ -95,17 +95,4 @@ export class DrizzleUsersRepository implements IUsersRepository {
       throw toPersistenceError(error)
     }
   }
-
-  async markEmailVerified(id: string, verifiedAt: Date, updatedAt: Date): Promise<void> {
-    try {
-      await this.db
-        .update(users)
-        .set({ emailVerifiedAt: verifiedAt, updatedAt })
-        .where(eq(users.id, id))
-    } catch (error) {
-      // Same reason as `save`: Drizzle's error glues every bound parameter into
-      // its own message.
-      throw toPersistenceError(error)
-    }
-  }
 }

@@ -8,10 +8,8 @@ import { RequestEmailVerificationUseCase } from '#modules/auth/use-cases/request
 import { Email } from '#modules/auth/value-objects/email'
 import type { IClock } from '#shared/ports/clock'
 import type { EmailMessage, IEmailSender } from '#shared/ports/email-sender'
-import type { IIdGenerator } from '#shared/ports/id-generator'
 
 const USER_ID = '9b8a7c6d-5e4f-4a3b-9c8d-7e6f5a4b3c2d'
-const ISSUER_ID = '3a2b1c0d-9e8f-4a7b-8c6d-5e4f3a2b1c0d'
 const PENDING_ID = '2b3c4d5e-6f70-4812-9a3b-4c5d6e7f8091'
 const OLD_PENDING_ID = '11111111-1111-4111-8111-111111111111'
 const NEW_PENDING_ID = '22222222-2222-4222-8222-222222222222'
@@ -45,7 +43,6 @@ const VERIFICATION_SUBJECT = 'Confirm your email address'
 const REISSUE_CALL = 'pendingRegistrations.reissueCode'
 const EMAIL_SEND = 'email.send'
 
-const idGenerator: IIdGenerator = { generate: () => ISSUER_ID }
 const clock: IClock = { now: () => NOW }
 
 let callLog: string[]
@@ -134,7 +131,6 @@ beforeEach(() => {
     emailSender,
     { opaque: () => CODE, numericCode: () => CODE },
     { hash: (value: string) => `${DIGEST_PREFIX}${value}` },
-    idGenerator,
     TTL_SECONDS,
   )
 

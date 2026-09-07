@@ -103,7 +103,6 @@ export function makeAuthContainer(
     emailSender,
     tokenGenerator,
     tokenDigest,
-    idGenerator,
     config.EMAIL_VERIFICATION_TTL_SECONDS,
   )
   /**

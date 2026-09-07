@@ -114,7 +114,6 @@ beforeEach(() => {
     emailSender,
     { opaque: () => CODE, numericCode: () => CODE },
     { hash: (value: string) => `${DIGEST_PREFIX}${value}` },
-    idGenerator,
     TTL_SECONDS,
   )
 

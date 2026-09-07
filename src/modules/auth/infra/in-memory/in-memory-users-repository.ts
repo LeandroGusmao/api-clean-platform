@@ -53,20 +53,4 @@ export class InMemoryUsersRepository implements IUsersRepository {
       updatedAt,
     })
   }
-
-  async markEmailVerified(id: string, verifiedAt: Date, updatedAt: Date): Promise<void> {
-    const current = this.users.find((existing) => existing.id === id)
-    if (current === undefined) return
-
-    // Same rehydration shape as `updatePasswordHash`: the entity is frozen, so
-    // a new instance replaces the old one with only the two columns changed.
-    this.users[this.users.indexOf(current)] = User.fromTrusted({
-      id: current.id,
-      email: current.email,
-      passwordHash: current.passwordHash,
-      emailVerifiedAt: verifiedAt,
-      createdAt: current.createdAt,
-      updatedAt,
-    })
-  }
 }

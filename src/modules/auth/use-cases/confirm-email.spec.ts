@@ -116,8 +116,6 @@ function trackedRepos(): AuthRepos {
       findById: (id) => usersRepository.findById(id),
       updatePasswordHash: (id, passwordHash, updatedAt) =>
         usersRepository.updatePasswordHash(id, passwordHash, updatedAt),
-      markEmailVerified: (id, verifiedAt, updatedAt) =>
-        usersRepository.markEmailVerified(id, verifiedAt, updatedAt),
     },
     refreshTokens: {
       save: (token) => {
@@ -132,13 +130,6 @@ function trackedRepos(): AuthRepos {
         refreshTokensRepository.revokeFamily(familyId, revokedAt),
       revokeAllForUser: (userId, revokedAt) =>
         refreshTokensRepository.revokeAllForUser(userId, revokedAt),
-    },
-    emailVerifications: {
-      save: async () => {},
-      findActiveByUserId: async () => null,
-      invalidateActiveForUser: async () => {},
-      registerFailedAttempt: async () => false,
-      consume: async () => false,
     },
     pendingRegistrations: {
       save: (pending) => pendingRepo.save(pending),
