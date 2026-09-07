@@ -1,6 +1,7 @@
 import type { Database } from '#infra/database/client'
 import type { AuthRepos } from '#modules/auth/repositories/unit-of-work'
 import { DrizzleEmailVerificationsRepository } from './drizzle-email-verifications-repository.js'
+import { DrizzlePendingRegistrationsRepository } from './drizzle-pending-registrations-repository.js'
 import { DrizzleRefreshTokensRepository } from './drizzle-refresh-tokens-repository.js'
 import { DrizzleUsersRepository } from './drizzle-users-repository.js'
 
@@ -17,5 +18,6 @@ export function authRepositories(db: Database): AuthRepos {
     users: new DrizzleUsersRepository(db),
     refreshTokens: new DrizzleRefreshTokensRepository(db),
     emailVerifications: new DrizzleEmailVerificationsRepository(db),
+    pendingRegistrations: new DrizzlePendingRegistrationsRepository(db),
   }
 }

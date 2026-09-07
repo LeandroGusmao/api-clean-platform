@@ -34,6 +34,16 @@ const NO_EMAIL_VERIFICATIONS = {
   consume: async () => false,
 }
 
+/** Same: nothing here reads pending registrations, the shape only satisfies AuthRepos. */
+const NO_PENDING_REGISTRATIONS = {
+  save: async () => {},
+  findUnconsumedByEmail: async () => [],
+  reissueCode: async () => {},
+  registerFailedAttempt: async () => false,
+  consume: async () => false,
+  deleteExpiredByEmail: async () => {},
+}
+
 let repository: InMemoryRefreshTokensRepository
 let useCase: LogoutAllUseCase
 let clockReading: Date
@@ -66,6 +76,7 @@ beforeEach(() => {
       users: NO_USERS,
       refreshTokens: repository,
       emailVerifications: NO_EMAIL_VERIFICATIONS,
+      pendingRegistrations: NO_PENDING_REGISTRATIONS,
     }),
     {
       now: () => clockReading,

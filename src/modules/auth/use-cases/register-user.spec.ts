@@ -151,6 +151,14 @@ function trackedRepos(): AuthRepos {
         verificationsRepository.registerFailedAttempt(id, maxAttempts),
       consume: (id, at) => verificationsRepository.consume(id, at),
     },
+    pendingRegistrations: {
+      save: async () => {},
+      findUnconsumedByEmail: async () => [],
+      reissueCode: async () => {},
+      registerFailedAttempt: async () => false,
+      consume: async () => false,
+      deleteExpiredByEmail: async () => {},
+    },
   }
 }
 

@@ -136,14 +136,22 @@ beforeEach(() => {
         return refreshTokensRepository.revokeAllForUser(userId, revokedAt)
       },
     },
-    // Nothing in this suite reads email verifications; the shape only has to
-    // satisfy AuthRepos.
+    // Nothing in this suite reads email verifications or pending registrations;
+    // the shapes only have to satisfy AuthRepos.
     emailVerifications: {
       save: async () => {},
       findActiveByUserId: async () => null,
       invalidateActiveForUser: async () => {},
       registerFailedAttempt: async () => false,
       consume: async () => false,
+    },
+    pendingRegistrations: {
+      save: async () => {},
+      findUnconsumedByEmail: async () => [],
+      reissueCode: async () => {},
+      registerFailedAttempt: async () => false,
+      consume: async () => false,
+      deleteExpiredByEmail: async () => {},
     },
   }
 

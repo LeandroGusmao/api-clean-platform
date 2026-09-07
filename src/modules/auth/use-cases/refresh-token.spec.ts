@@ -48,6 +48,16 @@ const NO_EMAIL_VERIFICATIONS = {
   consume: async () => false,
 }
 
+/** Same: nothing here reads pending registrations, the shape only satisfies AuthRepos. */
+const NO_PENDING_REGISTRATIONS = {
+  save: async () => {},
+  findUnconsumedByEmail: async () => [],
+  reissueCode: async () => {},
+  registerFailedAttempt: async () => false,
+  consume: async () => false,
+  deleteExpiredByEmail: async () => {},
+}
+
 /**
  * Passthrough, exactly like the unit of work fake of slice 4: it runs the
  * callback against the same repositories and models NO rollback and NO row
@@ -84,6 +94,7 @@ const build = () => {
       users: NO_USERS,
       refreshTokens: repository,
       emailVerifications: NO_EMAIL_VERIFICATIONS,
+      pendingRegistrations: NO_PENDING_REGISTRATIONS,
     }),
     issuer,
     { sign: async () => ACCESS_TOKEN, verify: async () => ({ sub: USER_ID }) },
@@ -336,6 +347,7 @@ describe('RefreshTokenUseCase — grace window', () => {
           users: NO_USERS,
           refreshTokens: repository,
           emailVerifications: NO_EMAIL_VERIFICATIONS,
+          pendingRegistrations: NO_PENDING_REGISTRATIONS,
         })
       } catch (error) {
         repository.tokens.length = 0

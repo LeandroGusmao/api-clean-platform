@@ -145,6 +145,14 @@ function trackedRepos(): AuthRepos {
         return verificationsRepository.consume(id, at)
       },
     },
+    pendingRegistrations: {
+      save: async () => {},
+      findUnconsumedByEmail: async () => [],
+      reissueCode: async () => {},
+      registerFailedAttempt: async () => false,
+      consume: async () => false,
+      deleteExpiredByEmail: async () => {},
+    },
   }
 }
 
