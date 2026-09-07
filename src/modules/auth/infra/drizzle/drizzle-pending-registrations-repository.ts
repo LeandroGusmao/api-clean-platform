@@ -35,21 +35,27 @@ export class DrizzlePendingRegistrationsRepository
   }
 
   async findUnconsumedByEmail(email: Email): Promise<PendingRegistration[]> {
-    // `lower(email)` on the left aligns the expression with the functional
-    // index, the same way `DrizzleUsersRepository.findByEmail` does. Ordered
-    // `code_issued_at DESC` so the caller's `[0]` is the freshest live code.
-    const rows = await this.db
-      .select()
-      .from(pendingRegistrations)
-      .where(
-        and(
-          sql`lower(${pendingRegistrations.email}) = ${email.value}`,
-          isNull(pendingRegistrations.consumedAt),
-        ),
-      )
-      .orderBy(desc(pendingRegistrations.codeIssuedAt))
+    try {
+      // `lower(email)` on the left aligns the expression with the functional
+      // index, the same way `DrizzleUsersRepository.findByEmail` does. Ordered
+      // `code_issued_at DESC` so the caller's `[0]` is the freshest live code.
+      const rows = await this.db
+        .select()
+        .from(pendingRegistrations)
+        .where(
+          and(
+            sql`lower(${pendingRegistrations.email}) = ${email.value}`,
+            isNull(pendingRegistrations.consumedAt),
+          ),
+        )
+        .orderBy(desc(pendingRegistrations.codeIssuedAt))
 
-    return rows.map(toDomainPendingRegistration)
+      return rows.map(toDomainPendingRegistration)
+    } catch (error) {
+      // Never re-throw what the driver gave us: Drizzle's error glues every
+      // bound parameter into its own message, and this SELECT binds the address.
+      throw toPersistenceError(error)
+    }
   }
 
   async reissueCode(

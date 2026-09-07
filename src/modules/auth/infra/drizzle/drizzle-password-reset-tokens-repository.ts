@@ -1,6 +1,10 @@
 import { and, eq, isNull, lte } from 'drizzle-orm'
 import type { Database } from '#infra/database/client'
-import { findDriverError, toPersistenceError } from '#infra/database/driver-error'
+import {
+  findDriverError,
+  PG_UNIQUE_VIOLATION,
+  toPersistenceError,
+} from '#infra/database/driver-error'
 import type { PasswordResetToken } from '#modules/auth/entities/password-reset-token'
 import type {
   IPasswordResetTokensRepository,
@@ -14,9 +18,6 @@ import {
 
 /** How many rows a conditional write affected when nothing matched its `WHERE`. */
 const NO_ROW_AFFECTED = 0
-
-/** Postgres `unique_violation`. */
-const PG_UNIQUE_VIOLATION = '23505'
 
 const HASH_COLLISION_ERROR_NAME = 'PasswordResetTokenHashCollisionError'
 const HASH_COLLISION_MESSAGE =
@@ -99,12 +100,18 @@ export class DrizzlePasswordResetTokensRepository
   }
 
   async findByHash(tokenHash: string): Promise<PasswordResetToken | null> {
-    const [row] = await this.db
-      .select()
-      .from(passwordResetTokens)
-      .where(eq(passwordResetTokens.tokenHash, tokenHash))
+    try {
+      const [row] = await this.db
+        .select()
+        .from(passwordResetTokens)
+        .where(eq(passwordResetTokens.tokenHash, tokenHash))
 
-    return row === undefined ? null : toDomainPasswordResetToken(row)
+      return row === undefined ? null : toDomainPasswordResetToken(row)
+    } catch (error) {
+      // Never re-throw what the driver gave us: Drizzle's error glues every
+      // bound parameter into its own message, and this SELECT binds the digest.
+      throw toPersistenceError(error)
+    }
   }
 
   async consume(id: string, at: Date): Promise<boolean> {

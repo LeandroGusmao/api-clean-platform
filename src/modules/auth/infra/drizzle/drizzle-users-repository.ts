@@ -1,15 +1,16 @@
 import { eq, sql } from 'drizzle-orm'
 import type { Database } from '#infra/database/client'
-import { findDriverError, toPersistenceError } from '#infra/database/driver-error'
+import {
+  findDriverError,
+  PG_UNIQUE_VIOLATION,
+  toPersistenceError,
+} from '#infra/database/driver-error'
 import type { User } from '#modules/auth/entities/user'
 import { EmailAlreadyInUseError } from '#modules/auth/errors/email-already-in-use-error'
 import type { IUsersRepository } from '#modules/auth/repositories/users-repository'
 import type { Email } from '#modules/auth/value-objects/email'
 import { USERS_EMAIL_LOWER_UNIQUE_INDEX, users } from './schema/users.js'
 import { toDomainUser, toPersistenceUser } from './user-mapper.js'
-
-/** Postgres `unique_violation`. */
-const PG_UNIQUE_VIOLATION = '23505'
 
 /** Every lookup here returns at most one row. */
 const SINGLE_ROW = 1

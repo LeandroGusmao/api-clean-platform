@@ -8,6 +8,9 @@ const MAX_CAUSE_DEPTH = 10
 const PERSISTENCE_ERROR_NAME = 'PersistenceError'
 const UNKNOWN_FAILURE_MESSAGE = 'the database rejected the statement'
 
+/** SQLSTATE for a unique-constraint violation. */
+export const PG_UNIQUE_VIOLATION = '23505'
+
 /** The properties of a driver error that are safe to carry outward. */
 export interface DriverErrorDetails {
   /** SQLSTATE, e.g. `23505` for a unique violation. */
