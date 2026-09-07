@@ -20,6 +20,7 @@ export function noopAuthRepos(): AuthRepos {
       revoke: async () => {},
       revokeFamily: async () => {},
       revokeAllForUser: async () => {},
+      deleteExpiredBefore: async () => 0,
     },
     pendingRegistrations: {
       save: async () => {},
@@ -28,11 +29,13 @@ export function noopAuthRepos(): AuthRepos {
       registerFailedAttempt: async () => false,
       consume: async () => false,
       deleteExpiredByEmail: async () => {},
+      deleteExpiredBefore: async () => 0,
     },
     passwordResetTokens: {
       issueOrRefresh: async () => false,
       findByHash: async () => null,
       consume: async () => false,
+      deleteExpiredBefore: async () => 0,
     },
   }
 }

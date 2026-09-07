@@ -125,4 +125,12 @@ export class DrizzlePendingRegistrationsRepository
         ),
       )
   }
+
+  async deleteExpiredBefore(cutoff: Date): Promise<number> {
+    const result = await this.db
+      .delete(pendingRegistrations)
+      .where(lte(pendingRegistrations.expiresAt, cutoff))
+
+    return result.rowCount ?? NO_ROW_AFFECTED
+  }
 }

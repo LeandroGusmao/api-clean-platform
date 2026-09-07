@@ -35,6 +35,14 @@ export class InMemoryRefreshTokensRepository implements IRefreshTokensRepository
     })
   }
 
+  async deleteExpiredBefore(cutoff: Date): Promise<number> {
+    const survivors = this.tokens.filter((token) => token.expiresAt > cutoff)
+    const deleted = this.tokens.length - survivors.length
+    this.tokens.length = 0
+    this.tokens.push(...survivors)
+    return deleted
+  }
+
   async revokeAllForUser(userId: string, revokedAt: Date): Promise<void> {
     this.#replace((token) => token.userId === userId && token.revokedAt === null, {
       revokedAt,

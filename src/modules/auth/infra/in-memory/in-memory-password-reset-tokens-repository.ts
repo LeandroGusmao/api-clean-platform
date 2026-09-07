@@ -54,6 +54,14 @@ export class InMemoryPasswordResetTokensRepository
     return this.rows.find((row) => row.tokenHash === tokenHash) ?? null
   }
 
+  async deleteExpiredBefore(cutoff: Date): Promise<number> {
+    const survivors = this.rows.filter((row) => row.expiresAt > cutoff)
+    const deleted = this.rows.length - survivors.length
+    this.rows.length = 0
+    this.rows.push(...survivors)
+    return deleted
+  }
+
   async consume(id: string, at: Date): Promise<boolean> {
     const index = this.rows.findIndex((row) => row.id === id && row.consumedAt === null)
     if (index === -1) return false

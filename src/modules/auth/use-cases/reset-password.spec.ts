@@ -140,6 +140,8 @@ beforeEach(() => {
         callLog.push(REVOKE_ALL_CALL)
         return refreshTokensRepository.revokeAllForUser(userId, revokedAt)
       },
+      deleteExpiredBefore: (cutoff) =>
+        refreshTokensRepository.deleteExpiredBefore(cutoff),
     },
     passwordResetTokens: {
       issueOrRefresh: async () => true,
@@ -151,6 +153,7 @@ beforeEach(() => {
         callLog.push(CONSUME_CALL)
         return consumeResult
       },
+      deleteExpiredBefore: async () => 0,
     },
   }
 
