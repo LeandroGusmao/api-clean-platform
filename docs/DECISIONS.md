@@ -79,6 +79,10 @@ ficasse rasa em tudo, e são atacados nesta ordem:
 | 24 | Posse de tabela e FK entre módulos | Schema mora no módulo; FK só dentro do módulo |
 | 25 | Contrato do `register` | `202` sempre, sem corpo — quebra deliberada do `201`/`409` publicado |
 | 26 | Backfill de `email_verified_at` | Nenhum; ressalva normativa para apps derivados em produção |
+| 27 | Conta nasce na confirmação | `register` grava pendente sem senha; `email/verify` cria a conta com a senha daquele request |
+| 28 | Exceção pontual a R4 | Migration de `email_verification_tokens` apagada; não se repete |
+| 29 | Recuperação de senha | `forgot`/`reset` com token opaco de 256 bits, upsert com cooldown na cláusula `WHERE` |
+| 30 | Cron / poda | `cron.ts` one-shot + scheduler externo; registry de jobs por módulo; poda com janela de retenção por tabela |
 
 ---
 
@@ -1758,6 +1762,63 @@ tokens). Cinco decisões do desenho:
 
 Desenho completo em
 [`specs/2026-09-07-password-recovery-design.md`](superpowers/specs/2026-09-07-password-recovery-design.md).
+
+---
+
+### 30 — Cron: `cron.ts` one-shot, registry de jobs por módulo, poda com retenção
+
+A decisão 10 reservou o entrypoint `main/cron.ts` e nunca o construiu. A fatia da
+poda de tokens expirados o materializa, e com ele três sub-decisões.
+
+**One-shot + scheduler externo.** `cron.ts` sobe, roda os jobs de manutenção,
+loga o resultado de cada um, `exit 0` se todos passaram e `exit 1` se algum
+lançou. Quem o agenda é a plataforma. É o padrão de deploy conteinerizado, e
+encaixa na decisão 16 (aplicação roda como processo, não como serviço no
+compose). O scheduler da plataforma já entrega retry, histórico, alerting e
+timezone.
+
+- **Como agendar em produção:** Kubernetes `CronJob` executando `node
+  dist/main/cron.js`; ou ECS Scheduled Task; ou uma linha de `crontab` chamando
+  o mesmo comando. Nada disso mora no repo — cada app derivado escolhe.
+- **Em dev não há scheduler.** A poda só roda quando invocada à mão: `node
+  --conditions=development --env-file-if-exists=.env --import tsx src/main/cron.ts`.
+  Poda é manutenção, não corretude.
+
+**Descartado — processo longo com `node-cron`/`setInterval`:** auto-contido, mas
+traz dependência nova, um processo a mais para manter no ar, e dispara N vezes
+sob réplicas sem um lock. É padrão de monólito pequeno sem orquestrador.
+
+**Descartado — `pg_cron`:** contradiz a decisão 10, exige extensão no banco, e
+tira a poda do código versionado e testável.
+
+**Registry de jobs por módulo.** Cada módulo expõe `jobs: CronJob[]` na sua fatia
+do container; `run-cron.ts` concatena as listas. Módulo novo com job novo não
+toca `cron.ts`. É acesso a propriedade da fatia injetada, o mesmo mecanismo de
+`verifyAccessToken` — nenhum import entre módulos.
+
+**Descartado — método único `container.auth.pruneExpired()`:** não generaliza
+para o segundo módulo com job, nem para o dispatch do outbox.
+
+**Poda com janela de retenção por tabela.** `DELETE ... WHERE expires_at <=
+$cutoff`, com `cutoff = now − retention`. Cada tabela tem a sua env var
+(`*_PRUNE_RETENTION_SECONDS`, defaults 7 dias / 24 h / 24 h). Uma linha morta
+fica investigável por uma janela; `created_at` já era imutável "para ordenação
+de poda e auditoria".
+
+**Descartado — deletar no instante da expiração:** tira o rastro de post-mortem.
+**Descartado — retenção global única:** 7 dias de tokens de reset mortos é mais
+lixo do que o TTL de 30 min justifica. **Descartado — predicado com
+`revoked_at`/`consumed_at`:** um predicado único sobre a coluna `NOT NULL` que as
+três tabelas têm é o que qualquer leitor entende; o custo é um token revogado
+cedo com `expires_at` futuro ficar até `expires_at + retention`, limitado pelo
+TTL.
+
+**Fora de escopo:** o outbox transacional. Ele reusa este registry — é mais um
+`CronJob` de dispatch —, mas põe o código de verificação em texto claro em
+repouso no banco, e o §5.3 da fatia 10 adiou isso de propósito.
+
+Desenho completo em
+[`specs/2026-09-07-token-pruning-cron-design.md`](superpowers/specs/2026-09-07-token-pruning-cron-design.md).
 
 ---
 

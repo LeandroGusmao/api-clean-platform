@@ -1,9 +1,10 @@
 # O que falta
 
-> Reescrito em 2026-09-07, ao fim da fatia 12. A versão anterior, do fim da
-> fatia 11, recomendava a recuperação de senha como próximo passo — a fatia 12
-> a fechou, e com ela o `auth` está completo como boilerplate v1. Quem abrisse
-> a versão anterior começaria por algo que já está entregue.
+> Atualizado em 2026-09-07, ao fim da fatia 13 (poda de tokens no `cron.ts`).
+> Reescrito ao fim da fatia 12: a versão anterior, do fim da fatia 11,
+> recomendava a recuperação de senha como próximo passo — a fatia 12 a fechou,
+> e com ela o `auth` está completo como boilerplate v1. Quem abrisse a versão
+> anterior começaria por algo que já está entregue.
 >
 > Aquela versão já havia corrigido as anteriores: uma que listava o account
 > pre-hijacking como o único **buraco aberto** (fechado pela fatia 11), e outra
@@ -38,11 +39,11 @@ Decisão 29 no [`DECISIONS.md`](DECISIONS.md); desenho completo em
 
 | Item | Depende de | Nota |
 |---|---|---|
-| Poda de tokens expirados | `cron.ts` | **três** tabelas crescem: `refresh_tokens` (nada apaga), `pending_registrations` (a poda oportunista da fatia 11 só limpa endereços que veem tráfego; abandonados ficam) e `password_reset_tokens` (idem). Cron futuro poda as três |
+| ~~Poda de tokens expirados~~ | — | **fechada pela fatia 13.** `cron.ts` one-shot + registry de jobs por módulo; três use-cases de poda com janela de retenção por tabela varrem `refresh_tokens`, `pending_registrations` e `password_reset_tokens`. Decisão 30; spec `2026-09-07-token-pruning-cron-design.md` |
 | Login social / OAuth (Google) | decisão em aberto | três sub-perguntas já resolvidas — ver `DECISIONS.md` §6. **Não** haverá troca de e-mail, por causa disto. Interage com a recuperação de senha (conta ligada ao Google não tem senha para "recuperar") |
 | Throttle de `confirm` por e-mail | nada | um anônimo pode manter um endereço não-confirmável queimando o teto de cinco tentativas do código a cada cooldown — o teto por IP não segura. Conserto: throttle por conta/e-mail |
 | CORS | primeiro front web | sem ele o modo cookie não funciona cross-origin |
-| Outbox transacional | `cron.ts` / worker | um crash entre o `COMMIT` e o envio SMTP perde o e-mail em silêncio, e sobra um oráculo por **latência** no `resend`/`confirm` (o ramo que envia paga um round-trip). Custos aceitos, documentados no §11 da spec da fatia 11 |
+| Outbox transacional | **destravado** pela fatia 13 | o `cron.ts` e o registry de jobs existem — o dispatch do outbox é mais um `CronJob`. Falta a tabela e a escrita transacional. Um crash entre o `COMMIT` e o envio SMTP perde o e-mail em silêncio; custos aceitos no §11 da spec da fatia 11 e §5.3 da fatia 10 |
 | Listar sessões ativas | nada | cai quase de graça agora que há `family_id` |
 | Invalidar sessões + notificar o dono na verificação | nada | defesa em profundidade que a literatura recomenda por cima da correção estrutural (§4.4 do handoff da fatia 11) |
 | RBAC / permissões | decisão em aberto | acoplada à 11: role no JWT significa até 1h de latência para revogar permissão |
@@ -77,8 +78,7 @@ está completo como boilerplate v1 e o próximo grande bloco de valor é entrar 
 senha — as sub-perguntas de design já estão resolvidas (`DECISIONS.md` §6), e ele
 encosta na recuperação: conta ligada ao Google não tem senha para "recuperar".
 
-Antes disso, a dívida técnica mais urgente é a poda de tokens expirados no
-`cron.ts`: são **três** tabelas que hoje crescem sem teto — `refresh_tokens`,
-`pending_registrations` e `password_reset_tokens` — e o mesmo worker de cron
-destrava o outbox transacional. É trabalho pequeno que só encarece a cada fatia
-nova.
+A poda de tokens expirados que estava aqui **foi entregue pela fatia 13** — o
+`cron.ts` e o registry de jobs existem. O ganho de tabela é o **outbox
+transacional**: agora é só mais um `CronJob` de dispatch, mais a tabela e a
+escrita transacional nos use-cases que mandam e-mail.

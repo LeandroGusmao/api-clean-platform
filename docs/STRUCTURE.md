@@ -87,13 +87,14 @@ src/
 │
 ├── shared/                     # transversal, sem dono
 │   ├── errors/                 # AppError + taxonomia semântica
-│   └── providers/              # contratos transversais (IClock, ITokenGenerator)
+│   └── ports/                  # contratos transversais (IClock, ITokenGenerator, CronJob)
 │
 └── main/                       # entrypoints + composition root
     ├── container.ts            # compõe os containers dos módulos
     ├── http.ts                 # monta o container e REGISTRA as rotas
-    ├── worker.ts
-    └── cron.ts
+    ├── run-cron.ts             # runJobs + runCron: monta o grafo, roda os jobs de cada módulo
+    ├── cron.ts                 # one-shot: chama runCron, loga, exit 0/1 — agendado pela plataforma
+    └── worker.ts               # aspiracional (decisão 10)
 
 tests/integration/              # suíte com banco real
 drizzle/                        # migrations, forward-only
