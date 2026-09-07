@@ -1,13 +1,14 @@
 # O que falta
 
-> Reescrito em 2026-09-07, ao fim da fatia 11. A versão anterior (2026-09-06)
-> listava o account pre-hijacking como o único **buraco aberto** e a próxima
-> fatia — a fatia 11 o fechou. Quem abrisse a versão anterior começaria pelo
-> lugar errado.
+> Reescrito em 2026-09-07, ao fim da fatia 12. A versão anterior, do fim da
+> fatia 11, recomendava a recuperação de senha como próximo passo — a fatia 12
+> a fechou, e com ela o `auth` está completo como boilerplate v1. Quem abrisse
+> a versão anterior começaria por algo que já está entregue.
 >
-> A versão de 2026-09-06 já havia corrigido uma anterior que listava rate
-> limiting, troca de senha e verificação de e-mail como pendentes — as três
-> entregues nas fatias 8, 9 e 10.
+> Aquela versão já havia corrigido as anteriores: uma que listava o account
+> pre-hijacking como o único **buraco aberto** (fechado pela fatia 11), e outra
+> que dava rate limiting, troca de senha e verificação de e-mail como pendentes
+> — as três entregues nas fatias 8, 9 e 10.
 
 ## ✅ Sequestro de conta antes da verificação — fechado pela fatia 11
 
@@ -71,7 +72,13 @@ permanentemente não-resgatável.
 
 ## O que eu faria a seguir
 
-Recuperação de senha. É o último endpoint ausente do fluxo de auth, está
-desbloqueada agora que o pre-hijacking fechou, e a fatia 11 deixou quase toda a
-infra pronta. Depois dela o `auth` está completo como boilerplate v1, e o próximo
-grande bloco é o login social.
+Login social / OAuth com Google. Com a recuperação de senha fechada, o `auth`
+está completo como boilerplate v1 e o próximo grande bloco de valor é entrar sem
+senha — as sub-perguntas de design já estão resolvidas (`DECISIONS.md` §6), e ele
+encosta na recuperação: conta ligada ao Google não tem senha para "recuperar".
+
+Antes disso, a dívida técnica mais urgente é a poda de tokens expirados no
+`cron.ts`: são **três** tabelas que hoje crescem sem teto — `refresh_tokens`,
+`pending_registrations` e `password_reset_tokens` — e o mesmo worker de cron
+destrava o outbox transacional. É trabalho pequeno que só encarece a cada fatia
+nova.
