@@ -49,6 +49,13 @@ const NO_PENDING_REGISTRATIONS = {
   deleteExpiredByEmail: async () => {},
 }
 
+/** Nothing here reads password reset tokens; the shape only satisfies AuthRepos. */
+const NO_PASSWORD_RESET_TOKENS = {
+  issueOrRefresh: async () => true,
+  findByHash: async () => null,
+  consume: async () => false,
+}
+
 /**
  * Passthrough, exactly like the unit of work fake of slice 4: it runs the
  * callback against the same repositories and models NO rollback and NO row
@@ -85,6 +92,7 @@ const build = () => {
       users: NO_USERS,
       refreshTokens: repository,
       pendingRegistrations: NO_PENDING_REGISTRATIONS,
+      passwordResetTokens: NO_PASSWORD_RESET_TOKENS,
     }),
     issuer,
     { sign: async () => ACCESS_TOKEN, verify: async () => ({ sub: USER_ID }) },
@@ -337,6 +345,7 @@ describe('RefreshTokenUseCase — grace window', () => {
           users: NO_USERS,
           refreshTokens: repository,
           pendingRegistrations: NO_PENDING_REGISTRATIONS,
+          passwordResetTokens: NO_PASSWORD_RESET_TOKENS,
         })
       } catch (error) {
         repository.tokens.length = 0

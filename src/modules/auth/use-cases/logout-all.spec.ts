@@ -35,6 +35,13 @@ const NO_PENDING_REGISTRATIONS = {
   deleteExpiredByEmail: async () => {},
 }
 
+/** Nothing here reads password reset tokens; the shape only satisfies AuthRepos. */
+const NO_PASSWORD_RESET_TOKENS = {
+  issueOrRefresh: async () => true,
+  findByHash: async () => null,
+  consume: async () => false,
+}
+
 let repository: InMemoryRefreshTokensRepository
 let useCase: LogoutAllUseCase
 let clockReading: Date
@@ -67,6 +74,7 @@ beforeEach(() => {
       users: NO_USERS,
       refreshTokens: repository,
       pendingRegistrations: NO_PENDING_REGISTRATIONS,
+      passwordResetTokens: NO_PASSWORD_RESET_TOKENS,
     }),
     {
       now: () => clockReading,

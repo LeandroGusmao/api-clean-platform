@@ -144,6 +144,12 @@ beforeEach(() => {
       consume: async () => false,
       deleteExpiredByEmail: async () => {},
     },
+    // Nor password reset tokens; same reason.
+    passwordResetTokens: {
+      issueOrRefresh: async () => true,
+      findByHash: async () => null,
+      consume: async () => false,
+    },
   }
 
   // The read the use case makes OUTSIDE the transaction, spied separately: it

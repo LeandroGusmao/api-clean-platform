@@ -146,6 +146,13 @@ function trackedRepos(): AuthRepos {
       },
       deleteExpiredByEmail: (email, at) => pendingRepo.deleteExpiredByEmail(email, at),
     },
+    // Nothing in this flow touches password reset tokens; the shape only has to
+    // satisfy AuthRepos.
+    passwordResetTokens: {
+      issueOrRefresh: async () => true,
+      findByHash: async () => null,
+      consume: async () => false,
+    },
   }
 }
 
