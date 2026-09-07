@@ -53,9 +53,10 @@ estava vulnerável a alguma variante. Não é defeito exótico: é o que acontec
    fatia ou morrem com ela.
 3. `src/modules/auth/use-cases/register-user.ts`, o método
    `#deliverForExistingAccount` — trinta linhas, e é o epicentro.
-4. `.superpowers/sdd/2026-09-03-email-verification/final-review.md`, se ainda
-   existir. É a revisão que achou o buraco; o diretório é gitignored e pode ter
-   sumido.
+4. [`2026-09-04-review-email-verification.md`](2026-09-04-review-email-verification.md)
+   — a revisão de branch inteira que achou o buraco. Vale pelo **método**: as
+   doze revisões por tarefa vieram limpas, e o que só aparece olhando o fluxo
+   inteiro está no C1 dela.
 
 ## 3. Por que a correção da fatia 10 não bastou
 
