@@ -112,6 +112,38 @@ construção. Custo: dois passos e uma mudança de contrato maior que a da 4.1.
 Invalidar **toda sessão** no instante da verificação, e notificar o dono. É o que
 a literatura recomenda por cima da correção estrutural, não no lugar dela.
 
+## 4.5 — Login social está no roteiro, e isso sobe o custo de escolher errado
+
+**Decidido em 2026-09-06:** o Google entra como provedor no futuro. Isso não é
+detalhe de outra fatia — muda o que esta aqui deve escolher.
+
+O pre-hijacking **não é só herdado** pelo cadastro federado: a variante mais
+citada do estudo de 2022 é exatamente essa, o *Classic-Federated Merge*. O
+atacante cadastra `vitima@gmail.com` com senha pelo fluxo normal; meses depois a
+vítima clica em "Entrar com Google"; o app vê o e-mail bater e **funde**; e a
+senha do atacante continua valendo. É a falha de hoje mais um passo de merge — e
+o merge é a parte que os apps erram, porque parece hospitalidade.
+
+Três decisões já tomadas, registradas no §6 do `DECISIONS.md`, que esta fatia
+deve respeitar:
+
+1. **Não haverá troca de e-mail** — o endereço passa a ser asserção do IdP.
+2. **Sign-in do Google sobre cadastro pendente: o Google ganha**, a conta nasce
+   verificada, e os pendentes são descartados de modo que **não possam mais
+   definir senha depois**.
+3. **Sign-in do Google sobre conta verificada com senha: recusa o merge e exige
+   a senha cadastrada**, e só então vincula a identidade.
+
+**O que isso implica para a escolha do §4.** A saída 4.1 — a conta nasce na
+confirmação — é, por acaso, exatamente o formato que o login federado quer: o
+Google já provou o endereço, então cria uma conta verificada direto, sem senha e
+sem etapa pendente. E ela **elimina** o estado "conta não verificada com senha",
+que é justamente o estado que o item 2 acima precisa tratar com cuidado.
+
+Um remendo mais estreito no fluxo atual resolveria o sintoma e teria de ser
+refeito quando o Google entrar. Isso é argumento a favor da 4.1, e vale mais que
+qualquer um listado no §4.1 original.
+
 ## 5. As armadilhas desta fatia
 
 ### 5.1 — O índice único deixa de proteger o caminho pendente [lido]

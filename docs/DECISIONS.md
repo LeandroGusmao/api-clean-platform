@@ -1890,7 +1890,37 @@ bloqueavam (lint de fronteira, build e path alias, mappers) viraram as decisões
 - ~~Verificação de e-mail~~ — **RESOLVIDA pela fatia 10** (decisões 13, 25 e 26).
   Recuperação de senha continua em aberto — é a próxima fatia do roteiro, e
   reusa a infraestrutura de e-mail que esta abriu.
-- Login social / OAuth — ver a ressalva de formato de erro na decisão 13
+- **Login social / OAuth (Google primeiro)** — a fatia continua em aberto, mas
+  três perguntas dela foram **decididas em 2026-09-06**, porque decidi-las
+  enquanto não existe usuário é de graça e depois vira migração de dados:
+
+  1. **Não haverá troca de e-mail.** Com identidade federada o endereço deixa de
+     ser um campo que o usuário possui e passa a ser **asserção do provedor**.
+     Um endpoint de troca criaria a pergunta "quem é a autoridade, o IdP ou a
+     nossa coluna?", que não tem resposta boa. O endpoint sai do roteiro; não é
+     omissão.
+  2. **Sign-in do Google sobre um cadastro pendente e não confirmado: o Google
+     ganha e a conta nasce verificada.** O IdP provou o endereço; o pendente não
+     provou nada. Os pendentes daquele endereço são descartados **de modo que
+     não possam mais definir senha depois** — um pendente que sobrevivesse e
+     ainda aplicasse a senha dele na confirmação seria o sequestro da fatia 11
+     por outra porta.
+  3. **Sign-in do Google sobre conta verificada com senha: recusa o merge
+     silencioso e exige a senha cadastrada**, e só então vincula a identidade em
+     definitivo. Merge silencioso é a variante *Classic-Federated Merge* do
+     pre-hijacking: o atacante cadastra o endereço da vítima com senha, a vítima
+     entra com Google meses depois, o app funde, e a senha do atacante continua
+     valendo.
+
+  **Uma assimetria a preservar, e não "corrigir".** A recusa do item 3 pode ser
+  **específica** — "este endereço já tem conta com senha" — sem virar oráculo de
+  enumeração, porque no callback do OAuth o IdP já provou que quem está ali é o
+  dono do endereço. É a única porta do `auth` onde contar a verdade não vaza
+  nada, e destoa de propósito do `202` genérico do `register`.
+
+  Ver também a ressalva de formato de erro na decisão 13: o endpoint de token do
+  OAuth tem corpo de erro mandatório pela RFC 6749 e fica fora da convenção
+  deste projeto.
 - Multi-tenancy
 
 ---
