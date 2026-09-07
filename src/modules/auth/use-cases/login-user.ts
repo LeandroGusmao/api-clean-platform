@@ -65,6 +65,12 @@ export class LoginUserUseCase {
     // only ever reach someone who already proved they know the password.
     // Checking first would hand any anonymous caller an account oracle — the
     // very thing the decoy hash above exists to deny them.
+    //
+    // Since slice 11 every `users` row is born verified (the account is created
+    // at confirmation), so this branch has no producer today. It stays as
+    // defence in depth and for the social-login slice, which will create
+    // verified accounts and needs the same column and gate (§4.3 of the
+    // pre-hijacking design).
     if (user.emailVerifiedAt === null) throw new EmailNotVerifiedError()
 
     // A fresh family per login: each device owns its chain, so logging out on
