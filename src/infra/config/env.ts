@@ -81,6 +81,39 @@ export const DEFAULT_HOST = '0.0.0.0'
 export const DEFAULT_PORT = 3000
 export const DEFAULT_LOG_LEVEL: (typeof LOG_LEVELS)[number] = 'info'
 
+/**
+ * Development points at the Mailpit service in `docker-compose.yml`. Production
+ * must be explicit — see the refinement below.
+ */
+export const DEFAULT_MAIL_HOST = '127.0.0.1'
+export const DEFAULT_MAIL_PORT = 1025
+export const DEFAULT_MAIL_FROM = 'API Clean Platform <no-reply@localhost>'
+
+/**
+ * Zod gives no boolean coercion that rejects garbage: `z.coerce.boolean()`
+ * turns every non-empty string into `true`, so `MAIL_REQUIRE_TLS=false` would
+ * read as true.
+ *
+ * `.default()` sits BEFORE `.transform()`, exactly as in `trustProxySchema`
+ * above and for the same reason: Zod 4's default is the OUTPUT type of
+ * whatever it is attached to, and short-circuits that schema's own parsing —
+ * but chained calls placed AFTER it still run on the resulting value. Placed
+ * before `.transform()` here, the string default flows through the transform
+ * like any parsed input and comes out as the right boolean; attached after
+ * `.transform()` instead, the default would have to be a `boolean` already,
+ * and passing the string `'false'` there both fails to typecheck and — were
+ * the type forced through — would hand every default consumer the STRING
+ * `'false'`, which is truthy.
+ */
+const BOOLEAN_TRUE = 'true'
+const BOOLEAN_FALSE = 'false'
+function booleanFromString(defaultValue: typeof BOOLEAN_TRUE | typeof BOOLEAN_FALSE) {
+  return z
+    .enum([BOOLEAN_TRUE, BOOLEAN_FALSE])
+    .default(defaultValue)
+    .transform((raw) => raw === BOOLEAN_TRUE)
+}
+
 const TRUST_PROXY_NUMERIC_PATTERN = /^\d+$/
 const TRUST_PROXY_BOOLEAN_LITERALS = ['true', 'false']
 /** Fastify treats `false`, `0` and `''` identically; this is the one form. */
@@ -159,14 +192,101 @@ const coreEnvSchema = z.object({
   DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS: timeoutMs(
     DEFAULT_DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS,
   ),
+  // `.optional()` and NOT `.default(...)`: the production refinement below
+  // needs to tell "the operator set this" from "Zod filled it in", and after a
+  // `.default()` the parsed value is never `undefined` — that distinction would
+  // be gone. The effective default is applied in the `.transform()` at the
+  // bottom, once the refinement has already seen the raw `undefined`.
+  MAIL_HOST: z.string().min(1).optional(),
+  MAIL_PORT: z.coerce.number().int().positive().optional(),
+  // These two keep `.default()`: production does not require their PRESENCE,
+  // it requires a VALUE (`MAIL_REQUIRE_TLS` must be `true`), so there is no
+  // "operator vs. Zod" distinction to lose here.
+  MAIL_SECURE: booleanFromString(BOOLEAN_FALSE),
+  MAIL_REQUIRE_TLS: booleanFromString(BOOLEAN_FALSE),
+  MAIL_FROM: z.string().min(1).optional(),
+  MAIL_USER: z.string().min(1).optional(),
+  MAIL_PASSWORD: z.string().min(1).optional(),
 })
+
+/** The mail settings that must never be inherited from a development default. */
+const REQUIRED_MAIL_KEYS_IN_PRODUCTION = ['MAIL_HOST', 'MAIL_PORT', 'MAIL_FROM'] as const
+
+const MAIL_REQUIRED_IN_PRODUCTION_MESSAGE =
+  'must be set explicitly in production, never inherited from the development default'
+const MAIL_TLS_REQUIRED_MESSAGE =
+  'must be true in production: without STARTTLS a man in the middle reads every verification code'
+
+/** The pair that authenticates against the relay: present together, or absent together. */
+const MAIL_USER_KEY = 'MAIL_USER'
+const MAIL_PASSWORD_KEY = 'MAIL_PASSWORD'
+const MAIL_CREDENTIALS_PAIR_MESSAGE =
+  'MAIL_USER and MAIL_PASSWORD must be set together or left unset together: ' +
+  'one without the other passes this validation and then hands nodemailer an ' +
+  'undefined password, so every send fails at runtime instead of the process ' +
+  'refusing to start'
 
 /**
  * Every module's schema merged, validated once at boot (decision 14). A module
  * declaring a variable and forgetting this line would ship an unvalidated
  * `undefined` to production — which is why no module reads `process.env` itself.
+ *
+ * `.superRefine()` has to come AFTER `.extend()`: `.extend()` clones the shape
+ * into a fresh object schema and drops any check already attached, so a
+ * refinement added before it would simply vanish.
+ *
+ * `.transform()` runs last and applies the mail defaults that `.default()`
+ * cannot: it sees the object exactly as `.superRefine()` left it, `MAIL_HOST` /
+ * `MAIL_PORT` / `MAIL_FROM` still genuinely `undefined` when unset, and turns
+ * that into the effective value the rest of the app receives. That keeps the
+ * exported `Env` type free of `undefined` on these fields — no consumer has to
+ * special-case a value the refinement above has already guaranteed present.
  */
-const envSchema = coreEnvSchema.extend(authEnvSchema.shape)
+const envSchema = coreEnvSchema
+  .extend(authEnvSchema.shape)
+  .superRefine((value, ctx) => {
+    // Applies in EVERY environment, not just production — unlike the checks
+    // below this one, which the early `return` right after it skips outside
+    // production. Setting only one of the pair boots clean today (both are
+    // independent optionals) and only fails once a request tries to send,
+    // handing nodemailer `pass: undefined` — the opposite of this file's own
+    // rule, which is to fail loudly at boot with every problem listed at once.
+    const hasMailUser = value.MAIL_USER !== undefined
+    const hasMailPassword = value.MAIL_PASSWORD !== undefined
+    if (hasMailUser !== hasMailPassword) {
+      ctx.addIssue({
+        code: 'custom',
+        path: [hasMailUser ? MAIL_PASSWORD_KEY : MAIL_USER_KEY],
+        message: MAIL_CREDENTIALS_PAIR_MESSAGE,
+      })
+    }
+
+    if (value.NODE_ENV !== NODE_ENV_PRODUCTION) return
+
+    for (const key of REQUIRED_MAIL_KEYS_IN_PRODUCTION) {
+      if (value[key] === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [key],
+          message: MAIL_REQUIRED_IN_PRODUCTION_MESSAGE,
+        })
+      }
+    }
+
+    if (!value.MAIL_REQUIRE_TLS) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['MAIL_REQUIRE_TLS'],
+        message: MAIL_TLS_REQUIRED_MESSAGE,
+      })
+    }
+  })
+  .transform((value) => ({
+    ...value,
+    MAIL_HOST: value.MAIL_HOST ?? DEFAULT_MAIL_HOST,
+    MAIL_PORT: value.MAIL_PORT ?? DEFAULT_MAIL_PORT,
+    MAIL_FROM: value.MAIL_FROM ?? DEFAULT_MAIL_FROM,
+  }))
 
 export type Env = z.infer<typeof envSchema>
 

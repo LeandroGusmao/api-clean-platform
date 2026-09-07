@@ -41,4 +41,23 @@ export interface IUsersRepository {
    * belongs to the use case.
    */
   updatePasswordHash(id: string, passwordHash: string, updatedAt: Date): Promise<void>
+
+  /**
+   * Writes ONLY `email_verified_at` and `updated_at`.
+   *
+   * Narrow for the same two reasons as `updatePasswordHash`: the wrong column is
+   * inexpressible, because this signature cannot reach `email`; and `updatedAt`
+   * goes EXPLICITLY, always, because `$onUpdate` fills an absence with the
+   * system clock — omitting it is the one way the injected `IClock` stops being
+   * the source of truth, and it fails in silence.
+   *
+   * Two parameters even though the single call site passes the same instant to
+   * both: collapsing them would make the repository DECIDE that
+   * `email_verified_at` always equals `updated_at`, which is true of this caller
+   * and is not a property of the table.
+   *
+   * Silent about a missing id, like `updatePasswordHash`: the caller has already
+   * loaded the user.
+   */
+  markEmailVerified(id: string, verifiedAt: Date, updatedAt: Date): Promise<void>
 }

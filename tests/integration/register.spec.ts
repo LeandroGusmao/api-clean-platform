@@ -1,4 +1,5 @@
 import { Writable } from 'node:stream'
+import { eq } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -11,20 +12,26 @@ import { users } from '#modules/auth/infra/drizzle/schema/users'
 // contract. Importing them would make the assertions tautological.
 const REGISTER_PATH = '/auth/register'
 const POST_METHOD = 'POST'
-const CREATED_STATUS_CODE = 201
+const ACCEPTED_STATUS_CODE = 202
 const BAD_REQUEST_STATUS_CODE = 400
-const CONFLICT_STATUS_CODE = 409
+
+// `send(null)` on a 202 puts these four bytes on the wire, with a JSON content
+// type — unlike a 204, where Fastify strips the body entirely. Pinned exactly,
+// rather than described as "empty", so the contract stops being ambiguous.
+const NULL_BODY = 'null'
+const JSON_CONTENT_TYPE = 'application/json; charset=utf-8'
+const CONTENT_TYPE_HEADER = 'content-type'
+const CONTENT_LENGTH_HEADER = 'content-length'
 
 const EMAIL = 'joao@example.com'
 const EMAIL_DIFFERING_ONLY_BY_CASE = 'JOAO@example.com'
+const NEW_EMAIL = 'maria@example.com'
+const VERIFIED_EMAIL = 'ana@example.com'
 const PASSWORD = 'sup3r-s3cr3t!'
 const WEAK_PASSWORD = 'abcdefghij'
 
-const EMAIL_ALREADY_IN_USE_CODE = 'EMAIL_ALREADY_IN_USE'
 const VALIDATION_ERROR_CODE = 'VALIDATION_ERROR'
 const PASSWORD_FIELD = 'password'
-const ID_KEY = 'id'
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const ROW_MISSING_MESSAGE = 'no user row was stored'
 
@@ -66,26 +73,60 @@ function register(email: string, password: string) {
   })
 }
 
+/**
+ * Registers through the real endpoint, then marks the row verified directly.
+ * The confirm flow itself — a real code travelling through a real SMTP
+ * server — is `verify-email.spec.ts`'s job; this file's concern is `register`'s
+ * own behaviour, and it only needs an account that IS verified, not a
+ * demonstration of how it got that way.
+ */
+async function registerVerifiedAccount(email: string, password: string): Promise<void> {
+  await register(email, password)
+  await db
+    .update(users)
+    .set({ emailVerifiedAt: new Date() })
+    .where(eq(users.email, email))
+}
+
 describe('POST /auth/register', () => {
-  it('creates the account and answers 201 with its id', async () => {
+  it('answers 202 with the literal `null` body', async () => {
     const response = await register(EMAIL, PASSWORD)
 
-    expect(response.statusCode).toBe(CREATED_STATUS_CODE)
-    expect(response.json()).toEqual({ id: expect.stringMatching(UUID_PATTERN) })
-    // The response carries the id and nothing else: a wider body would be a
-    // place for a field to leak into later.
-    expect(Object.keys(response.json())).toEqual([ID_KEY])
+    expect(response.statusCode).toBe(ACCEPTED_STATUS_CODE)
+    expect(response.body).toBe(NULL_BODY)
+    expect(response.headers[CONTENT_TYPE_HEADER]).toBe(JSON_CONTENT_TYPE)
   })
 
-  it('answers 409 when the email is taken, ignoring case', async () => {
+  it('answers 202 when the email is taken, ignoring case', async () => {
     await register(EMAIL, PASSWORD)
 
     const response = await register(EMAIL_DIFFERING_ONLY_BY_CASE, PASSWORD)
 
-    expect(response.statusCode).toBe(CONFLICT_STATUS_CODE)
-    expect(response.json()).toMatchObject({
-      error: { code: EMAIL_ALREADY_IN_USE_CODE },
-    })
+    expect(response.statusCode).toBe(ACCEPTED_STATUS_CODE)
+    expect(response.body).toBe(NULL_BODY)
+  })
+
+  it('answers with the same status, body and content headers for a brand-new address and one with an already verified account', async () => {
+    await registerVerifiedAccount(VERIFIED_EMAIL, PASSWORD)
+
+    const brandNew = await register(NEW_EMAIL, PASSWORD)
+    const alreadyVerified = await register(VERIFIED_EMAIL, PASSWORD)
+
+    // Compared to EACH OTHER, not to a literal: a test that pinned each
+    // response separately would still pass if the two drifted apart together.
+    // `date` and the rate-limit headers are excluded on purpose — they change
+    // between any two sequential requests regardless of which address was
+    // sent, so comparing them would fail for a reason that has nothing to do
+    // with enumeration.
+    expect(brandNew.statusCode).toBe(alreadyVerified.statusCode)
+    expect(brandNew.statusCode).toBe(ACCEPTED_STATUS_CODE)
+    expect(brandNew.body).toBe(alreadyVerified.body)
+    expect(brandNew.headers[CONTENT_TYPE_HEADER]).toBe(
+      alreadyVerified.headers[CONTENT_TYPE_HEADER],
+    )
+    expect(brandNew.headers[CONTENT_LENGTH_HEADER]).toBe(
+      alreadyVerified.headers[CONTENT_LENGTH_HEADER],
+    )
   })
 
   it('answers 400 with a per-field detail when the password breaks the policy', async () => {
@@ -109,7 +150,7 @@ describe('POST /auth/register', () => {
     const log = logLines.join('')
 
     // The two `log` assertions hold today for a reason that is not this
-    // endpoint's doing: Fastify logs no request body, so a 201 emits only
+    // endpoint's doing: Fastify logs no request body, so a 202 emits only
     // `incoming request` and `request completed`, neither of which carries the
     // password or the hash. They are kept as a canary for the day someone adds
     // body logging — at which point both would need to start failing. The leak

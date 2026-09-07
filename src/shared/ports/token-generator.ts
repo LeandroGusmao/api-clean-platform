@@ -12,4 +12,18 @@ export interface ITokenGenerator {
    * carry entropy and no meaning. The encoding is the adapter's business.
    */
   opaque(bytes?: number): string
+
+  /**
+   * A uniformly random decimal code of exactly `digits` digits, leading zeros
+   * included, for values a human types back into an app.
+   *
+   * Uniform is the load-bearing word, and it is why this belongs to the port
+   * rather than to the caller: deriving a code from `opaque()` with `%` would
+   * bias the low digits, because 256 is not a multiple of 10. The adapter is the
+   * only place allowed to know that.
+   *
+   * NOT a replacement for `opaque`. Six digits carry ~20 bits: safe only behind
+   * a short TTL and an attempt cap, never as a bearer secret.
+   */
+  numericCode(digits: number): string
 }

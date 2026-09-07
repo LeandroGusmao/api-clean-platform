@@ -7,6 +7,9 @@ import {
   DEFAULT_DATABASE_STATEMENT_TIMEOUT_MS,
   DEFAULT_HOST,
   DEFAULT_LOG_LEVEL,
+  DEFAULT_MAIL_FROM,
+  DEFAULT_MAIL_HOST,
+  DEFAULT_MAIL_PORT,
   DEFAULT_PORT,
   DEFAULT_RATE_LIMIT_MAX_REQUESTS,
   DEFAULT_RATE_LIMIT_WINDOW_SECONDS,
@@ -15,12 +18,21 @@ import {
 } from '#infra/config/env'
 import {
   DEFAULT_ACCESS_TOKEN_TTL_SECONDS,
+  DEFAULT_EMAIL_VERIFICATION_MAX_ATTEMPTS,
+  DEFAULT_EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS,
+  DEFAULT_EMAIL_VERIFICATION_TTL_SECONDS,
+  DEFAULT_EMAIL_VERIFY_RATE_LIMIT_MAX_REQUESTS,
+  DEFAULT_EMAIL_VERIFY_RATE_LIMIT_WINDOW_SECONDS,
+  DEFAULT_EMAIL_VERIFY_RESEND_RATE_LIMIT_MAX_REQUESTS,
+  DEFAULT_EMAIL_VERIFY_RESEND_RATE_LIMIT_WINDOW_SECONDS,
   DEFAULT_LOGIN_RATE_LIMIT_MAX_REQUESTS,
   DEFAULT_LOGIN_RATE_LIMIT_WINDOW_SECONDS,
   DEFAULT_PASSWORD_CHANGE_RATE_LIMIT_MAX_REQUESTS,
   DEFAULT_PASSWORD_CHANGE_RATE_LIMIT_WINDOW_SECONDS,
   DEFAULT_REFRESH_TOKEN_GRACE_WINDOW_SECONDS,
   DEFAULT_REFRESH_TOKEN_TTL_SECONDS,
+  DEFAULT_REGISTER_RATE_LIMIT_MAX_REQUESTS,
+  DEFAULT_REGISTER_RATE_LIMIT_WINDOW_SECONDS,
 } from '#modules/auth/config'
 
 const VALID_DATABASE_URL = 'postgres://user:pass@localhost:5432/app'
@@ -77,12 +89,30 @@ describe('parseEnv', () => {
         DEFAULT_PASSWORD_CHANGE_RATE_LIMIT_MAX_REQUESTS,
       PASSWORD_CHANGE_RATE_LIMIT_WINDOW_SECONDS:
         DEFAULT_PASSWORD_CHANGE_RATE_LIMIT_WINDOW_SECONDS,
+      EMAIL_VERIFICATION_TTL_SECONDS: DEFAULT_EMAIL_VERIFICATION_TTL_SECONDS,
+      EMAIL_VERIFICATION_MAX_ATTEMPTS: DEFAULT_EMAIL_VERIFICATION_MAX_ATTEMPTS,
+      EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS:
+        DEFAULT_EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS,
+      REGISTER_RATE_LIMIT_MAX_REQUESTS: DEFAULT_REGISTER_RATE_LIMIT_MAX_REQUESTS,
+      REGISTER_RATE_LIMIT_WINDOW_SECONDS: DEFAULT_REGISTER_RATE_LIMIT_WINDOW_SECONDS,
+      EMAIL_VERIFY_RATE_LIMIT_MAX_REQUESTS: DEFAULT_EMAIL_VERIFY_RATE_LIMIT_MAX_REQUESTS,
+      EMAIL_VERIFY_RATE_LIMIT_WINDOW_SECONDS:
+        DEFAULT_EMAIL_VERIFY_RATE_LIMIT_WINDOW_SECONDS,
+      EMAIL_VERIFY_RESEND_RATE_LIMIT_MAX_REQUESTS:
+        DEFAULT_EMAIL_VERIFY_RESEND_RATE_LIMIT_MAX_REQUESTS,
+      EMAIL_VERIFY_RESEND_RATE_LIMIT_WINDOW_SECONDS:
+        DEFAULT_EMAIL_VERIFY_RESEND_RATE_LIMIT_WINDOW_SECONDS,
       DATABASE_POOL_MAX: DEFAULT_DATABASE_POOL_MAX,
       DATABASE_CONNECTION_TIMEOUT_MS: DEFAULT_DATABASE_CONNECTION_TIMEOUT_MS,
       DATABASE_STATEMENT_TIMEOUT_MS: DEFAULT_DATABASE_STATEMENT_TIMEOUT_MS,
       DATABASE_LOCK_TIMEOUT_MS: DEFAULT_DATABASE_LOCK_TIMEOUT_MS,
       DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS:
         DEFAULT_DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS,
+      MAIL_HOST: DEFAULT_MAIL_HOST,
+      MAIL_PORT: DEFAULT_MAIL_PORT,
+      MAIL_SECURE: false,
+      MAIL_REQUIRE_TLS: false,
+      MAIL_FROM: DEFAULT_MAIL_FROM,
     })
   })
 
@@ -191,5 +221,109 @@ describe('parseEnv', () => {
 
     expect(result.success).toBe(true)
     expect(result.data?.TRUST_PROXY).toBe('10.0.0.0/8,loopback')
+  })
+})
+
+const NODE_ENV_PRODUCTION = 'production'
+const VALID_PRODUCTION_MAIL_HOST = 'smtp.example.com'
+const VALID_PRODUCTION_MAIL_PORT = '587'
+const VALID_PRODUCTION_MAIL_FROM = 'API <no-reply@example.com>'
+const MAIL_REQUIRE_TLS_ENABLED = 'true'
+const MAIL_REQUIRE_TLS_DISABLED = 'false'
+
+// `TEST_ENV` (src/infra/config/fixtures/test-env.ts) is deliberately not used
+// here: it is the already-PARSED `Env` shape, built for specs that construct a
+// server without going through `parseEnv`. Feeding it back into `parseEnv` as
+// raw input breaks on type alone — `TRUST_PROXY` is a `boolean` there where
+// this schema expects a raw string, and the database timeouts are `number`
+// where `timeoutMs()` expects a raw string — so every case below builds its
+// own minimal raw-environment object instead, the same way the suite above
+// does.
+describe('mail configuration in production', () => {
+  it('refuses to boot without an explicit sender address', () => {
+    const result = parseEnv({
+      DATABASE_URL: VALID_DATABASE_URL,
+      JWT_SECRET: VALID_JWT_SECRET,
+      NODE_ENV: NODE_ENV_PRODUCTION,
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  it('refuses to boot with STARTTLS disabled, which would send codes in the clear', () => {
+    const result = parseEnv({
+      DATABASE_URL: VALID_DATABASE_URL,
+      JWT_SECRET: VALID_JWT_SECRET,
+      NODE_ENV: NODE_ENV_PRODUCTION,
+      MAIL_HOST: VALID_PRODUCTION_MAIL_HOST,
+      MAIL_PORT: VALID_PRODUCTION_MAIL_PORT,
+      MAIL_FROM: VALID_PRODUCTION_MAIL_FROM,
+      MAIL_REQUIRE_TLS: MAIL_REQUIRE_TLS_DISABLED,
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  it('boots when every mail setting is explicit and STARTTLS is required', () => {
+    const result = parseEnv({
+      DATABASE_URL: VALID_DATABASE_URL,
+      JWT_SECRET: VALID_JWT_SECRET,
+      NODE_ENV: NODE_ENV_PRODUCTION,
+      MAIL_HOST: VALID_PRODUCTION_MAIL_HOST,
+      MAIL_PORT: VALID_PRODUCTION_MAIL_PORT,
+      MAIL_FROM: VALID_PRODUCTION_MAIL_FROM,
+      MAIL_REQUIRE_TLS: MAIL_REQUIRE_TLS_ENABLED,
+    })
+
+    expect(result.success).toBe(true)
+  })
+})
+
+const MAIL_USER_VALUE = 'apikey'
+const MAIL_PASSWORD_VALUE = 'secret'
+
+// Not gated by NODE_ENV, unlike the suite above: setting only one of the pair
+// boots clean in EVERY environment today, because the two are declared as
+// independent optionals, and only fails once a request tries to send —
+// `smtpTransportOptions` hands nodemailer `pass: undefined`.
+describe('MAIL_USER and MAIL_PASSWORD must travel together', () => {
+  it('rejects MAIL_USER without MAIL_PASSWORD', () => {
+    const result = parseEnv({
+      DATABASE_URL: VALID_DATABASE_URL,
+      JWT_SECRET: VALID_JWT_SECRET,
+      MAIL_USER: MAIL_USER_VALUE,
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects MAIL_PASSWORD without MAIL_USER', () => {
+    const result = parseEnv({
+      DATABASE_URL: VALID_DATABASE_URL,
+      JWT_SECRET: VALID_JWT_SECRET,
+      MAIL_PASSWORD: MAIL_PASSWORD_VALUE,
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts both present together', () => {
+    const result = parseEnv({
+      DATABASE_URL: VALID_DATABASE_URL,
+      JWT_SECRET: VALID_JWT_SECRET,
+      MAIL_USER: MAIL_USER_VALUE,
+      MAIL_PASSWORD: MAIL_PASSWORD_VALUE,
+    })
+
+    expect(result.success).toBe(true)
+  })
+
+  it('accepts both absent together', () => {
+    const result = parseEnv({
+      DATABASE_URL: VALID_DATABASE_URL,
+      JWT_SECRET: VALID_JWT_SECRET,
+    })
+
+    expect(result.success).toBe(true)
   })
 })

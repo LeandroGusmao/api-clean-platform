@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -17,14 +18,17 @@ const POST_METHOD = 'POST'
 const OK_STATUS_CODE = 200
 const BAD_REQUEST_STATUS_CODE = 400
 const UNAUTHORIZED_STATUS_CODE = 401
+const FORBIDDEN_STATUS_CODE = 403
 
 const EMAIL = 'joao@example.com'
 const EMAIL_DIFFERING_ONLY_BY_CASE = 'JOAO@example.com'
+const UNVERIFIED_EMAIL = 'pending@example.com'
 const PASSWORD = 'sup3r-s3cr3t!'
 const WRONG_PASSWORD = 'wr0ng-p4ssword!'
 const UNKNOWN_EMAIL = 'ninguem@example.com'
 
 const INVALID_CREDENTIALS_CODE = 'INVALID_CREDENTIALS'
+const EMAIL_NOT_VERIFIED_CODE = 'EMAIL_NOT_VERIFIED'
 const VALIDATION_ERROR_CODE = 'VALIDATION_ERROR'
 const JWT_PATTERN = /^[\w-]+\.[\w-]+\.[\w-]+$/
 
@@ -57,6 +61,13 @@ beforeAll(async () => {
   app = await buildApp({
     ...env,
     LOGIN_RATE_LIMIT_MAX_REQUESTS: CEILING_ABOVE_WHAT_THIS_SUITE_SPENDS,
+    // `beforeEach` registers a fresh account for every case below, and
+    // register now carries its own ceiling (it sends mail). Left at the
+    // shipped default, this file's own test count runs past it long before
+    // the suite finishes, and a later `login` fails for a reason that has
+    // nothing to do with what it is testing — a 429 on the SETUP call, not on
+    // `login` itself.
+    REGISTER_RATE_LIMIT_MAX_REQUESTS: CEILING_ABOVE_WHAT_THIS_SUITE_SPENDS,
   })
   await app.ready()
   ;({ db, pool } = createDatabase(env))
@@ -77,6 +88,16 @@ beforeEach(async () => {
     url: REGISTER_PATH,
     payload: { email: EMAIL, password: PASSWORD },
   })
+  // Login now gates on a verified email (403 EMAIL_NOT_VERIFIED otherwise), so
+  // every scenario below that expects a successful login needs a verified
+  // account. Marked directly at the row rather than through a real code: the
+  // real, SMTP-delivered confirm flow is `verify-email.spec.ts`'s job, and this
+  // file's own concern — `login` — only needs the account to already BE
+  // verified, not a demonstration of how it got that way.
+  await db
+    .update(users)
+    .set({ emailVerifiedAt: new Date() })
+    .where(eq(users.email, EMAIL))
 })
 
 const login = (payload: object) =>
@@ -126,6 +147,19 @@ describe('POST /auth/login', () => {
 
     expect(response.statusCode).toBe(UNAUTHORIZED_STATUS_CODE)
     expect(response.json().error.code).toBe(INVALID_CREDENTIALS_CODE)
+  })
+
+  it('answers 403 EMAIL_NOT_VERIFIED for an account whose email is not confirmed yet', async () => {
+    await app.inject({
+      method: POST_METHOD,
+      url: REGISTER_PATH,
+      payload: { email: UNVERIFIED_EMAIL, password: PASSWORD },
+    })
+
+    const response = await login({ email: UNVERIFIED_EMAIL, password: PASSWORD })
+
+    expect(response.statusCode).toBe(FORBIDDEN_STATUS_CODE)
+    expect(response.json().error.code).toBe(EMAIL_NOT_VERIFIED_CODE)
   })
 
   it('answers an unknown email exactly like a wrong password', async () => {

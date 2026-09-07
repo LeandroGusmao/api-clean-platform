@@ -4,13 +4,12 @@ import { z } from 'zod'
 import { errorResponseSchema } from '#infra/http/errors/error-response'
 import type { AuthContainer } from '#modules/auth/container'
 import {
+  ACCEPTED_STATUS,
   AUTH_TAG,
   BAD_REQUEST_STATUS,
-  CONFLICT_STATUS,
-  CREATED_STATUS,
   EXAMPLE_EMAIL,
   EXAMPLE_PASSWORD,
-  EXAMPLE_USER_ID,
+  SERVICE_UNAVAILABLE_STATUS,
   TOO_MANY_REQUESTS_STATUS,
 } from '#modules/auth/infra/http/constants'
 import { MAX_EMAIL_LENGTH } from '#modules/auth/value-objects/email'
@@ -23,8 +22,10 @@ import {
 const REGISTER_PATH = '/register'
 const REGISTER_SUMMARY = 'Register a new account'
 const REGISTER_DESCRIPTION =
-  'Creates an account from an email and a password. Issues no session tokens: ' +
-  'authenticate through the login endpoint afterwards.'
+  'Creates an account from an email and a password, and emails a verification ' +
+  'code. Always answers 202, whether or not the address already had an account: ' +
+  'a status that distinguished the two would let anyone enumerate accounts. What ' +
+  'differs is the email the address receives.'
 
 /**
  * The limits come from the value objects, so the policy has exactly one
@@ -48,8 +49,6 @@ const bodySchema = z.object({
     .meta({ examples: [EXAMPLE_PASSWORD] }),
 })
 
-const createdSchema = z.object({ id: z.uuid().meta({ examples: [EXAMPLE_USER_ID] }) })
-
 export const registerRoute: FastifyPluginAsync<{ container: AuthContainer }> = async (
   app,
   { container },
@@ -57,23 +56,40 @@ export const registerRoute: FastifyPluginAsync<{ container: AuthContainer }> = a
   app.withTypeProvider<ZodTypeProvider>().post(
     REGISTER_PATH,
     {
+      /**
+       * Tighter than the global ceiling, like login — for a different reason.
+       * This route now sends mail to an arbitrary address from an anonymous
+       * request, which makes it a spam amplifier and a way to burn a stranger's
+       * live code. Its own ceiling, not login's, because a field named for one
+       * route and used by another is a comment that lies.
+       */
+      config: { rateLimit: container.registerRateLimit },
       schema: {
         tags: [AUTH_TAG],
         summary: REGISTER_SUMMARY,
         description: REGISTER_DESCRIPTION,
         body: bodySchema,
         response: {
-          [CREATED_STATUS]: createdSchema,
+          // `z.null()` and not an omitted entry: with the Zod type provider a
+          // handler may only answer a status the schema declares. See the same
+          // note on `logout`.
+          //
+          // 409 is GONE, and that is the whole slice: `EmailAlreadyInUseError`
+          // is still raised by the repository — the unique index is still the
+          // authority on uniqueness — it just no longer reaches the wire.
+          [ACCEPTED_STATUS]: z.null(),
           [BAD_REQUEST_STATUS]: errorResponseSchema,
-          [CONFLICT_STATUS]: errorResponseSchema,
           [TOO_MANY_REQUESTS_STATUS]: errorResponseSchema,
+          // New here: registration now opens a transaction, so a deadlock that
+          // survives the runner's retries surfaces as `TransactionConflictError`.
+          [SERVICE_UNAVAILABLE_STATUS]: errorResponseSchema,
         },
       },
     },
     async (request, reply) => {
-      const { id } = await container.registerUser.execute(request.body)
+      await container.registerUser.execute(request.body)
 
-      return reply.status(CREATED_STATUS).send({ id })
+      return reply.status(ACCEPTED_STATUS).send(null)
     },
   )
 }

@@ -43,6 +43,7 @@ src/modules/<modulo>/
 ├── use-cases/           # uma operação por arquivo (+ .spec.ts colocado)
 ├── dtos/                # entrada e saída dos use cases
 ├── errors/              # erros do módulo, sobre a taxonomia compartilhada
+├── notifications/       # corpo dos e-mails do módulo, funções puras
 ├── config.ts            # schema Zod das env vars DESTE módulo
 ├── container.ts         # factory do grafo DESTE módulo
 │
@@ -62,6 +63,12 @@ src/modules/<modulo>/
 camada são; um `domain/` e um `application/` por cima só repetiriam o nome e
 aprofundariam o caminho diário. A separação que ganha pasta é a única que o lint
 precisa enforçar: **puro versus `infra/`**.
+
+**`notifications/`, novo na fatia 10 (verificação de e-mail).** O corpo de cada
+e-mail é função pura — recebe os dados, devolve `EmailMessage` — e mora fora de
+`use-cases/` de propósito: é o único arquivo do módulo que um não-engenheiro
+pode querer reescrever, e um revisor consegue ler toda mensagem que o sistema
+manda num lugar só.
 
 ### O resto da árvore
 
@@ -107,10 +114,11 @@ consegue dizer de qual módulo uma peça é, ela é global.
 | `entities/` | puro | Estado e comportamento de domínio |
 | `value-objects/` | puro | Valor com regra própria e autovalidável |
 | `repositories/` | puro | **Contratos** de persistência e o Unit of Work |
-| `providers/` | puro | **Contratos** de serviço externo (hash, token, e-mail) |
+| `providers/` | puro | **Contratos** de serviço externo do módulo (hash, token) — o de e-mail (`IEmailSender`) é comum a todos os módulos e mora em `src/shared/ports/`, não aqui (§7.1 do design de verificação) |
 | `use-cases/` | puro | Orquestra a regra; uma operação por arquivo |
 | `dtos/` | puro | Entrada e saída do use case |
 | `errors/` | puro | Erros do módulo, estendendo a taxonomia |
+| `notifications/` | puro | Corpo dos e-mails do módulo, uma função pura por mensagem |
 | `config.ts` | puro | Schema Zod das env vars do módulo |
 | `container.ts` | composição | Monta o grafo do módulo |
 | `infra/drizzle/` | infra | Schema, mappers, repositórios e UoW concretos |
@@ -133,7 +141,7 @@ Cinco tipos de elemento, **avaliados nesta ordem**:
 | 2 | `composition` | `src/modules/*/container.ts` · `src/main/**` | tudo |
 | 3 | `module-infra` | `src/modules/*/infra/**` | `pure` · `global-infra` · `module-infra` **do próprio módulo** |
 | 4 | `global-infra` | `src/infra/**` | `pure` · `global-infra` |
-| 5 | `pure` | `src/modules/*/{entities,value-objects,repositories,providers,use-cases,dtos,errors}/**` · `src/modules/*/config.ts` · `src/shared/**` | só `pure` |
+| 5 | `pure` | `src/modules/*/{entities,value-objects,repositories,providers,use-cases,services,dtos,errors,notifications}/**` · `src/modules/*/config.ts` · `src/shared/**` | só `pure` |
 
 ### As quatro coisas que isso garante
 

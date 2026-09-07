@@ -1,3 +1,4 @@
+import { EmailNotVerifiedError } from '#modules/auth/errors/email-not-verified-error'
 import { InvalidCredentialsError } from '#modules/auth/errors/invalid-credentials-error'
 import type { IHashProvider } from '#modules/auth/ports/hash-provider'
 import type { ITokenSigner } from '#modules/auth/ports/token-signer'
@@ -28,8 +29,12 @@ export interface LoginUserResult {
  * design forbids inside a transaction, because a 100ms hash with the
  * transaction open is a pooled connection standing still.
  *
- * Does not check `emailVerifiedAt`: nothing can verify an email yet, so the
- * gate would lock every account out. It arrives with the verification path.
+ * Also gates on `emailVerifiedAt`, but only AFTER the credential check below
+ * has already passed. That order is the whole defence: the "unverified"
+ * signal may only ever reach a caller who has already proved they know the
+ * password. Checking it earlier — even though it would still read as a
+ * simplification — would hand any anonymous caller an account oracle, the
+ * very thing the decoy hash exists to deny them.
  */
 export class LoginUserUseCase {
   constructor(
@@ -55,6 +60,12 @@ export class LoginUserUseCase {
     // drift apart at the first maintenance — one gains a log, the other a
     // message — and the oracle comes back.
     if (user === null || !matches) throw new InvalidCredentialsError()
+
+    // AFTER the credential check, never before: the "unverified" signal must
+    // only ever reach someone who already proved they know the password.
+    // Checking first would hand any anonymous caller an account oracle — the
+    // very thing the decoy hash above exists to deny them.
+    if (user.emailVerifiedAt === null) throw new EmailNotVerifiedError()
 
     // A fresh family per login: each device owns its chain, so logging out on
     // the phone leaves the tablet signed in.

@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -46,12 +47,25 @@ afterAll(async () => {
   await pool.end()
 })
 
-const register = (email: string) =>
-  app.inject({
+/**
+ * Registers AND marks the row verified — every caller in this file logs the
+ * account in right after, and login now gates on a verified email. Marked
+ * directly at the row rather than through a real code: the real,
+ * SMTP-delivered confirm flow is `verify-email.spec.ts`'s job, and this file's
+ * own concern — logout — only needs the account to already BE verified.
+ */
+const register = async (email: string) => {
+  const response = await app.inject({
     method: POST_METHOD,
     url: REGISTER_PATH,
     payload: { email, password: PASSWORD },
   })
+  await db
+    .update(users)
+    .set({ emailVerifiedAt: new Date() })
+    .where(eq(users.email, email))
+  return response
+}
 
 beforeEach(async () => {
   await db.delete(refreshTokens)

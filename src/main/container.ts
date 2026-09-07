@@ -10,9 +10,9 @@ import { makeAuthContainer } from '#modules/auth/container'
  * HTTP framework.
  *
  * `env` is passed whole, and each module's factory declares only the slice it
- * needs — `makeAuthContainer` takes `AuthConfig`, so `auth` cannot even see
- * `DATABASE_URL`. Structural typing gives decision 23's rule for free, with no
- * slicing code.
+ * needs — `makeAuthContainer` takes `AuthContainerConfig`, so `auth` cannot even
+ * see `DATABASE_URL`. Structural typing gives decision 23's rule for free, with
+ * no slicing code.
  */
 export function makeContainer(db: Database, env: Env, logger: AppLogger) {
   // One per process, shared by every module's unit of work. The nesting guard
@@ -28,7 +28,7 @@ export function makeContainer(db: Database, env: Env, logger: AppLogger) {
   // independent transaction on the other, which runs in its own context.
   const runner = createTransactionRunner(db, logger)
 
-  return { auth: makeAuthContainer(db, env, runner) }
+  return { auth: makeAuthContainer(db, env, runner, logger) }
 }
 
 export type Container = ReturnType<typeof makeContainer>

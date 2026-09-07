@@ -8,6 +8,7 @@ import {
   BAD_REQUEST_STATUS,
   EXAMPLE_EMAIL,
   EXAMPLE_PASSWORD,
+  FORBIDDEN_STATUS,
   OK_STATUS,
   TOO_MANY_REQUESTS_STATUS,
   UNAUTHORIZED_STATUS,
@@ -51,10 +52,10 @@ const bodySchema = z.object({
     .max(MAX_PASSWORD_LENGTH)
     .meta({ examples: [EXAMPLE_PASSWORD] }),
   /**
-   * Which channel carries the refresh token back. `login` and
-   * `change-password` are the two endpoints with no incoming signal to tell a
-   * mobile client from a web one — the others learn it from the request that
-   * arrived.
+   * Which channel carries the refresh token back. `login`, `change-password`
+   * and `confirm-email` are the three endpoints with no incoming signal to
+   * tell a mobile client from a web one — the others learn it from the
+   * request that arrived.
    */
   refreshTransport: refreshTransportSchema,
 })
@@ -85,6 +86,8 @@ export const loginRoute: FastifyPluginAsync<{ container: AuthContainer }> = asyn
           [OK_STATUS]: sessionTokensSchema,
           [BAD_REQUEST_STATUS]: errorResponseSchema,
           [UNAUTHORIZED_STATUS]: errorResponseSchema,
+          // The gate: the password was right, the account is not verified.
+          [FORBIDDEN_STATUS]: errorResponseSchema,
           [TOO_MANY_REQUESTS_STATUS]: errorResponseSchema,
         },
       },

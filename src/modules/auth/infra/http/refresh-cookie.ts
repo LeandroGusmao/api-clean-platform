@@ -19,10 +19,11 @@ export const REFRESH_TRANSPORT_BODY = 'body'
 export const REFRESH_TRANSPORT_COOKIE = 'cookie'
 
 /**
- * Which channel carries the refresh token back. Needed by the two endpoints
- * that hand out a refresh token WITHOUT having received one — `login` and
- * `change-password` — because nothing in their requests reveals the channel.
- * `refresh` and `logout` learn it from the token that arrived.
+ * Which channel carries the refresh token back. Needed by the three endpoints
+ * that hand out a refresh token WITHOUT having received one — `login`,
+ * `change-password` and `confirm-email` — because nothing in their requests
+ * reveals the channel. `refresh` and `logout` learn it from the token that
+ * arrived.
  *
  * Not the market default — Firebase, Supabase, Cognito and Auth0 all answer in
  * the body and leave cookies to a BFF. Decision 12 deliberately puts the cookie

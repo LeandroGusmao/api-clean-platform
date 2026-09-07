@@ -15,6 +15,24 @@
   was violated. At that point it no longer appears exactly once, so it becomes
   an exported constant, declared and used inside the schema file itself.
 
+# Comments
+
+Comments explain the code they sit on — what it does, or why it is done this
+way. Everything else belongs in `docs/`.
+
+- **No process history.** Never write task, branch, review or slice narrative
+  into a comment: "the review found", "slice 9 amended this", "measured, not
+  assumed". That reasoning belongs in the spec; the code points at it.
+- **Cite, never re-argue.** `// Outside the transaction: §8 forbids argon2
+  inside one.` is a pointer. Re-telling an argument the document already makes
+  duplicates it — and the duplicate is the copy that goes stale.
+- **Stay local.** A comment does not describe another module's behaviour, or a
+  flow this file does not take part in.
+- **Put it on the line it governs.** A short comment above the statement beats
+  a paragraph in the class docstring.
+- The test: delete the comment and ask whether a competent reader of THIS file
+  would now get it wrong. If not, it was decoration.
+
 # Model Escalation
 
 Applies only when the session model is **not** Opus (check the model named in your

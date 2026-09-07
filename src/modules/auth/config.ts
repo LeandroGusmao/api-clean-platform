@@ -53,6 +53,41 @@ export const DEFAULT_PASSWORD_CHANGE_RATE_LIMIT_MAX_REQUESTS = 10
 export const DEFAULT_PASSWORD_CHANGE_RATE_LIMIT_WINDOW_SECONDS = 60
 
 /**
+ * 15 minutes. Short because the code is only six digits: what makes 10^6
+ * acceptable is not entropy, it is the TTL, the attempt cap and the resend
+ * cooldown together. Lengthen any one of them and the other two have to answer
+ * for it.
+ */
+export const DEFAULT_EMAIL_VERIFICATION_TTL_SECONDS = 900
+
+/** Five wrong guesses kill the code. The second half of what substitutes for entropy. */
+export const DEFAULT_EMAIL_VERIFICATION_MAX_ATTEMPTS = 5
+
+/**
+ * One minute between codes for the same account. Without it, the resend endpoint
+ * is an oracle that mints fresh attempt budget on demand — and a way to fill a
+ * stranger's inbox from an anonymous request.
+ */
+export const DEFAULT_EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS = 60
+
+/**
+ * Registration sends mail to an arbitrary address from an anonymous request,
+ * which makes it a spam amplifier; the global 300/min is not a ceiling for that.
+ * Its own pair, not a shared one, for the reason the login pair documents: a
+ * field named for one route, used by another, is a comment that lies.
+ */
+export const DEFAULT_REGISTER_RATE_LIMIT_MAX_REQUESTS = 10
+export const DEFAULT_REGISTER_RATE_LIMIT_WINDOW_SECONDS = 60
+
+/** A request here carries a code guess. Same reasoning as login. */
+export const DEFAULT_EMAIL_VERIFY_RATE_LIMIT_MAX_REQUESTS = 10
+export const DEFAULT_EMAIL_VERIFY_RATE_LIMIT_WINDOW_SECONDS = 60
+
+/** Same amplifier as register, plus the ability to burn a victim's live code. */
+export const DEFAULT_EMAIL_VERIFY_RESEND_RATE_LIMIT_MAX_REQUESTS = 5
+export const DEFAULT_EMAIL_VERIFY_RESEND_RATE_LIMIT_WINDOW_SECONDS = 60
+
+/**
  * The module owns its own variables (decision 14). `infra/config/env.ts` merges
  * this into the core schema so the process dies at boot listing every problem
  * at once, instead of revealing one per restart.
@@ -104,6 +139,57 @@ export const authEnvSchema = z.object({
     .int()
     .positive()
     .default(DEFAULT_PASSWORD_CHANGE_RATE_LIMIT_WINDOW_SECONDS),
+  // `.positive()` for the same reason as every TTL above: a value of zero would
+  // expire the code before it could ever be used, and rejecting zero is what
+  // rejects an empty value.
+  EMAIL_VERIFICATION_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_EMAIL_VERIFICATION_TTL_SECONDS),
+  EMAIL_VERIFICATION_MAX_ATTEMPTS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_EMAIL_VERIFICATION_MAX_ATTEMPTS),
+  EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS),
+  // `.positive()` for the reason it is used everywhere else here: a ceiling of
+  // zero would refuse every registration, and rejecting zero is what rejects
+  // an empty value.
+  REGISTER_RATE_LIMIT_MAX_REQUESTS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_REGISTER_RATE_LIMIT_MAX_REQUESTS),
+  REGISTER_RATE_LIMIT_WINDOW_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_REGISTER_RATE_LIMIT_WINDOW_SECONDS),
+  EMAIL_VERIFY_RATE_LIMIT_MAX_REQUESTS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_EMAIL_VERIFY_RATE_LIMIT_MAX_REQUESTS),
+  EMAIL_VERIFY_RATE_LIMIT_WINDOW_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_EMAIL_VERIFY_RATE_LIMIT_WINDOW_SECONDS),
+  EMAIL_VERIFY_RESEND_RATE_LIMIT_MAX_REQUESTS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_EMAIL_VERIFY_RESEND_RATE_LIMIT_MAX_REQUESTS),
+  EMAIL_VERIFY_RESEND_RATE_LIMIT_WINDOW_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_EMAIL_VERIFY_RESEND_RATE_LIMIT_WINDOW_SECONDS),
 })
 
 export type AuthConfig = z.infer<typeof authEnvSchema>

@@ -16,6 +16,8 @@ const ACCESS_TOKEN = 'signed.access.token'
 const CURRENT_ID = 'current-id'
 const SUCCESSOR_ID = 'successor-id'
 const OTHER_FAMILY_TOKEN_ID = 'other-family-token'
+/** Unused by this suite; required only to satisfy `ITokenGenerator`. */
+const NUMERIC_CODE = '000000'
 
 const NOW = new Date('2026-08-31T12:00:00.000Z')
 const MILLISECONDS_PER_SECOND = 1000
@@ -34,6 +36,16 @@ const NO_USERS = {
   findByEmail: async () => null,
   findById: async () => null,
   updatePasswordHash: async () => {},
+  markEmailVerified: async () => {},
+}
+
+/** Nothing in this suite reads email verifications; the shape only has to satisfy AuthRepos. */
+const NO_EMAIL_VERIFICATIONS = {
+  save: async () => {},
+  findActiveByUserId: async () => null,
+  invalidateActiveForUser: async () => {},
+  registerFailedAttempt: async () => false,
+  consume: async () => false,
 }
 
 /**
@@ -61,14 +73,18 @@ const build = () => {
   }
 
   const issuer = new RefreshTokenIssuer(
-    { opaque: () => `opaque-${nextValue()}` },
+    { opaque: () => `opaque-${nextValue()}`, numericCode: () => NUMERIC_CODE },
     { hash: digestOf },
     { generate: () => `id-${nextValue()}` },
     TTL_SECONDS,
   )
 
   useCase = new RefreshTokenUseCase(
-    makeUow({ users: NO_USERS, refreshTokens: repository }),
+    makeUow({
+      users: NO_USERS,
+      refreshTokens: repository,
+      emailVerifications: NO_EMAIL_VERIFICATIONS,
+    }),
     issuer,
     { sign: async () => ACCESS_TOKEN, verify: async () => ({ sub: USER_ID }) },
     { hash: digestOf },
@@ -316,7 +332,11 @@ describe('RefreshTokenUseCase — grace window', () => {
       const snapshot = [...repository.tokens]
 
       try {
-        return await work({ users: NO_USERS, refreshTokens: repository })
+        return await work({
+          users: NO_USERS,
+          refreshTokens: repository,
+          emailVerifications: NO_EMAIL_VERIFICATIONS,
+        })
       } catch (error) {
         repository.tokens.length = 0
         repository.tokens.push(...snapshot)
@@ -327,7 +347,7 @@ describe('RefreshTokenUseCase — grace window', () => {
     useCase = new RefreshTokenUseCase(
       rollingBack,
       new RefreshTokenIssuer(
-        { opaque: () => 'opaque-rollback' },
+        { opaque: () => 'opaque-rollback', numericCode: () => NUMERIC_CODE },
         { hash: digestOf },
         { generate: () => 'id-rollback' },
         TTL_SECONDS,

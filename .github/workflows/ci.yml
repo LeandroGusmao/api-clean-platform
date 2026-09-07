@@ -38,6 +38,25 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      # Same image as docker-compose.yml. The integration suite reads sent
+      # messages back through its HTTP API on 8025.
+      #
+      # The health check is what stops the suite from starting before Mailpit
+      # is actually accepting SMTP connections on 1025: `waitForMessageCount`
+      # only covers the message being indexed AFTER a send succeeds, not the
+      # container being up for the first send — without this, a cold start
+      # can race `sendMail` into a connection refusal and a 500 on `register`.
+      mailpit:
+        image: axllent/mailpit:v1.30.2
+        ports:
+          - 1025:1025
+          - 8025:8025
+        options: >-
+          --health-cmd "wget -q -O- http://localhost:8025/readyz"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       # Actions are pinned by commit SHA: a tag is a movable pointer and
       # Actions has no lockfile, so the tag is the only reference there is.
@@ -81,6 +100,14 @@ jobs:
           PORT: 3000
           DATABASE_URL: postgres://api_clean_platform:api_clean_platform_local_dev@127.0.0.1:5433/api_clean_platform_test
           JWT_SECRET: a-ci-secret-with-at-least-32-characters
+          # Required in production by env.ts, so the process refuses to boot
+          # without them. Unroutable on purpose: this step only proves the
+          # binary boots and answers /health, and never sends — the pooled
+          # transport connects on first send, not at construction.
+          MAIL_HOST: smtp.invalid
+          MAIL_PORT: 587
+          MAIL_FROM: API Clean Platform <no-reply@invalid>
+          MAIL_REQUIRE_TLS: true
         run: |
           node dist/main/http.js &
           # `node` directly, not `pnpm start`: $! must be the server itself,
