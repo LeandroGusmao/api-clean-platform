@@ -23,29 +23,21 @@ Decisões 27 e 28 no [`DECISIONS.md`](DECISIONS.md); desenho completo em
 contexto de continuação em
 [`superpowers/2026-09-05-handoff-account-pre-hijacking.md`](superpowers/2026-09-05-handoff-account-pre-hijacking.md).
 
-## 🟡 Recuperação de senha — o último endpoint do fluxo de auth, e agora desbloqueado
+## ✅ Recuperação de senha — fechada pela fatia 12
 
-`POST /auth/password/forgot` e `POST /auth/password/reset`. É o único item do
-roteiro que ainda é **endpoint ausente**; os outros nove existem. Hoje uma conta
-com senha esquecida — ou tomada por qualquer outra via — **não tem caminho de
-volta**: `POST /auth/password` exige a senha atual.
+`POST /auth/password/forgot` e `POST /auth/password/reset` entregues. O fluxo de
+`auth` está completo como boilerplate v1: cadastro, verificação, login, sessão
+com rotação, troca de senha **e** recuperação. O próximo grande bloco é o login
+social.
 
-Estava travada atrás do pre-hijacking por um motivo concreto (construir
-recuperação sobre um desenho vulnerável amplia a superfície). Com a fatia 11
-fechada, **está desbloqueada e é a próxima fatia**.
-
-Ficou barato: a fatia 10 pagou o provedor de e-mail e o thunk que mantém o envio
-fora da transação; a fatia 11 deixou `EmailVerificationIssuer.issue`, o padrão de
-tabela com hash/expiração/uso único e os `consume`/`registerFailedAttempt`
-atômicos, o helper de teste `arrangeAccount` e a conta que **sempre** nasce
-verificada. Contexto de continuação em
-[`superpowers/2026-09-07-handoff-password-recovery.md`](superpowers/2026-09-07-handoff-password-recovery.md).
+Decisão 29 no [`DECISIONS.md`](DECISIONS.md); desenho completo em
+[`superpowers/specs/2026-09-07-password-recovery-design.md`](superpowers/specs/2026-09-07-password-recovery-design.md).
 
 ## O resto, em ordem decrescente de urgência
 
 | Item | Depende de | Nota |
 |---|---|---|
-| Poda de tokens expirados | `cron.ts` | **duas** tabelas crescem: `refresh_tokens` (nada apaga) e `pending_registrations` (a poda oportunista da fatia 11 só limpa endereços que veem tráfego; abandonados ficam). A recuperação de senha adiciona uma terceira |
+| Poda de tokens expirados | `cron.ts` | **três** tabelas crescem: `refresh_tokens` (nada apaga), `pending_registrations` (a poda oportunista da fatia 11 só limpa endereços que veem tráfego; abandonados ficam) e `password_reset_tokens` (idem). Cron futuro poda as três |
 | Login social / OAuth (Google) | decisão em aberto | três sub-perguntas já resolvidas — ver `DECISIONS.md` §6. **Não** haverá troca de e-mail, por causa disto. Interage com a recuperação de senha (conta ligada ao Google não tem senha para "recuperar") |
 | Throttle de `confirm` por e-mail | nada | um anônimo pode manter um endereço não-confirmável queimando o teto de cinco tentativas do código a cada cooldown — o teto por IP não segura. Conserto: throttle por conta/e-mail |
 | CORS | primeiro front web | sem ele o modo cookie não funciona cross-origin |

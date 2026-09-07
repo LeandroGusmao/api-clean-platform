@@ -1716,6 +1716,47 @@ Desenho em
 
 ---
 
+### 29 — Recuperação de senha: cinco decisões tomadas no brainstorming
+
+A fatia 12 entrega os dois endpoints do fluxo de recuperação: `POST
+/auth/password/forgot` (`202` sempre) e `POST /auth/password/reset` (`204` sem
+tokens). Cinco decisões do desenho:
+
+1. **Reset token é valor opaco de 256 bits, não código de 6 dígitos** (spec
+   §3.1 / §12.1). `ITokenGenerator.opaque()` + digest sha256 + lookup por índice
+   único. Código de seis dígitos (~20 bits) atrás desse endpoint só é seguro com
+   TTL curto e teto de tentativas apertado; 256 bits tiram força bruta de cena
+   por construção — sem coluna `attempts`, sem `maxAttempts`.
+
+2. **`reset` não auto-loga — responde `204`, sem tokens** (spec §3.3 / §12.3).
+   Quem chega ao `reset` está não autenticado, provou só controle da caixa. O
+   `change-password` escolheu auto-login porque o chamador **já** segurava access
+   token válido; aqui não. O cliente vai para a tela de login e entra com a
+   senha nova — o que **prova** a senha recém-definida.
+
+3. **`forgot` envia nada para endereço sem conta** (spec §3.4). Responde `202`
+   sempre. O ramo "sem conta" não enumera e o ramo "dentro do cooldown" também
+   retorna sem envio — o tempo não separa "existe" de "não existe" de forma
+   estável.
+
+4. **`reset` roda argon2 só no ramo de token válido** (spec §3.5 / §12.4). Digeri
+   do token e lookup primeiros; token inexistente / expirado / gasto → `throw
+   PasswordResetFailedError()` **sem argon2**. O oráculo de latência "esse token
+   era válido" só serve para quem consegue enumerar tokens; com 256 bits, não
+   consegue.
+
+5. **`INSERT … ON CONFLICT (user_id) DO UPDATE ... WHERE` para o upsert do
+   `forgot`** (spec §12.2). Um token vivo por conta, sobrescrito a cada `forgot`,
+   é seguro e mais simples que vários pendentes coexistentes (como no
+   pre-hijacking fechado na fatia 11). Cooldown vive na cláusula `WHERE` do
+   `DO UPDATE`, não numa leitura anterior — dois `forgot` simultâneos não podem
+   ambos passar. Primeira vez que o padrão aparece no repo.
+
+Desenho completo em
+[`specs/2026-09-07-password-recovery-design.md`](superpowers/specs/2026-09-07-password-recovery-design.md).
+
+---
+
 ## 3. Defaults assumidos (não debatidos, abertos a objeção)
 
 | Tema | Escolha | Nota |
@@ -1966,8 +2007,10 @@ bloqueavam (lint de fronteira, build e path alias, mappers) viraram as decisões
   e **fechada contra account pre-hijacking pela fatia 11** (decisões 27 e 28): a
   conta passou a nascer na confirmação, com a senha do request de confirm.
   Throttle de `confirm` por e-mail e deleção de conta varrendo os pendentes
-  continuam fatias próprias. Recuperação de senha continua em aberto — é a
-  próxima fatia do roteiro, e reusa a infraestrutura de e-mail que esta abriu.
+  continuam fatias próprias. ~~Recuperação de senha~~ — **RESOLVIDA pela fatia
+  12** (decisão 29): `POST /auth/password/forgot` e `POST /auth/password/reset`
+  entregues, reusando a infraestrutura de e-mail e o padrão de tabela com
+  hash/expiração/uso único.
 - **Login social / OAuth (Google primeiro)** — a fatia continua em aberto, mas
   três perguntas dela foram **decididas em 2026-09-06**, porque decidi-las
   enquanto não existe usuário é de graça e depois vira migração de dados:
