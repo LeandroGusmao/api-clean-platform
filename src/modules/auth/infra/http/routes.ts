@@ -10,6 +10,7 @@ import { meRoute } from './endpoints/me.js'
 import { refreshRoute } from './endpoints/refresh.js'
 import { registerRoute } from './endpoints/register.js'
 import { resendVerificationRoute } from './endpoints/resend-verification.js'
+import { resetPasswordRoute } from './endpoints/reset-password.js'
 
 /**
  * The module's HTTP surface. Thin by design: a new endpoint is a new file plus
@@ -32,5 +33,6 @@ export const authRoutes: FastifyPluginAsync<{
   await app.register(logoutAllRoute, { container, guard })
   await app.register(changePasswordRoute, { container, guard })
   await app.register(forgotPasswordRoute, { container })
+  await app.register(resetPasswordRoute, { container })
   await app.register(meRoute, { container, guard })
 }

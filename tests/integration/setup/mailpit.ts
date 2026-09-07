@@ -23,6 +23,14 @@ const NO_VERIFICATION_CODE_MESSAGE =
   'no six-digit verification code found in the message text — a helper that ' +
   'returned null here would let a test pass while proving nothing'
 
+// The literal prefix mirrors `passwordResetEmail`'s wording
+// (`Use this token to reset your password: <token>`): a reword there must be
+// mirrored here or this stops matching.
+const RESET_TOKEN_PATTERN = /reset your password: ([A-Za-z0-9_-]{32,})/
+const NO_RESET_TOKEN_MESSAGE =
+  'no reset token found in the message text — a helper that returned null ' +
+  'here would let a test pass while proving nothing'
+
 /**
  * How long to keep polling before giving up, and how often to check in the
  * meantime.
@@ -97,6 +105,19 @@ export async function latestMessage(): Promise<MailpitMessage> {
 export function extractVerificationCode(text: string): string {
   const match = text.match(VERIFICATION_CODE_PATTERN)
   if (match?.[1] === undefined) throw new Error(NO_VERIFICATION_CODE_MESSAGE)
+  return match[1]
+}
+
+/**
+ * Extracts the opaque reset token from a message's plaintext body.
+ *
+ * **Throws when no token is found**, like `extractVerificationCode`: a variant
+ * that returned `null` on failure would let a test that never actually
+ * received a token still read as green, proving nothing about the flow.
+ */
+export function extractResetToken(text: string): string {
+  const match = text.match(RESET_TOKEN_PATTERN)
+  if (match?.[1] === undefined) throw new Error(NO_RESET_TOKEN_MESSAGE)
   return match[1]
 }
 
