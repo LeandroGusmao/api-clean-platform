@@ -221,17 +221,17 @@ Adicionado a `refresh-tokens-repository.ts`,
 
 ```ts
 async deleteExpiredBefore(cutoff: Date): Promise<number> {
-  const deleted = await this.db
+  const result = await this.db
     .delete(refreshTokens)
     .where(lte(refreshTokens.expiresAt, cutoff))
-    .returning({ id: refreshTokens.id })
-  return deleted.length
+  return result.rowCount ?? NO_ROW_AFFECTED
 }
 ```
 
-`.returning({ id })` e não o `rowCount` do driver: o count fica explícito e
-independente de detalhe do `node-postgres`. Custo: os ids voltam pela rede — em
-volume de poda, ruído.
+`result.rowCount ?? NO_ROW_AFFECTED` é o padrão que `issueOrRefresh` e `consume`
+do módulo já usam — o tipo do `node-postgres` é `number | null`, e `null` conta
+como "nada apagado". `refresh-tokens` ganha o `const NO_ROW_AFFECTED = 0` que as
+outras duas já têm.
 
 **In-memory** (`infra/in-memory/*-repository.ts`), sobre o array que cada uma já
 mantém:
@@ -277,6 +277,12 @@ return { /* ...tudo que já retorna... */, jobs }
 
 ### 5.1 — `main/run-cron.ts`, a função testável
 
+Três exports: `runJobs` (o laço, sobre uma lista explícita de `CronJob`, sem
+banco), `runCron` (monta o grafo, chama `runJobs`, fecha o pool) e `cronExitCode`
+(função pura sobre os `outcomes`). Separar `runJobs` do `runCron` é o que torna
+"um job que lança não derruba os outros", a ordem e o `cronExitCode` testáveis
+sem banco — `runCron` lê `container.auth.jobs` e não aceita job falso injetado.
+
 ```ts
 export interface JobOutcome {
   name: string
@@ -288,29 +294,34 @@ export interface JobOutcome {
 export const CRON_EXIT_OK = 0
 export const CRON_EXIT_JOB_FAILED = 1
 
+export async function runJobs(jobs: readonly CronJob[]): Promise<JobOutcome[]> {
+  const outcomes: JobOutcome[] = []
+  for (const job of jobs) {
+    const start = performance.now()
+    try {
+      const metrics = await job.run()
+      outcomes.push({ name: job.name, durationMs: performance.now() - start, metrics })
+    } catch (error) {
+      outcomes.push({ name: job.name, durationMs: performance.now() - start, error })
+    }
+  }
+  return outcomes
+}
+
+export function cronExitCode(outcomes: readonly JobOutcome[]): number {
+  return outcomes.some((o) => o.error !== undefined)
+    ? CRON_EXIT_JOB_FAILED
+    : CRON_EXIT_OK
+}
+
 export async function runCron(env: Env, logger: AppLogger): Promise<JobOutcome[]> {
   const { db, pool } = createDatabase(env)
   try {
     const container = makeContainer(db, env, logger)
-    const jobs: CronJob[] = [...container.auth.jobs]
-    const outcomes: JobOutcome[] = []
-    for (const job of jobs) {
-      const start = performance.now()
-      try {
-        const metrics = await job.run()
-        outcomes.push({ name: job.name, durationMs: performance.now() - start, metrics })
-      } catch (error) {
-        outcomes.push({ name: job.name, durationMs: performance.now() - start, error })
-      }
-    }
-    return outcomes
+    return await runJobs([...container.auth.jobs])
   } finally {
     await pool.end()
   }
-}
-
-export function cronExitCode(outcomes: JobOutcome[]): number {
-  return outcomes.some((o) => o.error) ? CRON_EXIT_JOB_FAILED : CRON_EXIT_OK
 }
 ```
 
@@ -413,10 +424,13 @@ tabelas com expiradas + frescas, roda, assere:
 - 3 `outcomes`, todos sem `error`;
 - `rowsDeleted` por job bate com o semeado;
 - expiradas sumiram, frescas intactas;
-- `cronExitCode(outcomes) === CRON_EXIT_OK`;
-- **um negativo:** um `CronJob` que lança injetado na lista → `cronExitCode ===
-  CRON_EXIT_JOB_FAILED` e os jobs seguintes ainda rodaram (o `outcomes` tem os
-  três, um com `error` e dois com `metrics`).
+- `cronExitCode(outcomes) === CRON_EXIT_OK`.
+
+**Unit — 1 arquivo novo** (`src/main/run-cron.spec.ts`): `runJobs` com jobs
+falsos e `cronExitCode` sobre `outcomes` montados à mão. **O negativo:** um
+`CronJob` que lança na lista → o `outcome` dele carrega `error`, o job seguinte
+ainda roda, e `cronExitCode` devolve `CRON_EXIT_JOB_FAILED`. Fica aqui e não no
+`cron.spec.ts` porque `runCron` lê `container.auth.jobs` e não aceita job falso.
 
 ## 8. Custos aceitos
 
@@ -432,8 +446,8 @@ tabelas com expiradas + frescas, roda, assere:
   `DELETE` em paralelo — idempotente (a segunda apaga zero linhas), só desperdício.
   One-shot agendado pela plataforma não sobrepõe execução; um agendador que
   sobreponha é problema do agendador.
-- **`.returning({ id })` transfere os ids apagados** (§4.4). Ruído em volume de
-  poda; a alternativa é depender do `rowCount` do driver.
+- **O count vem do `rowCount` do driver** (§4.4), cujo tipo é `number | null`;
+  `null` é lido como zero. Mesmo padrão de `issueOrRefresh`/`consume`.
 
 ## 9. Emendas de documentação
 
