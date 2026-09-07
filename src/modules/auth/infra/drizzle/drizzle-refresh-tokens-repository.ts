@@ -115,9 +115,9 @@ export class DrizzleRefreshTokensRepository implements IRefreshTokensRepository 
     } catch (error) {
       // Never re-throw what the driver gave us: Drizzle's error glues every
       // bound parameter into its own message, and this SELECT binds the digest
-      // that IS the lookup key for a live session. `toPersistenceError` keeps
-      // `code` on the returned error, so the lock-timeout `55P03` this method's
-      // own `SET LOCAL` can raise still classifies as transient upstream.
+      // that IS the lookup key for a live session. Safe on this in-transaction
+      // path because `toPersistenceError` preserves `code` — the `55P03` from
+      // the `SET LOCAL` above still reaches the runner as transient.
       throw toPersistenceError(error)
     }
   }
