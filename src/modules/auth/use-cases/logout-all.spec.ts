@@ -25,13 +25,14 @@ const NO_USERS = {
   markEmailVerified: async () => {},
 }
 
-/** Nothing in this suite reads email verifications; the shape only has to satisfy AuthRepos. */
-const NO_EMAIL_VERIFICATIONS = {
+/** Nothing here reads pending registrations; the shape only satisfies AuthRepos. */
+const NO_PENDING_REGISTRATIONS = {
   save: async () => {},
-  findActiveByUserId: async () => null,
-  invalidateActiveForUser: async () => {},
+  findUnconsumedByEmail: async () => [],
+  reissueCode: async () => {},
   registerFailedAttempt: async () => false,
   consume: async () => false,
+  deleteExpiredByEmail: async () => {},
 }
 
 let repository: InMemoryRefreshTokensRepository
@@ -65,7 +66,7 @@ beforeEach(() => {
     makeUow({
       users: NO_USERS,
       refreshTokens: repository,
-      emailVerifications: NO_EMAIL_VERIFICATIONS,
+      pendingRegistrations: NO_PENDING_REGISTRATIONS,
     }),
     {
       now: () => clockReading,

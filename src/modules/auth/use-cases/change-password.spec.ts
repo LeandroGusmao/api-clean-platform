@@ -117,8 +117,6 @@ beforeEach(() => {
         callLog.push(UPDATE_CALL)
         return usersRepository.updatePasswordHash(id, passwordHash, updatedAt)
       },
-      markEmailVerified: (id, verifiedAt, updatedAt) =>
-        usersRepository.markEmailVerified(id, verifiedAt, updatedAt),
     },
     refreshTokens: {
       save: (token) => {
@@ -136,14 +134,15 @@ beforeEach(() => {
         return refreshTokensRepository.revokeAllForUser(userId, revokedAt)
       },
     },
-    // Nothing in this suite reads email verifications; the shape only has to
+    // Nothing in this suite reads pending registrations; the shape only has to
     // satisfy AuthRepos.
-    emailVerifications: {
+    pendingRegistrations: {
       save: async () => {},
-      findActiveByUserId: async () => null,
-      invalidateActiveForUser: async () => {},
+      findUnconsumedByEmail: async () => [],
+      reissueCode: async () => {},
       registerFailedAttempt: async () => false,
       consume: async () => false,
+      deleteExpiredByEmail: async () => {},
     },
   }
 
@@ -157,8 +156,6 @@ beforeEach(() => {
     findById: findByIdSpy,
     updatePasswordHash: (id, passwordHash, updatedAt) =>
       usersRepository.updatePasswordHash(id, passwordHash, updatedAt),
-    markEmailVerified: (id, verifiedAt, updatedAt) =>
-      usersRepository.markEmailVerified(id, verifiedAt, updatedAt),
   }
 
   // Pushes COMMIT only once `work` has resolved — never on a rejection — which

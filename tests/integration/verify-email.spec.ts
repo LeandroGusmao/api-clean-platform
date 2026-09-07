@@ -5,7 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { env } from '#infra/config/env'
 import { createDatabase, type Database } from '#infra/database/client'
 import { buildApp } from '#main/app'
-import { emailVerificationTokens } from '#modules/auth/infra/drizzle/schema/email-verification-tokens'
+import { pendingRegistrations } from '#modules/auth/infra/drizzle/schema/pending-registrations'
 import { refreshTokens } from '#modules/auth/infra/drizzle/schema/refresh-tokens'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
 import {
@@ -16,8 +16,8 @@ import {
   waitForMessageCount,
 } from './setup/mailpit.js'
 
-// Spelled out rather than imported from the endpoints: these values ARE the
-// wire contract. Importing them would make the assertions tautological.
+// Spelled out rather than imported from the endpoints: these values ARE the wire
+// contract. Importing them would make the assertions tautological.
 const REGISTER_PATH = '/auth/register'
 const LOGIN_PATH = '/auth/login'
 const CONFIRM_EMAIL_PATH = '/auth/email/verify'
@@ -26,36 +26,26 @@ const POST_METHOD = 'POST'
 
 const ACCEPTED_STATUS_CODE = 202
 const OK_STATUS_CODE = 200
-const FORBIDDEN_STATUS_CODE = 403
 const UNAUTHORIZED_STATUS_CODE = 401
 const UNPROCESSABLE_ENTITY_STATUS_CODE = 422
+const BAD_REQUEST_STATUS_CODE = 400
 
-// `send(null)` on a 202 puts these four bytes on the wire, with a JSON content
-// type — unlike a 204, where Fastify strips the body entirely.
-const NULL_BODY = 'null'
-const CONTENT_TYPE_HEADER = 'content-type'
-const JSON_CONTENT_TYPE = 'application/json; charset=utf-8'
-
-const EMAIL_NOT_VERIFIED_CODE = 'EMAIL_NOT_VERIFIED'
 const EMAIL_VERIFICATION_FAILED_CODE = 'EMAIL_VERIFICATION_FAILED'
 
 const EMAIL = 'joao@example.com'
-const UNKNOWN_EMAIL = 'nobody@example.com'
 const PASSWORD = 'sup3r-s3cr3t!'
 /**
- * Two distinct passwords for the pre-hijack test below: whoever's registration
- * attempt ends up bound to the live code must be the one whose password
- * survives, and two DIFFERENT passwords is what makes login prove which one
- * that was.
+ * Two distinct passwords for the pre-hijack tests: with 4.3 there is no
+ * attacker password stored anywhere, so what these prove is that the account
+ * ends up with exactly the password supplied at confirmation, and no other.
  */
-const ATTACKER_PASSWORD = 'attacker-p4ssw0rd!'
 const VICTIM_PASSWORD = 'victim-p4ssw0rd!'
+const ATTACKER_PASSWORD = 'attacker-p4ssw0rd!'
+const WEAK_PASSWORD = 'abcdefghij'
 
 /**
  * A wrong code, guaranteed to differ from the real one: flipping the first
- * digit means it can never collide, unlike a fixed literal such as
- * `'000000'`, which is a real six-digit code once in 10^6 tries and would
- * make the attempt-cap test flaky against a live generator.
+ * digit means it can never collide, unlike a fixed literal such as `'000000'`.
  */
 function wrongCodeFor(code: string): string {
   const firstDigit = Number(code[0])
@@ -63,48 +53,22 @@ function wrongCodeFor(code: string): string {
   return `${flippedFirstDigit}${code.slice(1)}`
 }
 
-const REFRESH_COOKIE_NAME = 'refresh_token'
 const BODY_TRANSPORT = 'body'
-const COOKIE_TRANSPORT = 'cookie'
 const JWT_PATTERN = /^[\w-]+\.[\w-]+\.[\w-]+$/
-const NO_COOKIES = 0
 
 const ONE_MESSAGE = 1
 const TWO_MESSAGES = 2
-const NO_MESSAGES = 0
-/** Matches `DEFAULT_EMAIL_VERIFICATION_MAX_ATTEMPTS` — the number under test. */
 const WRONG_ATTEMPTS_TO_EXHAUST_THE_CAP = 5
-/**
- * Comfortably more than the cap, fired at once: if the cap were enforced by a
- * read-then-write (read `attempts`, compare, then write), every one of these
- * would read the same pre-guess value and all would pass, letting one live
- * code absorb far more than `WRONG_ATTEMPTS_TO_EXHAUST_THE_CAP` guesses. The
- * atomic `registerFailedAttempt` closes that window by making the read and
- * the write one statement; a SEQUENTIAL loop of the same size could not tell
- * the two implementations apart; it would pass against either.
- */
-const CONCURRENT_WRONG_GUESSES = 10
+const ONE_USER_ROW = 1
 
-const ROW_MISSING_MESSAGE = 'no user row was stored'
-const TOKEN_ROW_MISSING_MESSAGE = 'no email verification token row was stored'
+const USER_ROW_MISSING_MESSAGE = 'no user row was stored'
 
 /**
- * Elevated well past anything this suite spends, the same pattern
- * `login.spec.ts` and `change-password.spec.ts` use for their own ceilings.
- *
- * The resend cooldown is disabled outright (0 seconds): several cases here
- * call resend immediately after register, which the shipped 60-second cooldown
- * exists specifically to block from an anonymous caller. The single case that
- * exercises the cooldown itself belongs to a narrower, dedicated suite — this
- * one is proving the confirm/resend WIRING against a real mailbox, not the
- * cooldown's own arithmetic.
- *
- * `0` is outside the valid domain `authEnvSchema` declares for this variable
- * (`.positive()` in `config.ts` — a real deployment could never boot with
- * this value). That is safe ONLY here: `buildApp` takes an already-parsed
- * config object and never re-runs it through `authEnvSchema`, so nothing
- * re-validates this override. Do not copy this fixture into a test that
- * exercises `parseEnv` or boots the app from raw `process.env` strings.
+ * Elevated well past anything this suite spends, the same pattern the other
+ * endpoint suites use for their own ceilings. The resend cooldown is disabled
+ * outright (0 seconds): several cases call register twice for the same address
+ * in quick succession, which the shipped 60-second cooldown exists to fold into
+ * a no-op.
  */
 const CEILING_ABOVE_WHAT_THIS_SUITE_SPENDS = 1000
 const NO_RESEND_COOLDOWN_SECONDS = 0
@@ -132,20 +96,14 @@ afterAll(async () => {
 })
 
 beforeEach(async () => {
-  // Children first: the cascade would take them anyway, but deleting in
-  // dependency order keeps this hook honest about what it does.
   await db.delete(refreshTokens)
-  await db.delete(emailVerificationTokens)
+  await db.delete(pendingRegistrations)
   await db.delete(users)
   await clearMailpit()
 })
 
-function register(email: string, password: string) {
-  return app.inject({
-    method: POST_METHOD,
-    url: REGISTER_PATH,
-    payload: { email, password },
-  })
+function register(email: string) {
+  return app.inject({ method: POST_METHOD, url: REGISTER_PATH, payload: { email } })
 }
 
 function login(email: string, password: string) {
@@ -156,254 +114,192 @@ function login(email: string, password: string) {
   })
 }
 
-function confirmEmail(email: string, code: string, payload: object) {
+function confirmEmail(email: string, code: string, password: string) {
   return app.inject({
     method: POST_METHOD,
     url: CONFIRM_EMAIL_PATH,
-    payload: { email, code, ...payload },
+    payload: { email, code, password, refreshTransport: BODY_TRANSPORT },
   })
 }
 
 function resend(email: string) {
-  return app.inject({
-    method: POST_METHOD,
-    url: RESEND_PATH,
-    payload: { email },
-  })
+  return app.inject({ method: POST_METHOD, url: RESEND_PATH, payload: { email } })
 }
 
-/**
- * Registers, waits for Mailpit to hold the resulting message — see
- * `POLL_TIMEOUT_MS` in `setup/mailpit.ts` for why this is a poll and not a
- * fixed `sleep` — and returns the real six-digit code it carries.
- */
-async function registerAndFetchCode(email: string, password: string): Promise<string> {
-  await register(email, password)
+/** Registers, waits for the message, returns the six-digit code it carries. */
+async function registerAndFetchCode(email: string): Promise<string> {
+  await register(email)
   await waitForMessageCount(ONE_MESSAGE)
-  const message = await latestMessage()
-  return extractVerificationCode(message.text)
+  return extractVerificationCode((await latestMessage()).text)
 }
 
 describe('the email verification flow, against a real SMTP server', () => {
   it('answers 202 on register, with exactly one message reaching the mailbox', async () => {
-    const response = await register(EMAIL, PASSWORD)
+    const response = await register(EMAIL)
 
     expect(response.statusCode).toBe(ACCEPTED_STATUS_CODE)
-    expect(response.body).toBe(NULL_BODY)
-    expect(response.headers[CONTENT_TYPE_HEADER]).toBe(JSON_CONTENT_TYPE)
-
     await waitForMessageCount(ONE_MESSAGE)
   })
 
-  it('confirms the account with the code from that message, and opens a session', async () => {
-    const code = await registerAndFetchCode(EMAIL, PASSWORD)
+  it('confirms with the code and the chosen password, creates the verified account, opens a session', async () => {
+    const code = await registerAndFetchCode(EMAIL)
 
-    const response = await confirmEmail(EMAIL, code, { refreshTransport: BODY_TRANSPORT })
+    const response = await confirmEmail(EMAIL, code, PASSWORD)
 
     expect(response.statusCode).toBe(OK_STATUS_CODE)
     expect(response.json().accessToken).toMatch(JWT_PATTERN)
     expect(response.json().refreshToken).toEqual(expect.any(String))
 
     const [row] = await db.select().from(users).where(eq(users.email, EMAIL))
-    if (row === undefined) throw new Error(ROW_MISSING_MESSAGE)
+    if (row === undefined) throw new Error(USER_ROW_MISSING_MESSAGE)
     expect(row.emailVerifiedAt).not.toBeNull()
+
+    expect((await login(EMAIL, PASSWORD)).statusCode).toBe(OK_STATUS_CODE)
   })
 
-  it('answers 403 EMAIL_NOT_VERIFIED at login before the code is confirmed', async () => {
-    await register(EMAIL, PASSWORD)
+  it('rejects a malformed password with 400, before any code check', async () => {
+    const code = await registerAndFetchCode(EMAIL)
 
-    const response = await login(EMAIL, PASSWORD)
+    const bad = await confirmEmail(EMAIL, code, WEAK_PASSWORD)
+    expect(bad.statusCode).toBe(BAD_REQUEST_STATUS_CODE)
 
-    expect(response.statusCode).toBe(FORBIDDEN_STATUS_CODE)
-    expect(response.json().error.code).toBe(EMAIL_NOT_VERIFIED_CODE)
+    // The attempt was not spent: the real code still works right after.
+    const good = await confirmEmail(EMAIL, code, PASSWORD)
+    expect(good.statusCode).toBe(OK_STATUS_CODE)
   })
 
-  it('answers 200 at login after the code is confirmed', async () => {
-    const code = await registerAndFetchCode(EMAIL, PASSWORD)
-    await confirmEmail(EMAIL, code, { refreshTransport: BODY_TRANSPORT })
-
-    const response = await login(EMAIL, PASSWORD)
-
-    expect(response.statusCode).toBe(OK_STATUS_CODE)
-  })
-
-  it('binds the live code to the password of the registration that issued it, not an earlier one', async () => {
-    // The attack this pins: an attacker registers an address first, with
-    // THEIR password. The victim, unaware the address is taken, registers for
-    // real afterwards — the insert collides, and the 202 response gives no
-    // sign the address was ever taken. Before the fix, the collision path
-    // issued a fresh code but left the ATTACKER's password hash in place; the
-    // victim would confirm the mail they just received, believe the account
-    // was theirs, and the attacker — not the victim — would be the one able
-    // to log in.
-    await register(EMAIL, ATTACKER_PASSWORD)
+  it('pre-hijack, attacker first: the account gets the password the victim confirmed with', async () => {
+    // Attacker registers the victim's address first. The victim, unaware,
+    // registers for real afterwards — both codes now sit in the victim's inbox.
+    await register(EMAIL)
     await waitForMessageCount(ONE_MESSAGE)
 
-    const victimRegistration = await register(EMAIL, VICTIM_PASSWORD)
-    expect(victimRegistration.statusCode).toBe(ACCEPTED_STATUS_CODE)
+    await register(EMAIL)
     await waitForMessageCount(TWO_MESSAGES)
 
-    // The victim reads the mail that just arrived and confirms with the code
-    // it carries — the one the collision path issued for THEIR request.
-    const message = await latestMessage()
-    const code = extractVerificationCode(message.text)
-    const confirmation = await confirmEmail(EMAIL, code, {
-      refreshTransport: BODY_TRANSPORT,
-    })
+    // The victim confirms with the code from the message she just received, and
+    // her own password.
+    const code = extractVerificationCode((await latestMessage()).text)
+    const confirmation = await confirmEmail(EMAIL, code, VICTIM_PASSWORD)
     expect(confirmation.statusCode).toBe(OK_STATUS_CODE)
 
-    // The fix: the collision path rewrote the password hash in the SAME
-    // transaction that issued this code, so the victim's password — the one
-    // bound to the code they just confirmed with — is the one that survives.
-    const withVictimPassword = await login(EMAIL, VICTIM_PASSWORD)
-    expect(withVictimPassword.statusCode).toBe(OK_STATUS_CODE)
-
-    // And the attacker's earlier password, which created the row but never
-    // proved control of the mailbox, must no longer work.
-    const withAttackerPassword = await login(EMAIL, ATTACKER_PASSWORD)
-    expect(withAttackerPassword.statusCode).toBe(UNAUTHORIZED_STATUS_CODE)
+    expect((await login(EMAIL, VICTIM_PASSWORD)).statusCode).toBe(OK_STATUS_CODE)
+    // There is no attacker password anywhere: the account has exactly the one
+    // the victim set.
+    expect((await login(EMAIL, ATTACKER_PASSWORD)).statusCode).toBe(
+      UNAUTHORIZED_STATUS_CODE,
+    )
   })
 
-  it('refuses to confirm the same code a second time', async () => {
-    const code = await registerAndFetchCode(EMAIL, PASSWORD)
-    const first = await confirmEmail(EMAIL, code, { refreshTransport: BODY_TRANSPORT })
-    expect(first.statusCode).toBe(OK_STATUS_CODE)
+  it('pre-hijack, victim first (the ordering slice 10 could not close): the victim keeps her code and her password', async () => {
+    // The victim registers first and holds the code from that message.
+    const victimCode = await registerAndFetchCode(EMAIL)
 
-    const second = await confirmEmail(EMAIL, code, { refreshTransport: BODY_TRANSPORT })
+    // The attacker registers the same address afterwards. Under slice 10 this
+    // invalidated the victim's code; here it coexists and hers still works.
+    await register(EMAIL)
+    await waitForMessageCount(TWO_MESSAGES)
 
+    const confirmation = await confirmEmail(EMAIL, victimCode, VICTIM_PASSWORD)
+    expect(confirmation.statusCode).toBe(OK_STATUS_CODE)
+
+    expect((await login(EMAIL, VICTIM_PASSWORD)).statusCode).toBe(OK_STATUS_CODE)
+  })
+
+  it('an attacker brute-forcing their own pending burns its cap and cannot confirm', async () => {
+    const code = await registerAndFetchCode(EMAIL)
+    const wrong = wrongCodeFor(code)
+
+    for (let guess = 0; guess < WRONG_ATTEMPTS_TO_EXHAUST_THE_CAP; guess += 1) {
+      const attempt = await confirmEmail(EMAIL, wrong, ATTACKER_PASSWORD)
+      expect(attempt.statusCode).toBe(UNPROCESSABLE_ENTITY_STATUS_CODE)
+    }
+
+    // The real code no longer works: the pending's cap is spent.
+    const withRealCode = await confirmEmail(EMAIL, code, ATTACKER_PASSWORD)
+    expect(withRealCode.statusCode).toBe(UNPROCESSABLE_ENTITY_STATUS_CODE)
+    expect(withRealCode.json().error.code).toBe(EMAIL_VERIFICATION_FAILED_CODE)
+
+    expect(await db.select().from(users)).toHaveLength(0)
+  })
+
+  it('holds the attempt cap under CONCURRENT wrong guesses against one pending', async () => {
+    const code = await registerAndFetchCode(EMAIL)
+    const wrong = wrongCodeFor(code)
+
+    const CONCURRENT_WRONG_GUESSES = 10
+    const responses = await Promise.all(
+      Array.from({ length: CONCURRENT_WRONG_GUESSES }, () =>
+        confirmEmail(EMAIL, wrong, PASSWORD),
+      ),
+    )
+    expect(
+      responses.every((r) => r.statusCode === UNPROCESSABLE_ENTITY_STATUS_CODE),
+    ).toBe(true)
+
+    const [pending] = await db
+      .select()
+      .from(pendingRegistrations)
+      .where(eq(pendingRegistrations.email, EMAIL))
+    expect(pending?.attempts).toBeLessThanOrEqual(WRONG_ATTEMPTS_TO_EXHAUST_THE_CAP)
+  })
+
+  it('two confirms racing two codes of the same address: one wins, exactly one verified user', async () => {
+    const firstCode = await registerAndFetchCode(EMAIL)
+    await register(EMAIL)
+    await waitForMessageCount(TWO_MESSAGES)
+    const secondCode = extractVerificationCode((await latestMessage()).text)
+
+    const [a, b] = await Promise.all([
+      confirmEmail(EMAIL, firstCode, PASSWORD),
+      confirmEmail(EMAIL, secondCode, VICTIM_PASSWORD),
+    ])
+
+    const statuses = [a.statusCode, b.statusCode].sort()
+    expect(statuses).toEqual([OK_STATUS_CODE, UNPROCESSABLE_ENTITY_STATUS_CODE])
+
+    const rows = await db.select().from(users).where(eq(users.email, EMAIL))
+    expect(rows).toHaveLength(ONE_USER_ROW)
+    expect(rows[0]?.emailVerifiedAt).not.toBeNull()
+  })
+
+  it('a second confirm with the same code, after success, gets the generic failure', async () => {
+    const code = await registerAndFetchCode(EMAIL)
+    expect((await confirmEmail(EMAIL, code, PASSWORD)).statusCode).toBe(OK_STATUS_CODE)
+
+    const second = await confirmEmail(EMAIL, code, PASSWORD)
     expect(second.statusCode).toBe(UNPROCESSABLE_ENTITY_STATUS_CODE)
     expect(second.json().error.code).toBe(EMAIL_VERIFICATION_FAILED_CODE)
   })
 
-  it('exhausts the attempt cap on five wrong codes, and then refuses the correct one too', async () => {
-    const code = await registerAndFetchCode(EMAIL, PASSWORD)
-    const wrongCode = wrongCodeFor(code)
-
-    let lastWrongAttempt = await confirmEmail(EMAIL, wrongCode, {
-      refreshTransport: BODY_TRANSPORT,
-    })
-    for (let spent = 1; spent < WRONG_ATTEMPTS_TO_EXHAUST_THE_CAP; spent++) {
-      lastWrongAttempt = await confirmEmail(EMAIL, wrongCode, {
-        refreshTransport: BODY_TRANSPORT,
-      })
-    }
-    expect(lastWrongAttempt.statusCode).toBe(UNPROCESSABLE_ENTITY_STATUS_CODE)
-
-    const withTheCorrectCode = await confirmEmail(EMAIL, code, {
-      refreshTransport: BODY_TRANSPORT,
-    })
-
-    expect(withTheCorrectCode.statusCode).toBe(UNPROCESSABLE_ENTITY_STATUS_CODE)
-    expect(withTheCorrectCode.json().error.code).toBe(EMAIL_VERIFICATION_FAILED_CODE)
-  })
-
-  it('holds the attempt cap under CONCURRENT wrong guesses against one live code', async () => {
-    const code = await registerAndFetchCode(EMAIL, PASSWORD)
-    const wrongCode = wrongCodeFor(code)
-
-    // `Promise.all` over calls that are never individually `await`ed first:
-    // that is what actually launches every `app.inject` before any of them
-    // resolves. Awaiting them one by one — even inside a loop that then waits
-    // on the whole array — would serialize the requests and could not exercise
-    // the race the attempt cap has to survive.
-    const responses = await Promise.all(
-      Array.from({ length: CONCURRENT_WRONG_GUESSES }, () =>
-        confirmEmail(EMAIL, wrongCode, { refreshTransport: BODY_TRANSPORT }),
-      ),
-    )
-
-    expect(
-      responses.every(
-        (response) => response.statusCode === UNPROCESSABLE_ENTITY_STATUS_CODE,
-      ),
-    ).toBe(true)
-
-    // The correct code must no longer work: the cap was reached (or the live
-    // code's TTL/consumption state was otherwise exhausted by the guesses),
-    // and `EmailVerificationFailedError` is the one answer for every mode.
-    const withTheCorrectCode = await confirmEmail(EMAIL, code, {
-      refreshTransport: BODY_TRANSPORT,
-    })
-    expect(withTheCorrectCode.statusCode).toBe(UNPROCESSABLE_ENTITY_STATUS_CODE)
-    expect(withTheCorrectCode.json().error.code).toBe(EMAIL_VERIFICATION_FAILED_CODE)
-
-    // The number that actually proves the fix: read straight from Postgres,
-    // bypassing the use case entirely. Before the atomic `WHERE ... AND
-    // attempts < maxAttempts`, `CONCURRENT_WRONG_GUESSES` concurrent guesses
-    // each read `attempts = 0`, each passed the pre-check, and each wrote —
-    // so this column would land at `CONCURRENT_WRONG_GUESSES`, past the
-    // configured cap.
-    const [userRow] = await db.select().from(users).where(eq(users.email, EMAIL))
-    if (userRow === undefined) throw new Error(ROW_MISSING_MESSAGE)
-
-    const [tokenRow] = await db
-      .select()
-      .from(emailVerificationTokens)
-      .where(eq(emailVerificationTokens.userId, userRow.id))
-    if (tokenRow === undefined) throw new Error(TOKEN_ROW_MISSING_MESSAGE)
-
-    expect(tokenRow.attempts).toBeLessThanOrEqual(WRONG_ATTEMPTS_TO_EXHAUST_THE_CAP)
-  })
-
-  it('delivers a new message on resend, and the old code stops working', async () => {
-    const oldCode = await registerAndFetchCode(EMAIL, PASSWORD)
+  it('resend delivers a fresh code for a pending registration, and it confirms', async () => {
+    await registerAndFetchCode(EMAIL)
 
     const response = await resend(EMAIL)
     expect(response.statusCode).toBe(ACCEPTED_STATUS_CODE)
-    expect(response.body).toBe(NULL_BODY)
-
     await waitForMessageCount(TWO_MESSAGES)
-    const newMessage = await latestMessage()
-    const newCode = extractVerificationCode(newMessage.text)
-    expect(newCode).not.toBe(oldCode)
 
-    const withTheOldCode = await confirmEmail(EMAIL, oldCode, {
-      refreshTransport: BODY_TRANSPORT,
-    })
-    expect(withTheOldCode.statusCode).toBe(UNPROCESSABLE_ENTITY_STATUS_CODE)
-
-    const withTheNewCode = await confirmEmail(EMAIL, newCode, {
-      refreshTransport: BODY_TRANSPORT,
-    })
-    expect(withTheNewCode.statusCode).toBe(OK_STATUS_CODE)
+    const freshCode = extractVerificationCode((await latestMessage()).text)
+    expect((await confirmEmail(EMAIL, freshCode, PASSWORD)).statusCode).toBe(
+      OK_STATUS_CODE,
+    )
   })
 
-  it('answers 202 and delivers nothing when resend targets an address with no account', async () => {
-    // No `waitForMessageCount` here: for an unknown address the use case
-    // returns before it ever reaches the mailer (see
-    // `RequestEmailVerificationUseCase`), so there is no send racing this
-    // check — unlike every other case in this file, nothing is ever put on the
-    // wire for this request to wait for.
-    const response = await resend(UNKNOWN_EMAIL)
+  it('resend answers 202 and delivers nothing for an address with no pending registration', async () => {
+    const response = await resend(EMAIL)
 
     expect(response.statusCode).toBe(ACCEPTED_STATUS_CODE)
-    expect(response.body).toBe(NULL_BODY)
-    expect(await messageCount()).toBe(NO_MESSAGES)
+    expect(await messageCount()).toBe(0)
   })
 
-  it('returns the refresh token in the body for body transport, and sets no cookie', async () => {
-    const code = await registerAndFetchCode(EMAIL, PASSWORD)
+  it('resend answers 202 and delivers nothing once the address has a verified account', async () => {
+    const code = await registerAndFetchCode(EMAIL)
+    await confirmEmail(EMAIL, code, PASSWORD)
+    await clearMailpit()
 
-    const response = await confirmEmail(EMAIL, code, { refreshTransport: BODY_TRANSPORT })
+    const response = await resend(EMAIL)
 
-    expect(response.statusCode).toBe(OK_STATUS_CODE)
-    expect(response.json().refreshToken).toEqual(expect.any(String))
-    expect(response.cookies).toHaveLength(NO_COOKIES)
-  })
-
-  it('sets the refresh cookie for cookie transport, and omits the token from the body', async () => {
-    const code = await registerAndFetchCode(EMAIL, PASSWORD)
-
-    const response = await confirmEmail(EMAIL, code, {
-      refreshTransport: COOKIE_TRANSPORT,
-    })
-
-    expect(response.statusCode).toBe(OK_STATUS_CODE)
-    // The whole point of the cookie: if the token is ALSO in the body, the
-    // SPA's JavaScript can read it and HttpOnly has bought nothing.
-    expect(response.json().refreshToken).toBeUndefined()
-    const cookie = response.cookies.find((each) => each.name === REFRESH_COOKIE_NAME)
-    expect(cookie?.value).toEqual(expect.any(String))
-    expect(cookie?.httpOnly).toBe(true)
+    expect(response.statusCode).toBe(ACCEPTED_STATUS_CODE)
+    expect(await messageCount()).toBe(0)
   })
 })

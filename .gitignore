@@ -143,5 +143,4 @@ vite.config.ts.timestamp-*
 .vite/
 
 #Local docs for reference
-docs/TODO.md
 docs/local.md

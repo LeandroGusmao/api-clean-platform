@@ -68,9 +68,11 @@ export class User {
   }
 
   /**
-   * Born **unverified**. Nothing consumes that state until the email
-   * verification slice; the column is a reserved seat, so that neither this
-   * entity nor the mapper changes when it arrives.
+   * Born **verified**: since slice 11 the only path that reaches `create` is
+   * `ConfirmEmailUseCase`, which has already proven control of the address
+   * (§5.5 of the slice 11 design). Social login, when it lands, is the other
+   * proven path. `fromTrusted` still accepts a null `email_verified_at` for old
+   * rows and for any unverified path a later slice reintroduces.
    *
    * The domain owns the id and the timestamps, so the row is complete before
    * the insert. The schema defaults (`defaultRandom` / `defaultNow`) are only
@@ -81,7 +83,7 @@ export class User {
       id: props.id,
       email: props.email,
       passwordHash: props.passwordHash,
-      emailVerifiedAt: null,
+      emailVerifiedAt: props.now,
       createdAt: props.now,
       updatedAt: props.now,
     })

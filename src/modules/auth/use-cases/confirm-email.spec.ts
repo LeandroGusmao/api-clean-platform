@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
-import { EmailVerification } from '#modules/auth/entities/email-verification'
+import { PendingRegistration } from '#modules/auth/entities/pending-registration'
 import { User } from '#modules/auth/entities/user'
 import { EmailVerificationFailedError } from '#modules/auth/errors/email-verification-failed-error'
-import { InMemoryEmailVerificationsRepository } from '#modules/auth/infra/in-memory/in-memory-email-verifications-repository'
+import { InvalidPasswordError } from '#modules/auth/errors/invalid-password-error'
+import { InMemoryPendingRegistrationsRepository } from '#modules/auth/infra/in-memory/in-memory-pending-registrations-repository'
 import { InMemoryRefreshTokensRepository } from '#modules/auth/infra/in-memory/in-memory-refresh-tokens-repository'
 import { InMemoryUsersRepository } from '#modules/auth/infra/in-memory/in-memory-users-repository'
+import type { IHashProvider } from '#modules/auth/ports/hash-provider'
 import type { ITokenSigner } from '#modules/auth/ports/token-signer'
-import type { IEmailVerificationsRepository } from '#modules/auth/repositories/email-verifications-repository'
+import type { IPendingRegistrationsRepository } from '#modules/auth/repositories/pending-registrations-repository'
 import type { AuthRepos, IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
 import { RefreshTokenIssuer } from '#modules/auth/services/refresh-token-issuer'
 import {
@@ -17,50 +19,42 @@ import { Email } from '#modules/auth/value-objects/email'
 import type { IClock } from '#shared/ports/clock'
 import type { ITokenDigest } from '#shared/ports/token-digest'
 
-const USER_ID = '7c1d2e3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f'
-const VERIFICATION_ID = '2b3c4d5e-6f70-4812-9a3b-4c5d6e7f8091'
+const GENERATED_ID = '7c1d2e3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f'
+const PENDING_ID = '2b3c4d5e-6f70-4812-9a3b-4c5d6e7f8091'
+const OLD_PENDING_ID = '11111111-1111-4111-8111-111111111111'
+const NEW_PENDING_ID = '22222222-2222-4222-8222-222222222222'
 const EMAIL = 'joao@example.com'
-/** An address with no account. The stored user keeps `EMAIL`. */
-const UNKNOWN_EMAIL = 'ninguem@example.com'
 
-/** Six digits, like the real generator's. */
 const CODE = '123456'
+const OTHER_CODE = '111111'
 const WRONG_CODE = '654321'
 
-const NOW = new Date('2026-09-03T12:00:00.000Z')
+const NOW = new Date('2026-09-07T12:00:00.000Z')
 const CREATED_AT = new Date('2026-01-01T08:00:00.000Z')
-const PASSWORD_HASH = 'hashed:whatever-they-chose'
+const HASH_PREFIX = 'hashed:'
+const DIGEST_PREFIX = 'digest:'
+
+const PASSWORD = 'sup3r-s3cr3t!'
+const WEAK_PASSWORD = 'abcdefghij'
 
 const MILLISECONDS_PER_SECOND = 1000
 const VERIFICATION_TTL_SECONDS = 900
 const MAX_ATTEMPTS = 5
 const NO_ATTEMPTS_SPENT = 0
-/** Minted this instant: comfortably inside the window. */
 const FRESH_AGE_MS = 0
-/**
- * EXACTLY the TTL, which pins the expiry boundary as inclusive: `isUsable`
- * asks `expiresAt > now`, so a code whose expiry has just ARRIVED is spent. A
- * comfortably older code would leave `>` and `>=` indistinguishable.
- */
+const OLDER_AGE_MS = 120_000
 const EXPIRED_AGE_MS = VERIFICATION_TTL_SECONDS * MILLISECONDS_PER_SECOND
-/** Enough to make two readings distinguishable; nothing depends on the size. */
-const CLOCK_STEP_MS = 1
 
-const DIGEST_PREFIX = 'digest:'
 const ACCESS_TOKEN = 'signed-access-token'
 const OPAQUE_TOKEN = 'opaque-refresh-token'
-/** Unused by this suite; required only to satisfy `ITokenGenerator`. */
 const NUMERIC_CODE = '000000'
-const GENERATED_ID = 'generated-id'
 const REFRESH_TOKEN_TTL_SECONDS = 3600
-
-const ONE_CALL = 1
 
 /**
  * The wire contract of the single error, spelled out rather than imported:
- * importing the constants from `email-verification-failed-error.ts` would make
- * the assertion tautological — it would pass whatever that file happened to
- * say, including a message that named which of the six branches failed.
+ * importing the constants would make the assertion tautological — it would pass
+ * whatever the error file happened to say, including a message that named which
+ * branch failed.
  */
 const FAILURE_MESSAGE = 'Email verification failed'
 const FAILURE_CODE = 'EMAIL_VERIFICATION_FAILED'
@@ -69,53 +63,59 @@ const NO_FAILURE_MESSAGE = 'expected the confirmation to fail, and it resolved'
 const USER_MISSING_MESSAGE = 'the repository stored no user'
 
 /** Records the order in which collaborators were touched. */
-const CONSUME_CALL = 'verifications.consume'
-const MARK_VERIFIED_CALL = 'users.markEmailVerified'
+const CONSUME_CALL = 'pendingRegistrations.consume'
+const USERS_SAVE_CALL = 'users.save'
 const SAVE_TOKEN_CALL = 'refreshTokens.save'
-const REGISTER_FAILED_ATTEMPT_CALL = 'verifications.registerFailedAttempt'
+const REGISTER_FAILED_ATTEMPT_CALL = 'pendingRegistrations.registerFailedAttempt'
 const COMMIT = 'COMMIT'
 
-/**
- * Whether the conditional `UPDATE` still finds the row unconsumed. `LOST_RACE`
- * is the one failure mode the in-memory repository cannot produce on its own —
- * a unit test runs one call at a time, so nothing can burn the code between
- * this request's read and its transaction.
- */
 const WON_RACE = true
 const LOST_RACE = false
 
 const digest: ITokenDigest = { hash: (value) => `${DIGEST_PREFIX}${value}` }
+const clock: IClock = { now: () => NOW }
 
 let callLog: string[]
 let consumeOutcome: boolean
+let hashedPlaintexts: string[]
 let usersRepository: InMemoryUsersRepository
-let verificationsRepository: InMemoryEmailVerificationsRepository
+let pendingRepo: InMemoryPendingRegistrationsRepository
 let refreshTokensRepository: InMemoryRefreshTokensRepository
 let useCase: ConfirmEmailUseCase
-// Typed with the real signatures rather than a bare `ReturnType<typeof vi.fn>`,
-// which erases them: the erased form compiles at the declaration and then fails
-// where the spy is handed to a port, several lines away.
-let registerFailedAttemptSpy: Mock<IEmailVerificationsRepository['registerFailedAttempt']>
+let registerFailedAttemptSpy: Mock<
+  IPendingRegistrationsRepository['registerFailedAttempt']
+>
 let signSpy: Mock<ITokenSigner['sign']>
 let uowSpy: Mock<(work: (repos: AuthRepos) => Promise<unknown>) => Promise<unknown>>
 
+const hashProvider: IHashProvider = {
+  hash: (plain) => {
+    hashedPlaintexts.push(plain)
+    return Promise.resolve(`${HASH_PREFIX}${plain}`)
+  },
+  compare: () => Promise.resolve(false),
+  dummyHash: 'unused-by-confirm-tests',
+}
+
 /**
  * The repositories as the transaction hands them out, wrapping the SAME
- * in-memory instances — one database, two handles. Only the three writes the
- * flow makes inside the transaction are logged; everything else is passthrough.
+ * in-memory instances — one database, two handles. Only the writes the flow
+ * makes inside the transaction are logged; everything else is passthrough.
  */
 function trackedRepos(): AuthRepos {
   return {
     users: {
-      save: (user) => usersRepository.save(user),
+      save: async (user) => {
+        await usersRepository.save(user)
+        // Logged AFTER the delegate: a save that throws is the collision path,
+        // and logging it there would make the collision log indistinguishable
+        // from the success log.
+        callLog.push(USERS_SAVE_CALL)
+      },
       findByEmail: (email) => usersRepository.findByEmail(email),
       findById: (id) => usersRepository.findById(id),
       updatePasswordHash: (id, passwordHash, updatedAt) =>
         usersRepository.updatePasswordHash(id, passwordHash, updatedAt),
-      markEmailVerified: (id, verifiedAt, updatedAt) => {
-        callLog.push(MARK_VERIFIED_CALL)
-        return usersRepository.markEmailVerified(id, verifiedAt, updatedAt)
-      },
     },
     refreshTokens: {
       save: (token) => {
@@ -131,34 +131,30 @@ function trackedRepos(): AuthRepos {
       revokeAllForUser: (userId, revokedAt) =>
         refreshTokensRepository.revokeAllForUser(userId, revokedAt),
     },
-    emailVerifications: {
-      save: (verification) => verificationsRepository.save(verification),
-      findActiveByUserId: (userId) => verificationsRepository.findActiveByUserId(userId),
-      invalidateActiveForUser: (userId, at) =>
-        verificationsRepository.invalidateActiveForUser(userId, at),
+    pendingRegistrations: {
+      save: (pending) => pendingRepo.save(pending),
+      findUnconsumedByEmail: (email) => pendingRepo.findUnconsumedByEmail(email),
+      reissueCode: (id, codeHash, codeIssuedAt, expiresAt) =>
+        pendingRepo.reissueCode(id, codeHash, codeIssuedAt, expiresAt),
       registerFailedAttempt: (id, maxAttempts) =>
-        verificationsRepository.registerFailedAttempt(id, maxAttempts),
+        pendingRepo.registerFailedAttempt(id, maxAttempts),
       consume: async (id, at) => {
         callLog.push(CONSUME_CALL)
         if (consumeOutcome === LOST_RACE) return LOST_RACE
 
-        return verificationsRepository.consume(id, at)
+        return pendingRepo.consume(id, at)
       },
+      deleteExpiredByEmail: (email, at) => pendingRepo.deleteExpiredByEmail(email, at),
     },
   }
 }
 
-function buildUseCase(clock: IClock): ConfirmEmailUseCase {
+function buildUseCase(): ConfirmEmailUseCase {
   return new ConfirmEmailUseCase(
-    usersRepository,
     {
-      findActiveByUserId: (userId) => verificationsRepository.findActiveByUserId(userId),
+      findUnconsumedByEmail: (email) => pendingRepo.findUnconsumedByEmail(email),
       registerFailedAttempt: registerFailedAttemptSpy,
     },
-    // Cast because `IAuthUnitOfWork` is generic in the callback's return type
-    // and `vi.fn` cannot produce a generic function. The spy's own signature is
-    // still checked where it is declared; only the generic instantiation is
-    // waived here.
     uowSpy as unknown as IAuthUnitOfWork,
     new RefreshTokenIssuer(
       { opaque: () => OPAQUE_TOKEN, numericCode: () => NUMERIC_CODE },
@@ -166,9 +162,11 @@ function buildUseCase(clock: IClock): ConfirmEmailUseCase {
       { generate: () => GENERATED_ID },
       REFRESH_TOKEN_TTL_SECONDS,
     ),
-    { sign: signSpy, verify: async () => ({ sub: USER_ID }) },
+    { sign: signSpy, verify: async () => ({ sub: GENERATED_ID }) },
     digest,
+    hashProvider,
     clock,
+    { generate: () => GENERATED_ID },
     MAX_ATTEMPTS,
   )
 }
@@ -176,30 +174,21 @@ function buildUseCase(clock: IClock): ConfirmEmailUseCase {
 beforeEach(() => {
   callLog = []
   consumeOutcome = WON_RACE
+  hashedPlaintexts = []
   usersRepository = new InMemoryUsersRepository()
-  verificationsRepository = new InMemoryEmailVerificationsRepository()
+  pendingRepo = new InMemoryPendingRegistrationsRepository()
   refreshTokensRepository = new InMemoryRefreshTokensRepository()
 
   registerFailedAttemptSpy = vi.fn(async (id, maxAttempts) => {
     callLog.push(REGISTER_FAILED_ATTEMPT_CALL)
-    return verificationsRepository.registerFailedAttempt(id, maxAttempts)
+    return pendingRepo.registerFailedAttempt(id, maxAttempts)
   })
 
-  // Records the payload. A fake that ignored it would let the use case sign for
-  // any subject at all with every assertion in this file still green — and on
-  // an endpoint that MINTS a session, "which subject did we sign for" is
-  // exactly what turns a wiring slip into an authorization bug.
+  // Records the payload: on an endpoint that MINTS a session, "which subject
+  // did we sign for" is exactly what turns a wiring slip into an auth bug.
   signSpy = vi.fn(async () => ACCESS_TOKEN)
 
   const repos = trackedRepos()
-
-  /**
-   * The `uow` fake appends `COMMIT` when — and only when — the callback
-   * resolves. That marker is what turns the order assertions below into
-   * statements about §8: a write recorded before it is a write inside the
-   * transaction, and one recorded after a rejection would not be recorded at
-   * all.
-   */
   uowSpy = vi.fn(async (work) => {
     const result = await work(repos)
     callLog.push(COMMIT)
@@ -207,57 +196,39 @@ beforeEach(() => {
     return result
   })
 
-  useCase = buildUseCase({ now: () => NOW })
+  useCase = buildUseCase()
 })
 
-function storeUser(): void {
-  usersRepository.users.push(
-    User.fromTrusted({
-      id: USER_ID,
+function storeUsablePending({
+  id = PENDING_ID,
+  ageMs = FRESH_AGE_MS,
+  codeHash = `${DIGEST_PREFIX}${CODE}`,
+  attempts = NO_ATTEMPTS_SPENT,
+}: {
+  id?: string
+  ageMs?: number
+  codeHash?: string
+  attempts?: number
+} = {}): void {
+  const issuedAt = new Date(NOW.getTime() - ageMs)
+  pendingRepo.rows.push(
+    PendingRegistration.fromTrusted({
+      id,
       email: Email.fromTrusted(EMAIL),
-      passwordHash: PASSWORD_HASH,
-      emailVerifiedAt: null,
-      createdAt: CREATED_AT,
-      updatedAt: CREATED_AT,
-    }),
-  )
-}
-
-/**
- * `fromTrusted` and not `create`, because two of the six failure modes are
- * states `create` cannot produce: a spent attempt budget, and an expiry already
- * behind us.
- */
-function storeVerification(
-  { ageMs, attempts }: { ageMs: number; attempts: number } = {
-    ageMs: FRESH_AGE_MS,
-    attempts: NO_ATTEMPTS_SPENT,
-  },
-): void {
-  const createdAt = new Date(NOW.getTime() - ageMs)
-
-  verificationsRepository.verifications.push(
-    EmailVerification.fromTrusted({
-      id: VERIFICATION_ID,
-      userId: USER_ID,
-      codeHash: `${DIGEST_PREFIX}${CODE}`,
+      codeHash,
+      attempts,
+      codeIssuedAt: issuedAt,
       expiresAt: new Date(
-        createdAt.getTime() + VERIFICATION_TTL_SECONDS * MILLISECONDS_PER_SECOND,
+        issuedAt.getTime() + VERIFICATION_TTL_SECONDS * MILLISECONDS_PER_SECOND,
       ),
       consumedAt: null,
-      attempts,
-      createdAt,
+      createdAt: issuedAt,
     }),
   )
-}
-
-function storeVerifiableAccount(): void {
-  storeUser()
-  storeVerification()
 }
 
 const confirm = (overrides: Partial<ConfirmEmailCommand> = {}) =>
-  useCase.execute({ email: EMAIL, code: CODE, ...overrides })
+  useCase.execute({ email: EMAIL, code: CODE, password: PASSWORD, ...overrides })
 
 const storedUser = () => {
   const [user] = usersRepository.users
@@ -266,12 +237,7 @@ const storedUser = () => {
   return user
 }
 
-const storedVerification = () => verificationsRepository.verifications[0]
-
-const issuedToken = () =>
-  refreshTokensRepository.tokens.find(
-    (token) => token.tokenHash === `${DIGEST_PREFIX}${OPAQUE_TOKEN}`,
-  )
+const pendingById = (id: string) => pendingRepo.rows.find((p) => p.id === id)
 
 async function failureFrom(promise: Promise<unknown>): Promise<{
   message: string
@@ -283,7 +249,6 @@ async function failureFrom(promise: Promise<unknown>): Promise<{
     if (error instanceof EmailVerificationFailedError) {
       return { message: error.message, code: error.code }
     }
-
     throw error
   }
 
@@ -291,39 +256,26 @@ async function failureFrom(promise: Promise<unknown>): Promise<{
 }
 
 /**
- * The six failure modes, as a TABLE run through one body.
- *
- * A table and not six separate tests precisely because what is under test is
- * that they are INDISTINGUISHABLE: six bodies would each be free to grow their
- * own assertion, and the account-and-code oracle would come back one
+ * The failure modes, as a TABLE run through one body — because what is under
+ * test is that they are INDISTINGUISHABLE: six bodies would each be free to
+ * grow their own assertion, and the account-and-code oracle would come back one
  * maintenance at a time.
  */
 const FAILURE_SCENARIOS: ReadonlyArray<
   [name: string, arrange: () => void, overrides: Partial<ConfirmEmailCommand>]
 > = [
-  ['the email belongs to no account', storeVerifiableAccount, { email: UNKNOWN_EMAIL }],
-  ['the account has no active code', storeUser, {}],
-  [
-    'the code has expired',
-    () => {
-      storeUser()
-      storeVerification({ ageMs: EXPIRED_AGE_MS, attempts: NO_ATTEMPTS_SPENT })
-    },
-    {},
-  ],
+  ['the address has no pending registration', () => {}, {}],
+  ['the code has expired', () => storeUsablePending({ ageMs: EXPIRED_AGE_MS }), {}],
   [
     'the attempts are exhausted',
-    () => {
-      storeUser()
-      storeVerification({ ageMs: FRESH_AGE_MS, attempts: MAX_ATTEMPTS })
-    },
+    () => storeUsablePending({ attempts: MAX_ATTEMPTS }),
     {},
   ],
-  ['the code is wrong', storeVerifiableAccount, { code: WRONG_CODE }],
+  ['the code is wrong', () => storeUsablePending(), { code: WRONG_CODE }],
   [
     'a concurrent confirm won the race',
     () => {
-      storeVerifiableAccount()
+      storeUsablePending()
       consumeOutcome = LOST_RACE
     },
     {},
@@ -336,10 +288,6 @@ describe('ConfirmEmailUseCase', () => {
     async (_name, arrange, overrides) => {
       arrange()
 
-      // The MESSAGE and the CODE, not just the type. A branch that threw the
-      // same class with "no code for this address" would satisfy an
-      // `instanceof` assertion and would still be an oracle: it answers
-      // "does this address have an account?" to any anonymous caller.
       expect(await failureFrom(confirm(overrides))).toEqual({
         message: FAILURE_MESSAGE,
         code: FAILURE_CODE,
@@ -347,134 +295,112 @@ describe('ConfirmEmailUseCase', () => {
     },
   )
 
-  it('burns the code, verifies the user and opens a session, in that order', async () => {
-    storeVerifiableAccount()
-
-    await confirm()
-
-    // toEqual and not toContain: this single assertion kills a deleted step,
-    // any reordering of the three, and — through the trailing COMMIT — any of
-    // them escaping the transaction. `toContain` kills none of them.
-    expect(callLog).toEqual([CONSUME_CALL, MARK_VERIFIED_CALL, SAVE_TOKEN_CALL, COMMIT])
-  })
-
-  it('returns the pair and marks the account verified', async () => {
-    storeVerifiableAccount()
+  it('creates the verified user with THIS request password, opens a session, consumes the pending — one transaction', async () => {
+    storeUsablePending()
 
     const result = await confirm()
 
     expect(result).toEqual({ accessToken: ACCESS_TOKEN, refreshToken: OPAQUE_TOKEN })
-    expect(storedUser().emailVerifiedAt).toEqual(NOW)
-    expect(storedVerification()?.consumedAt).toEqual(NOW)
+    const user = storedUser()
+    expect(user.email.value).toBe(EMAIL)
+    expect(user.passwordHash).toBe(`${HASH_PREFIX}${PASSWORD}`)
+    expect(user.emailVerifiedAt).toEqual(NOW)
+    expect(user.id).toBe(GENERATED_ID)
+
+    // toEqual on the whole log: consume, then user save, then token save, all
+    // before COMMIT — deleting or reordering any of them fails this.
+    expect(callLog).toEqual([CONSUME_CALL, USERS_SAVE_CALL, SAVE_TOKEN_CALL, COMMIT])
+    expect(signSpy).toHaveBeenCalledWith({ sub: GENERATED_ID })
+    expect(pendingById(PENDING_ID)?.consumedAt).toEqual(NOW)
   })
 
-  it('signs the access token for the account that was just verified', async () => {
-    storeVerifiableAccount()
+  it('redeems whichever usable pending the code matches, not the most recent', async () => {
+    // Attacker pending is newer; the victim types the code of the OLDER one.
+    storeUsablePending({
+      id: OLD_PENDING_ID,
+      ageMs: OLDER_AGE_MS,
+      codeHash: `${DIGEST_PREFIX}${CODE}`,
+    })
+    storeUsablePending({
+      id: NEW_PENDING_ID,
+      ageMs: FRESH_AGE_MS,
+      codeHash: `${DIGEST_PREFIX}${OTHER_CODE}`,
+    })
 
-    await confirm()
+    await confirm({ code: CODE, password: PASSWORD })
 
-    expect(signSpy).toHaveBeenCalledWith({ sub: USER_ID })
+    // The account has the password from THIS confirm request, and the OLD
+    // pending — the one whose code was typed — is the one consumed.
+    expect(storedUser().passwordHash).toBe(`${HASH_PREFIX}${PASSWORD}`)
+    expect(pendingById(OLD_PENDING_ID)?.consumedAt).toEqual(NOW)
+    expect(pendingById(NEW_PENDING_ID)?.consumedAt).toBeNull()
   })
 
-  it('spends exactly one attempt on a wrong code, outside the transaction', async () => {
-    storeVerifiableAccount()
+  it('hashes the password even when no code matches, so match and no-match cost the same', async () => {
+    storeUsablePending()
 
     await failureFrom(confirm({ code: WRONG_CODE }))
 
-    // Exactly one: a counter incremented twice per guess halves the budget a
-    // legitimate user has for a typo.
-    expect(registerFailedAttemptSpy).toHaveBeenCalledTimes(ONE_CALL)
-    expect(registerFailedAttemptSpy).toHaveBeenCalledWith(VERIFICATION_ID, MAX_ATTEMPTS)
-    expect(storedVerification()?.attempts).toBe(NO_ATTEMPTS_SPENT + ONE_CALL)
+    expect(hashedPlaintexts).toEqual([PASSWORD])
+  })
 
-    // The whole log, so the absence of COMMIT is asserted rather than assumed:
-    // inside a transaction that rolls back — and this path always throws — the
-    // brute-force counter would be erased exactly when it matters (§8, line 3).
+  it('on no match with usable pendings, burns one attempt on the most recent and never opens the transaction', async () => {
+    storeUsablePending({ id: OLD_PENDING_ID, ageMs: OLDER_AGE_MS })
+    storeUsablePending({ id: NEW_PENDING_ID, ageMs: FRESH_AGE_MS })
+
+    await failureFrom(confirm({ code: WRONG_CODE }))
+
+    expect(registerFailedAttemptSpy).toHaveBeenCalledTimes(1)
+    expect(registerFailedAttemptSpy).toHaveBeenCalledWith(NEW_PENDING_ID, MAX_ATTEMPTS)
     expect(callLog).toEqual([REGISTER_FAILED_ATTEMPT_CALL])
     expect(uowSpy).not.toHaveBeenCalled()
   })
 
-  it('refuses the sixth wrong guess with the same error, having spent only five attempts', async () => {
-    storeVerifiableAccount()
-
-    for (let guess = 0; guess < MAX_ATTEMPTS; guess++) {
-      await failureFrom(confirm({ code: WRONG_CODE }))
-    }
-    expect(storedVerification()?.attempts).toBe(MAX_ATTEMPTS)
-
-    // Same error, same message — no distinguishing branch is introduced for
-    // "cap just spent" versus any other failure mode.
-    expect(await failureFrom(confirm({ code: WRONG_CODE }))).toEqual({
-      message: FAILURE_MESSAGE,
-      code: FAILURE_CODE,
-    })
-
-    // The cheap pre-filter (`isUsable`) is what stops the sixth guess before it
-    // ever reaches the repository: attempts stays at the cap, and the atomic
-    // write is never even attempted a sixth time.
-    expect(registerFailedAttemptSpy).toHaveBeenCalledTimes(MAX_ATTEMPTS)
-    expect(storedVerification()?.attempts).toBe(MAX_ATTEMPTS)
-  })
-
-  it('spends no attempt on a code that was never usable', async () => {
-    storeUser()
-    storeVerification({ ageMs: EXPIRED_AGE_MS, attempts: NO_ATTEMPTS_SPENT })
-
+  it('on no usable pending at all, throws without burning an attempt', async () => {
     await failureFrom(confirm())
 
-    // The counter exists to price guessing against a LIVE code. Charging an
-    // expired one costs the caller nothing and only wears out a row.
     expect(registerFailedAttemptSpy).not.toHaveBeenCalled()
-    expect(callLog).toEqual([])
   })
 
-  it('leaves the account unverified when the consume race is lost', async () => {
-    storeVerifiableAccount()
+  it('rejects a password that breaks the policy before touching the code', async () => {
+    storeUsablePending()
+
+    await expect(confirm({ password: WEAK_PASSWORD })).rejects.toBeInstanceOf(
+      InvalidPasswordError,
+    )
+
+    expect(hashedPlaintexts).toHaveLength(0)
+    expect(registerFailedAttemptSpy).not.toHaveBeenCalled()
+  })
+
+  it('throws inside the transaction when it loses the consume race, writing no user', async () => {
+    storeUsablePending()
     consumeOutcome = LOST_RACE
 
     await failureFrom(confirm())
 
-    // The throw comes from INSIDE the callback precisely so the transaction
-    // rolls back: a `return` there would leave the account verified by a code
-    // that some other request had already burned, with no session to show for
-    // it.
-    expect(storedUser().emailVerifiedAt).toBeNull()
-    expect(issuedToken()).toBeUndefined()
-    expect(callLog).toEqual([CONSUME_CALL])
+    expect(callLog).toEqual([CONSUME_CALL]) // no USERS_SAVE_CALL, no COMMIT
+    expect(usersRepository.users).toHaveLength(0)
   })
 
-  it('opens no transaction at all when the address is unknown', async () => {
-    storeVerifiableAccount()
+  it('turns a users.save unique violation into the generic failure and rolls back', async () => {
+    storeUsablePending()
+    usersRepository.users.push(
+      User.fromTrusted({
+        id: 'someone-else',
+        email: Email.fromTrusted(EMAIL),
+        passwordHash: 'x',
+        emailVerifiedAt: NOW,
+        createdAt: CREATED_AT,
+        updatedAt: CREATED_AT,
+      }),
+    )
 
-    await failureFrom(confirm({ email: UNKNOWN_EMAIL }))
-
-    expect(uowSpy).not.toHaveBeenCalled()
-    expect(callLog).toEqual([])
-  })
-
-  /**
-   * The clock ADVANCES one millisecond per reading, and that is what makes this
-   * falsifiable. A fixed stub returns the same instant however many times it is
-   * asked, so the test would be green by construction — decoration, by this
-   * project's own rule that a test surviving its own mutation is not a test.
-   */
-  it('reads the clock once, so every write shares one instant', async () => {
-    let reading = NOW.getTime()
-    const advancingUseCase = buildUseCase({
-      now: () => {
-        reading += CLOCK_STEP_MS
-
-        return new Date(reading)
-      },
+    expect(await failureFrom(confirm())).toEqual({
+      message: FAILURE_MESSAGE,
+      code: FAILURE_CODE,
     })
-    storeVerifiableAccount()
-
-    await advancingUseCase.execute({ email: EMAIL, code: CODE })
-
-    // Three columns across three tables that one transaction makes atomic, and
-    // that three clock readings would silently spread apart.
-    expect(storedVerification()?.consumedAt).toEqual(storedUser().emailVerifiedAt)
-    expect(issuedToken()?.createdAt).toEqual(storedUser().emailVerifiedAt)
-    expect(storedUser().updatedAt).toEqual(storedUser().emailVerifiedAt)
+    // Rejected before the token save and the COMMIT.
+    expect(callLog).toEqual([CONSUME_CALL])
   })
 })

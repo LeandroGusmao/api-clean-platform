@@ -6,8 +6,8 @@ import { env } from '#infra/config/env'
 import { createDatabase, type Database } from '#infra/database/client'
 import { buildApp } from '#main/app'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
+import { arrangeAccount } from './setup/arrange-account.js'
 
-const REGISTER_PATH = '/auth/register'
 const LOGIN_PATH = '/auth/login'
 const ME_PATH = '/auth/me'
 const POST_METHOD = 'POST'
@@ -47,21 +47,11 @@ afterAll(async () => {
 beforeEach(async () => {
   await db.delete(users)
 
-  await app.inject({
-    method: POST_METHOD,
-    url: REGISTER_PATH,
-    payload: { email: EMAIL, password: PASSWORD },
-  })
-  // `register` no longer answers the id (202, empty body) — read the row back
-  // instead. Marked verified directly at the row rather than through a real
-  // code: the real, SMTP-delivered confirm flow is `verify-email.spec.ts`'s
-  // job, and this file's own concern — `me` — only needs the account to
-  // already BE verified, since login now gates on it.
-  const [row] = await db
-    .update(users)
-    .set({ emailVerifiedAt: new Date() })
-    .where(eq(users.email, EMAIL))
-    .returning()
+  // Inserted directly: since slice 11 `register` writes a `pending_registrations`
+  // row, and the real SMTP-delivered confirm flow is `verify-email.spec.ts`'s
+  // job — this file's concern is `me`, which only needs the account verified.
+  await arrangeAccount(db, { email: EMAIL, password: PASSWORD })
+  const [row] = await db.select().from(users).where(eq(users.email, EMAIL))
   if (row === undefined) throw new Error(ROW_MISSING_MESSAGE)
   userId = row.id
   verifiedAt = row.emailVerifiedAt

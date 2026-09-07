@@ -19,8 +19,8 @@ const NOW = new Date('2026-08-26T12:00:00.000Z')
 
 // Three distinct instants, used only by the mapper-rehydration test below:
 // `User.create` (and therefore `makeUser`) always sets createdAt === updatedAt
-// and emailVerifiedAt to null, so it cannot produce a row where a swapped pair
-// of columns would be caught.
+// === emailVerifiedAt (all `now` since slice 11), so it cannot produce a row
+// where a swapped pair of columns would be caught.
 const REHYDRATION_CREATED_AT = new Date('2026-08-24T09:00:00.000Z')
 const REHYDRATION_UPDATED_AT = new Date('2026-08-25T15:30:00.000Z')
 const REHYDRATION_EMAIL_VERIFIED_AT = new Date('2026-08-26T18:45:00.000Z')
@@ -41,7 +41,6 @@ const NEW_PASSWORD_HASH = '$argon2id$v=19$m=65536,t=3,p=4$b3RoZXJzYWx0$newhash'
  * impossible to mistake for a rounding artefact.
  */
 const DISTANT_PAST = new Date('2020-01-01T00:00:00.000Z')
-const VERIFIED_AT = new Date('2026-08-27T09:15:00.000Z')
 
 let db: Database
 let pool: Pool
@@ -79,7 +78,7 @@ describe('DrizzleUsersRepository.save', () => {
     expect(row.id).toBe(ID)
     expect(row.email).toBe(EMAIL)
     expect(row.passwordHash).toBe(PASSWORD_HASH)
-    expect(row.emailVerifiedAt).toBeNull()
+    expect(row.emailVerifiedAt).toEqual(NOW)
     expect(row.createdAt).toEqual(NOW)
     expect(row.updatedAt).toEqual(NOW)
   })
@@ -238,7 +237,7 @@ describe('DrizzleUsersRepository.updatePasswordHash', () => {
     expect(after?.passwordHash).toBe(NEW_PASSWORD_HASH)
     expect(after?.email.value).toBe(before?.email.value)
     expect(after?.createdAt).toEqual(before?.createdAt)
-    expect(after?.emailVerifiedAt).toBeNull()
+    expect(after?.emailVerifiedAt).toEqual(before?.emailVerifiedAt)
   })
 
   it('never touches another row', async () => {
@@ -252,34 +251,5 @@ describe('DrizzleUsersRepository.updatePasswordHash', () => {
     const other = await repository.findById(OTHER_ID)
     expect(other?.passwordHash).toBe(PASSWORD_HASH)
     expect(other?.updatedAt).not.toEqual(DISTANT_PAST)
-  })
-})
-
-describe('DrizzleUsersRepository.markEmailVerified', () => {
-  it('writes email_verified_at and updated_at with the values passed', async () => {
-    await repository.save(makeUser(ID, EMAIL))
-
-    await repository.markEmailVerified(ID, VERIFIED_AT, VERIFIED_AT)
-
-    const stored = await repository.findById(ID)
-    expect(stored?.emailVerifiedAt).toEqual(VERIFIED_AT)
-    expect(stored?.updatedAt).toEqual(VERIFIED_AT)
-  })
-
-  it('touches neither email nor password_hash', async () => {
-    await repository.save(makeUser(ID, EMAIL))
-    const before = await repository.findById(ID)
-
-    await repository.markEmailVerified(ID, VERIFIED_AT, VERIFIED_AT)
-
-    const after = await repository.findById(ID)
-    expect(after?.email.value).toBe(before?.email.value)
-    expect(after?.passwordHash).toBe(before?.passwordHash)
-  })
-
-  it('is silent about an id that does not exist', async () => {
-    await expect(
-      repository.markEmailVerified(MISSING_USER_ID, VERIFIED_AT, VERIFIED_AT),
-    ).resolves.toBeUndefined()
   })
 })

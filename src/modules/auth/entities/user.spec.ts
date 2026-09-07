@@ -39,8 +39,8 @@ describe('User.create', () => {
     expect(user.updatedAt).toEqual(NOW)
   })
 
-  it('is born unverified', () => {
-    expect(createUser().emailVerifiedAt).toBeNull()
+  it('is born verified: the only path that reaches create has already proven the email', () => {
+    expect(createUser().emailVerifiedAt).toEqual(NOW)
   })
 
   it('keeps the email as a value object, not a string', () => {

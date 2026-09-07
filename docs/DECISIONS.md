@@ -1641,6 +1641,81 @@ Desenho completo em
 
 ---
 
+### 27 — A conta nasce na confirmação, com a senha do request de confirm — fecha o account pre-hijacking
+
+A fatia 10 introduziu, e estreitou sem fechar, uma vulnerabilidade real de
+**account pre-hijacking**: como só um código fica vivo por endereço e a senha da
+conta é a do último cadastro antes da confirmação, um atacante que recadastre o
+endereço da vítima entre o cadastro dela e a confirmação faz a conta nascer com a
+senha dele.
+
+A fatia 11 move a criação da conta para a confirmação. `POST /auth/register`
+passa a receber **só** `{ email }` e grava uma linha em `pending_registrations` —
+um código de uso único ligado a um endereço, **sem senha**. `POST
+/auth/email/verify` passa a receber `password`, casa o código contra **todos** os
+pendentes utilizáveis do endereço e, no match, cria a linha de `users` já
+verificada **com a senha daquele request**, numa transação que também consome o
+pendente e emite a sessão. Vários pendentes por endereço coexistem — são
+fungíveis, e é por isso que fecha: quem completa a confirmação escolhe a senha, e
+completar exige um código que só chegou na caixa do dono do endereço. O que sobra
+é o resíduo irredutível de qualquer verificação por e-mail (o atacante ter acesso
+à caixa da vítima, ou adivinhar o código de 6 dígitos dentro do teto de 5 e do
+TTL de 15 min).
+
+**Quebra de contrato deliberada, em cima da decisão 25:** `POST /auth/register`
+perde o campo `password` (schema `.strict()`, então um cliente antigo que ainda
+mande `password` toma `400`); `POST /auth/email/verify` ganha `password`
+obrigatório. `register` e `resend` param de abrir transação e perdem o `503`.
+Barato agora — boilerplate, sem cliente, sem front —, e é o mesmo raciocínio da
+decisão 25: adiar a quebra é adiar o fechamento.
+
+**Custo aceito:** o `confirm` paga argon2 em toda tentativa, inclusive código
+errado, para o tempo de `match` e `no-match` ser igual (mesmo padrão do hash-isca
+do `login`); um pendente que perdeu a corrida do `users.save` fica permanentemente
+não-resgatável; a poda dos pendentes é oportunista até a fatia do `cron.ts`; e o
+gate de `login` / a nulabilidade de `email_verified_at` ficam sem produtor até o
+login social.
+
+**Descartado:**
+
+- **4.1 — o pendente carrega o hash da senha, a conta nasce com a senha do
+  pendente.** Remove o hijack *determinístico* da fatia 10, mas deixa um resíduo
+  de timing + confusão de inbox: se o atacante mantém um código vivo na caixa da
+  vítima e ela digita **esse** em vez do dela, a conta nasce com a senha
+  pré-registrada do atacante. Foi desenhada por inteiro antes de ser recusada.
+- **Link de confirmação por pendente** em vez de código de 6 dígitos — fecharia o
+  resíduo da 4.1 mantendo a senha no `register`, mas vai contra a decisão §6.2 da
+  fatia 10 ("código, não link", digitável no celular).
+- **Expirar conta não verificada** — não fecha, só limita a janela de squatting.
+
+Desenho completo em
+[`specs/2026-09-06-account-pre-hijacking-design.md`](superpowers/specs/2026-09-06-account-pre-hijacking-design.md).
+
+---
+
+### 28 — Exceção pontual a R4: a migration de `email_verification_tokens` foi apagada
+
+R4 diz que migration aplicada é imutável. A migration
+`20260904014721_create_email_verification_tokens_table` foi **apagada**, não
+seguida por uma de `DROP`. É seguro porque não há ambiente deployado: a migration
+só viveu em CI (efêmero, recriado a cada run) e no Postgres local do
+desenvolvedor (sob controle dele — `docker compose down -v` resolve). A tabela
+existiu apenas entre as fatias 10 e 11.
+
+`pnpm db:generate` foi rodado de novo com a tabela fora do schema, diferenciando
+contra o snapshot de `create_refresh_tokens_table` — o histórico ficou `users →
+refresh_tokens → pending_registrations`, como se `email_verification_tokens`
+nunca tivesse existido.
+
+**Custo aceito:** R4 é regra escrita; esta é a exceção registrada, e não se
+repete. A alternativa R4-limpa (uma migration nova de `DROP TABLE`) deixaria um
+tombstone permanente no histórico para uma tabela que nunca chegou a produção.
+
+Desenho em
+[`specs/2026-09-06-account-pre-hijacking-design.md`](superpowers/specs/2026-09-06-account-pre-hijacking-design.md) §12.
+
+---
+
 ## 3. Defaults assumidos (não debatidos, abertos a objeção)
 
 | Tema | Escolha | Nota |
@@ -1887,9 +1962,12 @@ bloqueavam (lint de fronteira, build e path alias, mappers) viraram as decisões
 
 **Escopo de produto, não de arquitetura — decidir o que entra no boilerplate:**
 
-- ~~Verificação de e-mail~~ — **RESOLVIDA pela fatia 10** (decisões 13, 25 e 26).
-  Recuperação de senha continua em aberto — é a próxima fatia do roteiro, e
-  reusa a infraestrutura de e-mail que esta abriu.
+- ~~Verificação de e-mail~~ — **RESOLVIDA pela fatia 10** (decisões 13, 25 e 26)
+  e **fechada contra account pre-hijacking pela fatia 11** (decisões 27 e 28): a
+  conta passou a nascer na confirmação, com a senha do request de confirm.
+  Throttle de `confirm` por e-mail e deleção de conta varrendo os pendentes
+  continuam fatias próprias. Recuperação de senha continua em aberto — é a
+  próxima fatia do roteiro, e reusa a infraestrutura de e-mail que esta abriu.
 - **Login social / OAuth (Google primeiro)** — a fatia continua em aberto, mas
   três perguntas dela foram **decididas em 2026-09-06**, porque decidi-las
   enquanto não existe usuário é de graça e depois vira migração de dados:
