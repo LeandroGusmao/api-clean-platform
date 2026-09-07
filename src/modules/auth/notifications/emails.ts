@@ -6,6 +6,8 @@ const SECONDS_PER_MINUTE = 60
 const VERIFICATION_SUBJECT = 'Confirm your email address'
 const ALREADY_EXISTS_SUBJECT = 'Someone tried to register with your address'
 const PASSWORD_CHANGED_SUBJECT = 'Your password was changed'
+const PASSWORD_RESET_SUBJECT = 'Reset your password'
+const PASSWORD_RESET_COMPLETED_SUBJECT = 'Your password was reset'
 
 /**
  * Pure functions rather than bodies inlined in the use cases: this is the one
@@ -59,5 +61,44 @@ export function passwordChangedEmail(to: Email): EmailMessage {
     text:
       'Your password was just changed, and every other session was signed out.\n\n' +
       'If this was not you, reset your password immediately.',
+  }
+}
+
+/**
+ * Sent for `POST /auth/password/forgot` when the address has an account. It
+ * carries the reset token; the response itself is a bare 202, so this mail is
+ * the channel that diverges, and it reaches only whoever owns the address.
+ */
+export function passwordResetEmail(
+  to: Email,
+  token: string,
+  ttlSeconds: number,
+): EmailMessage {
+  const minutes = Math.round(ttlSeconds / SECONDS_PER_MINUTE)
+
+  return {
+    to: to.value,
+    subject: PASSWORD_RESET_SUBJECT,
+    text:
+      `Use this token to reset your password: ${token}\n\n` +
+      `It expires in ${minutes} minutes and can be used once.\n\n` +
+      'If you did not ask to reset your password, ignore this message — ' +
+      'nothing has changed.',
+  }
+}
+
+/**
+ * Sent after a successful reset. Every session was revoked; if the owner did
+ * not do this, running the recovery flow again locks out whoever did.
+ */
+export function passwordResetCompletedEmail(to: Email): EmailMessage {
+  return {
+    to: to.value,
+    subject: PASSWORD_RESET_COMPLETED_SUBJECT,
+    text:
+      'Your password was just reset through the account recovery flow, and ' +
+      'every session was signed out.\n\n' +
+      'If this was not you, reset your password again immediately to sign out ' +
+      'whoever did.',
   }
 }
