@@ -19,8 +19,8 @@ const NOW = new Date('2026-08-26T12:00:00.000Z')
 
 // Three distinct instants, used only by the mapper-rehydration test below:
 // `User.create` (and therefore `makeUser`) always sets createdAt === updatedAt
-// and emailVerifiedAt to null, so it cannot produce a row where a swapped pair
-// of columns would be caught.
+// === emailVerifiedAt (all `now` since slice 11), so it cannot produce a row
+// where a swapped pair of columns would be caught.
 const REHYDRATION_CREATED_AT = new Date('2026-08-24T09:00:00.000Z')
 const REHYDRATION_UPDATED_AT = new Date('2026-08-25T15:30:00.000Z')
 const REHYDRATION_EMAIL_VERIFIED_AT = new Date('2026-08-26T18:45:00.000Z')
@@ -79,7 +79,7 @@ describe('DrizzleUsersRepository.save', () => {
     expect(row.id).toBe(ID)
     expect(row.email).toBe(EMAIL)
     expect(row.passwordHash).toBe(PASSWORD_HASH)
-    expect(row.emailVerifiedAt).toBeNull()
+    expect(row.emailVerifiedAt).toEqual(NOW)
     expect(row.createdAt).toEqual(NOW)
     expect(row.updatedAt).toEqual(NOW)
   })
@@ -238,7 +238,7 @@ describe('DrizzleUsersRepository.updatePasswordHash', () => {
     expect(after?.passwordHash).toBe(NEW_PASSWORD_HASH)
     expect(after?.email.value).toBe(before?.email.value)
     expect(after?.createdAt).toEqual(before?.createdAt)
-    expect(after?.emailVerifiedAt).toBeNull()
+    expect(after?.emailVerifiedAt).toEqual(before?.emailVerifiedAt)
   })
 
   it('never touches another row', async () => {

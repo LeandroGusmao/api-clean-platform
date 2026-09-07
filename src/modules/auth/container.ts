@@ -154,13 +154,14 @@ export function makeAuthContainer(
       passwordChangedEmailSender,
     ),
     confirmEmail: new ConfirmEmailUseCase(
-      usersRepository,
-      emailVerificationsRepository,
+      pendingRegistrationsRepository,
       uow,
       refreshTokenIssuer,
       tokenSigner,
       tokenDigest,
+      hashProvider,
       clock,
+      idGenerator,
       config.EMAIL_VERIFICATION_MAX_ATTEMPTS,
     ),
     requestEmailVerification: new RequestEmailVerificationUseCase(

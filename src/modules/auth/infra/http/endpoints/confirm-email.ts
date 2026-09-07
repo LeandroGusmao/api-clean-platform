@@ -7,6 +7,7 @@ import {
   AUTH_TAG,
   BAD_REQUEST_STATUS,
   EXAMPLE_EMAIL,
+  EXAMPLE_PASSWORD,
   OK_STATUS,
   SERVICE_UNAVAILABLE_STATUS,
   TOO_MANY_REQUESTS_STATUS,
@@ -20,12 +21,18 @@ import {
 import { sessionTokensSchema } from '#modules/auth/infra/http/session-tokens'
 import { VERIFICATION_CODE_DIGITS } from '#modules/auth/services/email-verification-issuer'
 import { MAX_EMAIL_LENGTH } from '#modules/auth/value-objects/email'
+import {
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  PASSWORD_POLICY_PATTERN,
+} from '#modules/auth/value-objects/password'
 
 const CONFIRM_EMAIL_PATH = '/email/verify'
 const CONFIRM_EMAIL_SUMMARY = 'Confirm an email address'
 const CONFIRM_EMAIL_DESCRIPTION =
-  'Redeems the six-digit code emailed at registration, marks the account ' +
-  'verified, and opens a session — the same pair `login` issues.'
+  'Redeems the six-digit code emailed at registration together with a chosen ' +
+  'password, creates the verified account with that password, and opens a ' +
+  'session — the same pair `login` issues.'
 
 // Built from `VERIFICATION_CODE_DIGITS`, the issuer's own constant, rather
 // than a hardcoded `6`: the two would otherwise be free to drift, and a drift
@@ -44,6 +51,11 @@ const VERIFICATION_CODE_REASON = `must be exactly ${VERIFICATION_CODE_DIGITS} di
  * infer anything from. Whether that shape is the right code, or belongs to a
  * usable verification at all, is `EmailVerificationFailedError` territory
  * (§6.3 of the design spec): one answer for every failure mode.
+ *
+ * `password` carries the same policy `register` used to declare — the limits
+ * come from the value object, so the policy has exactly one definition. A
+ * malformed password answers 400 here, before `Password.create` and before the
+ * code is ever looked at.
  */
 const bodySchema = z.object({
   email: z
@@ -56,6 +68,12 @@ const bodySchema = z.object({
     .string()
     .regex(VERIFICATION_CODE_PATTERN, VERIFICATION_CODE_REASON)
     .meta({ examples: [EXAMPLE_VERIFICATION_CODE] }),
+  password: z
+    .string()
+    .min(MIN_PASSWORD_LENGTH)
+    .max(MAX_PASSWORD_LENGTH)
+    .regex(PASSWORD_POLICY_PATTERN)
+    .meta({ examples: [EXAMPLE_PASSWORD] }),
   /**
    * Which channel carries the refresh token back. This route mints a BRAND
    * NEW session with no incoming cookie or bearer either — the third endpoint
