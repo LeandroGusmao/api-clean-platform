@@ -11,6 +11,7 @@ import { InMemoryRefreshTokensRepository } from '#modules/auth/infra/in-memory/i
 import { InMemoryUsersRepository } from '#modules/auth/infra/in-memory/in-memory-users-repository'
 import { passwordResetCompletedEmail } from '#modules/auth/notifications/emails'
 import type { IHashProvider } from '#modules/auth/ports/hash-provider'
+import { noopAuthRepos } from '#modules/auth/repositories/noop-auth-repos'
 import type { AuthRepos, IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
 import { ResetPasswordUseCase } from '#modules/auth/use-cases/reset-password'
 import { Email } from '#modules/auth/value-objects/email'
@@ -117,6 +118,7 @@ beforeEach(() => {
   // Wrapped so the log records the order the repositories were touched INSIDE
   // the transaction. Order is the whole point of two of the tests below.
   const trackedRepos: AuthRepos = {
+    ...noopAuthRepos(),
     users: {
       save: (user) => usersRepository.save(user),
       findByEmail: (email) => usersRepository.findByEmail(email),
@@ -138,16 +140,6 @@ beforeEach(() => {
         callLog.push(REVOKE_ALL_CALL)
         return refreshTokensRepository.revokeAllForUser(userId, revokedAt)
       },
-    },
-    // Nothing in this suite reads pending registrations; the shape only has to
-    // satisfy AuthRepos.
-    pendingRegistrations: {
-      save: async () => {},
-      findUnconsumedByEmail: async () => [],
-      reissueCode: async () => {},
-      registerFailedAttempt: async () => false,
-      consume: async () => false,
-      deleteExpiredByEmail: async () => {},
     },
     passwordResetTokens: {
       issueOrRefresh: async () => true,
