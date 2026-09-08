@@ -4,11 +4,19 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { env } from '#infra/config/env'
 import { createDatabase, type Database } from '#infra/database/client'
 import type { AppLogger } from '#infra/observability/logger'
-import { CRON_EXIT_OK, cronExitCode, runCron } from '#main/run-cron'
+import {
+  AUTH_MODULE,
+  CRON_EXIT_OK,
+  CronInvocationError,
+  cronExitCode,
+  JOB_NAME_SEPARATOR,
+  runCron,
+} from '#main/run-cron'
 import { passwordResetTokens } from '#modules/auth/infra/drizzle/schema/password-reset-tokens'
 import { pendingRegistrations } from '#modules/auth/infra/drizzle/schema/pending-registrations'
 import { refreshTokens } from '#modules/auth/infra/drizzle/schema/refresh-tokens'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
+import { PRUNE_EXPIRED_REFRESH_TOKENS_JOB } from '#modules/auth/use-cases/prune-expired-refresh-tokens'
 
 const EMAIL = 'joao@example.com'
 /** A second account: `password_reset_tokens` allows one live token per user. */
@@ -16,8 +24,12 @@ const OTHER_EMAIL = 'maria@example.com'
 const PASSWORD_HASH = 'argon2-irrelevant'
 const HASH_LENGTH = 64
 const EXPECTED_JOBS = 3
+const ONE_JOB = 1
 const ROWS_DELETED_PER_JOB = 1
 const SURVIVORS_PER_TABLE = 1
+/** Both rows still there — the table's job never ran. */
+const SEEDED_PER_TABLE = 2
+const UNKNOWN_SELECTOR = 'auth:no-such-job'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 /** Past every retention window (the longest is 7 days, for refresh tokens). */
@@ -63,69 +75,74 @@ beforeEach(async () => {
 
 const ago = (ms: number) => new Date(Date.now() - ms)
 
-describe('runCron', () => {
-  it('prunes the long-dead rows of every table and keeps the recent ones', async () => {
-    const dead = ago(LONG_AGO_MS)
-    const recent = ago(RECENTLY_MS)
+/** One row past every retention window and one inside it, in each of the three tables. */
+async function seedDeadAndRecentRows(): Promise<void> {
+  const dead = ago(LONG_AGO_MS)
+  const recent = ago(RECENTLY_MS)
 
-    await db.insert(refreshTokens).values([
-      {
-        id: randomUUID(),
-        userId,
-        tokenHash: 'a'.repeat(HASH_LENGTH),
-        familyId: randomUUID(),
-        expiresAt: dead,
-        createdAt: dead,
-      },
-      {
-        id: randomUUID(),
-        userId,
-        tokenHash: 'b'.repeat(HASH_LENGTH),
-        familyId: randomUUID(),
-        expiresAt: recent,
-        createdAt: recent,
-      },
-    ])
-    await db.insert(pendingRegistrations).values([
-      {
-        id: randomUUID(),
-        email: EMAIL,
-        codeHash: 'digest:dead',
-        attempts: 0,
-        codeIssuedAt: dead,
-        expiresAt: dead,
-        createdAt: dead,
-      },
-      {
-        id: randomUUID(),
-        email: EMAIL,
-        codeHash: 'digest:recent',
-        attempts: 0,
-        codeIssuedAt: recent,
-        expiresAt: recent,
-        createdAt: recent,
-      },
-    ])
-    await db.insert(passwordResetTokens).values([
-      {
-        id: randomUUID(),
-        userId,
-        tokenHash: 'c'.repeat(HASH_LENGTH),
-        issuedAt: dead,
-        expiresAt: dead,
-        consumedAt: null,
-        createdAt: dead,
-      },
-      {
-        id: randomUUID(),
-        userId: otherUserId,
-        tokenHash: 'd'.repeat(HASH_LENGTH),
-        issuedAt: recent,
-        expiresAt: recent,
-        consumedAt: null,
-        createdAt: recent,
-      },
-    ])
+  await db.insert(refreshTokens).values([
+    {
+      id: randomUUID(),
+      userId,
+      tokenHash: 'a'.repeat(HASH_LENGTH),
+      familyId: randomUUID(),
+      expiresAt: dead,
+      createdAt: dead,
+    },
+    {
+      id: randomUUID(),
+      userId,
+      tokenHash: 'b'.repeat(HASH_LENGTH),
+      familyId: randomUUID(),
+      expiresAt: recent,
+      createdAt: recent,
+    },
+  ])
+  await db.insert(pendingRegistrations).values([
+    {
+      id: randomUUID(),
+      email: EMAIL,
+      codeHash: 'digest:dead',
+      attempts: 0,
+      codeIssuedAt: dead,
+      expiresAt: dead,
+      createdAt: dead,
+    },
+    {
+      id: randomUUID(),
+      email: EMAIL,
+      codeHash: 'digest:recent',
+      attempts: 0,
+      codeIssuedAt: recent,
+      expiresAt: recent,
+      createdAt: recent,
+    },
+  ])
+  await db.insert(passwordResetTokens).values([
+    {
+      id: randomUUID(),
+      userId,
+      tokenHash: 'c'.repeat(HASH_LENGTH),
+      issuedAt: dead,
+      expiresAt: dead,
+      consumedAt: null,
+      createdAt: dead,
+    },
+    {
+      id: randomUUID(),
+      userId: otherUserId,
+      tokenHash: 'd'.repeat(HASH_LENGTH),
+      issuedAt: recent,
+      expiresAt: recent,
+      consumedAt: null,
+      createdAt: recent,
+    },
+  ])
+}
+
+describe('runCron', () => {
+  it('with no selector, prunes the long-dead rows of every table and keeps the recent ones', async () => {
+    await seedDeadAndRecentRows()
 
     const outcomes = await runCron(env, SILENT_LOGGER)
 
@@ -141,5 +158,42 @@ describe('runCron', () => {
     expect(await db.select().from(refreshTokens)).toHaveLength(SURVIVORS_PER_TABLE)
     expect(await db.select().from(pendingRegistrations)).toHaveLength(SURVIVORS_PER_TABLE)
     expect(await db.select().from(passwordResetTokens)).toHaveLength(SURVIVORS_PER_TABLE)
+  })
+
+  it('with a qualified selector, runs that job alone and leaves the other tables untouched', async () => {
+    await seedDeadAndRecentRows()
+
+    const outcomes = await runCron(
+      env,
+      SILENT_LOGGER,
+      `${AUTH_MODULE}${JOB_NAME_SEPARATOR}${PRUNE_EXPIRED_REFRESH_TOKENS_JOB}`,
+    )
+
+    expect(outcomes).toHaveLength(ONE_JOB)
+    expect(outcomes[0]?.name).toBe(
+      `${AUTH_MODULE}${JOB_NAME_SEPARATOR}${PRUNE_EXPIRED_REFRESH_TOKENS_JOB}`,
+    )
+    expect(outcomes[0]?.metrics?.rowsDeleted).toBe(ROWS_DELETED_PER_JOB)
+
+    expect(await db.select().from(refreshTokens)).toHaveLength(SURVIVORS_PER_TABLE)
+    // The falsification: the other two jobs did NOT run, so their dead rows are
+    // still there. Without this, a selector that silently ran everything passes.
+    expect(await db.select().from(pendingRegistrations)).toHaveLength(SEEDED_PER_TABLE)
+    expect(await db.select().from(passwordResetTokens)).toHaveLength(SEEDED_PER_TABLE)
+  })
+
+  it('with a module selector, runs every job of that module', async () => {
+    await seedDeadAndRecentRows()
+
+    const outcomes = await runCron(env, SILENT_LOGGER, AUTH_MODULE)
+
+    expect(outcomes).toHaveLength(EXPECTED_JOBS)
+    expect(cronExitCode(outcomes)).toBe(CRON_EXIT_OK)
+  })
+
+  it('refuses an unknown selector instead of reporting a healthy empty run', async () => {
+    await expect(runCron(env, SILENT_LOGGER, UNKNOWN_SELECTOR)).rejects.toBeInstanceOf(
+      CronInvocationError,
+    )
   })
 })
