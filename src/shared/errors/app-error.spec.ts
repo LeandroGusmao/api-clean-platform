@@ -46,4 +46,12 @@ describe('error taxonomy', () => {
     expect(error.code).toBe(USER_NOT_FOUND_CODE)
     expect(error.message).toBe(USER_NOT_FOUND_MESSAGE)
   })
+
+  it('defaults to not being a security event', () => {
+    // Most failures are routine client traffic, not a signal to investigate —
+    // a subclass opts in explicitly, like `RefreshTokenReusedError` does.
+    const error = new UserNotFoundError()
+
+    expect(error.securityEvent).toBe(false)
+  })
 })

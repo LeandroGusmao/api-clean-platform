@@ -38,6 +38,7 @@ const CLIENT_ERROR_MIN_STATUS = 400
 const CLIENT_ERROR_MAX_STATUS = 499
 
 const UNHANDLED_ERROR_LOG_MESSAGE = 'unhandled error'
+const SECURITY_EVENT_LOG_MESSAGE = 'security event'
 
 const RETRY_AFTER_HEADER = 'retry-after'
 /**
@@ -138,6 +139,16 @@ function handleError(error: FastifyError, request: FastifyRequest, reply: Fastif
       // other category gets one — repeating a 409 will not resolve it.
       if (error instanceof TransientError) {
         reply.header(RETRY_AFTER_HEADER, String(RETRY_AFTER_SECONDS))
+      }
+
+      // The taxonomy answers most errors with no log line at all — decision
+      // 15 leaves the `code` in the response to carry that story. This is the
+      // one exception: a security event still reaches the client as an
+      // ordinary status, and without a log line here it is indistinguishable
+      // from routine traffic — refresh token reuse and a plain expired token
+      // would both be a silent 401.
+      if (error.securityEvent) {
+        request.log.warn({ code: error.code, traceId }, SECURITY_EVENT_LOG_MESSAGE)
       }
 
       return reply

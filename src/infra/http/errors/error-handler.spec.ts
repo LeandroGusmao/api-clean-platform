@@ -123,11 +123,31 @@ class RogueAppError extends AppError {
   }
 }
 
+/** Same status and code as `ProbeUnauthorizedError`; only the marker differs. */
+class ProbeSecurityEventError extends UnauthorizedError {
+  readonly code = PROBE_ERROR_CODE
+  override readonly securityEvent = true
+  constructor() {
+    super(PROBE_ERROR_MESSAGE)
+  }
+}
+
 const openApps: FastifyInstance[] = []
 
 afterEach(async () => {
   await Promise.all(openApps.splice(0).map((app) => app.close()))
 })
+
+/** pino's numeric level for `warn`. Every other line in these suites is 30 (info) or 50 (error). */
+const PINO_WARN_LEVEL = 40
+
+/** Parses each captured line as its own JSON log record, skipping blanks. */
+function logEntries(log: string): Array<Record<string, unknown>> {
+  return log
+    .split('\n')
+    .filter((line) => line.length > 0)
+    .map((line) => JSON.parse(line))
+}
 
 /** A server whose log is captured instead of printed. Closed in `afterEach`. */
 function createApp(): { app: FastifyInstance; lines: string[] } {
@@ -225,6 +245,34 @@ describe('error handler — taxonomy', () => {
     const result = await injectThrow(new ProbeConflictError())
 
     expect(result.headers[RETRY_AFTER_HEADER]).toBeUndefined()
+  })
+})
+
+describe('error handler — security events', () => {
+  // Reuse of a spent refresh token is the case this exists for: the response
+  // is an ordinary 401, so without this the only trace that detection ever
+  // fired is gone the moment the reply is sent.
+  it('logs a warning naming the code, for an error marked as a security event', async () => {
+    const result = await injectThrow(new ProbeSecurityEventError())
+
+    const warnings = logEntries(result.log).filter(
+      (entry) => entry.level === PINO_WARN_LEVEL,
+    )
+
+    expect(warnings).toEqual([expect.objectContaining({ code: PROBE_ERROR_CODE })])
+  })
+
+  // Same status and code as the security-event probe above — only the marker
+  // differs — so this proves the branch reads `securityEvent` and not `code`
+  // or `status`.
+  it('logs nothing extra for an ordinary AppError of the same status and code', async () => {
+    const result = await injectThrow(new ProbeUnauthorizedError())
+
+    const warnings = logEntries(result.log).filter(
+      (entry) => entry.level === PINO_WARN_LEVEL,
+    )
+
+    expect(warnings).toEqual([])
   })
 })
 
