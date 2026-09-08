@@ -851,6 +851,7 @@ worker ou num cron, onde status code não quer dizer nada.
 ```ts
 export abstract class AppError extends Error {
   abstract readonly code: string
+  readonly securityEvent: boolean = false
 }
 export abstract class NotFoundError extends AppError {}
 // ConflictError, UnauthorizedError, ForbiddenError, ValidationError,
@@ -861,6 +862,14 @@ O `code` é **declarado**, nunca derivado do nome da classe. Derivar faria o nom
 da classe virar contrato público em silêncio: um PR de renome passaria no
 typecheck, no lint e em todo teste, e quebraria o `switch (error.code)` de todo
 app em produção sem deixar rastro no diff.
+
+`securityEvent` é o único campo da base que não é sobre a RESPOSTA. Uma
+subclasse que o marca `true` — hoje só `RefreshTokenReusedError` — diz ao error
+handler que a falha em si é o sinal, não o tráfego normal de cliente que as
+outras seis categorias são; o handler responde do mesmo jeito, mas também
+escreve um `warn` com o `code` antes de responder (decisão 15). Sem o marcador,
+um reuso de refresh detectado — família inteira revogada — e um token expirado
+comum seriam a mesma linha de log: nenhuma.
 
 ### O mapa não cresce
 

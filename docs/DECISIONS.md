@@ -935,6 +935,21 @@ de import passa a importar.
 
 ### 15 — Logging: camada pura muda, correlação por AsyncLocalStorage
 
+> **Emendada em 2026-09-08.** A auditoria de 2026-09-07 mediu, não deduziu:
+> lançou um `RefreshTokenReusedError` contra um servidor real e o `code` nunca
+> apareceu no log. A tabela de cobertura abaixo tratava o `code` da RESPOSTA
+> como se fosse a linha de log — ele é contrato do cliente; o error handler
+> nunca escreveu nada no log para um `AppError` da taxonomia, só para o 500
+> genérico. Um token roubado sendo reapresentado e um token expirado comum eram
+> a mesma linha de log.
+>
+> Ganhou um segundo mecanismo, ortogonal ao `code`: `securityEvent: boolean`
+> na base pura (`false` por padrão), que o error handler lê para emitir um
+> `warn` com o `code` antes de responder — sem o use case logar, sem quebrar a
+> regra desta decisão. `RefreshTokenReusedError` é o primeiro caso marcado: a
+> família inteira é revogada quando ele é lançado, e essa revogação não podia
+> continuar silenciosa.
+
 > **Emendada em 2026-08-30.** O logger deixou de ser configuração do Fastify e
 > virou infra própria: `createLogger` em `infra/observability/logger.ts`, que o
 > `server.ts` recebe por `loggerInstance`. O esboço desta decisão já previa esse
@@ -976,14 +991,23 @@ app.addHook('onRequest', (req, _, done) => runWithContext(req.id, done))
 | Origem | O que registra |
 |---|---|
 | Fastify | request, status, duração, `reqId` |
-| Error handler (13) | erro completo + `traceId` |
+| Error handler — erro fora da taxonomia | `error` com o erro completo + `traceId` (13) |
+| Error handler — erro da taxonomia com `securityEvent: true` | `warn` com o `code` + `traceId` |
 | Infra | query lenta, falha de driver |
-| Taxonomia de erro (13) | **o `code` já diz qual ramo caiu** |
+| Taxonomia de erro (13) | **o `code` já diz qual ramo caiu, na RESPOSTA** |
 
-Esse último item é o que torna a opção viável: como a decisão 13 dá a cada falha
-um código semântico, `INVALID_CREDENTIALS` versus `USER_NOT_FOUND` **já é a linha
-de log**. Boa parte do que se logaria dentro do use case seria redundante com o
-erro que ele lança.
+Esse último item é o que torna a opção viável PARA O CLIENTE: como a decisão 13
+dá a cada falha um código semântico, `INVALID_CREDENTIALS` versus
+`USER_NOT_FOUND` já chega diferenciado no corpo, e replicar isso num log dentro
+do use case seria redundante com o erro que ele lança.
+
+**Não é o mesmo para o SERVIDOR.** O código na resposta não é uma linha de log —
+é só o que o handler ecoa de volta. A maioria das falhas da taxonomia não
+precisa de uma: são tráfego de cliente (senha errada, token expirado), não
+evento a investigar, e logar cada uma seria ruído. A exceção é a falha que É o
+sinal — reuso de refresh token detectado, família inteira revogada — e é isso
+que `securityEvent` cobre, marcando na própria classe do erro quem precisa
+do `warn`.
 
 **Redação de segredo é obrigatória** — `password`, `Authorization`, `token` e o
 cookie de refresh (decisão 12) nunca podem cair em log. O pino tem `redact`

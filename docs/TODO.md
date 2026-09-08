@@ -12,8 +12,9 @@
 > — as três entregues nas fatias 8, 9 e 10.
 >
 > **Auditoria de 2026-09-07** (posterior à fatia 13) acrescentou duas seções: um
-> furo aberto — a detecção de reuso não produz log — e o que falta para um app
-> que trate dado sensível. Nada nelas invalida o acima; elas somam.
+> furo aberto — a detecção de reuso não produzia log — e o que falta para um
+> app que trate dado sensível. Nada nelas invalida o acima; elas somam. O furo
+> foi fechado em 2026-09-08.
 
 ## ✅ Sequestro de conta antes da verificação — fechado pela fatia 11
 
@@ -39,37 +40,30 @@ social.
 Decisão 29 no [`DECISIONS.md`](DECISIONS.md); desenho completo em
 [`superpowers/specs/2026-09-07-password-recovery-design.md`](superpowers/specs/2026-09-07-password-recovery-design.md).
 
-## 🔴 Detecção de reuso de refresh não produz log — o **furo aberto**
+## ✅ Detecção de reuso de refresh sem log — fechado em 2026-09-08
 
-Achado da auditoria de 2026-09-07. É **falha**, não ausência, e por isso vem
-antes da lista: o mecanismo mais forte do desenho de sessão dispara, revoga a
-família inteira, e não deixa rastro nenhum.
+Era **falha**, não ausência, achada pela auditoria de 2026-09-07: o mecanismo
+mais forte do desenho de sessão disparava, revogava a família inteira, e não
+deixava rastro nenhum. Verificado ponta a ponta, não deduzido — lançando um
+`RefreshTokenReusedError` contra um servidor real, o `code` nunca aparecia no
+log; só a resposta ao cliente.
 
-O `error-handler.ts` devolve todo `AppError` da taxonomia **sem chamar log** —
-`request.log.error` só existe no ramo genérico de 500. Verificado ponta a ponta,
-lançando um `RefreshTokenReusedError` contra um servidor real:
+**O conserto:** `AppError` ganhou `securityEvent: boolean` (`false` por
+padrão, decisão 15 emendada), que o `error-handler.ts` lê para emitir um `warn`
+com o `code` antes de responder — sem o use case logar, sem quebrar a regra da
+decisão. `RefreshTokenReusedError` é o primeiro caso marcado. Mesmo probe de
+antes, depois do conserto:
 
 ```text
 HTTP status: 401 | body code: REFRESH_TOKEN_REUSED
-{"level":30,…,"res":{"statusCode":401},"responseTime":1.94,"msg":"request completed"}
-contém REFRESH_TOKEN_REUSED no log?  NAO
+{"level":40,…,"code":"REFRESH_TOKEN_REUSED","traceId":"…","msg":"security event"}
+{"level":30,…,"res":{"statusCode":401},"msg":"request completed"}
+contém REFRESH_TOKEN_REUSED no log?  SIM
 ```
 
-Um token roubado sendo replayado e um token expirado comum são **a mesma linha
-de log**. Sem alerta, sem investigação, e sem resposta para "quando começou?".
-
-**Dois documentos afirmam o contrário, e os dois se emendam junto com o
-conserto:**
-
-- `src/modules/auth/errors/refresh-token-reused-error.ts` — *"folding the two
-  together would erase from the logs the only trace that reuse detection ever
-  fired"*. Esse rastro não existe hoje.
-- [`DECISIONS.md`](DECISIONS.md), decisão 15, tabela de cobertura — *"Error
-  handler (13) → erro completo + `traceId`"*. Só vale para o 500.
-
-Conserto: `warn` no ramo de `AppError` para uma lista de códigos de segurança
-(`REFRESH_TOKEN_REUSED` primeiro), ou `warn` em todo 401/403. Horas de trabalho
-— e nada mais desta lista é observável enquanto ele não existir.
+Os dois documentos que afirmavam o contrário — o comentário em
+`refresh-token-reused-error.ts` e a tabela de cobertura da decisão 15 — foram
+emendados junto, para não voltar a ler como coberto.
 
 ## O resto, em ordem decrescente de urgência
 
@@ -156,11 +150,12 @@ permanentemente não-resgatável.
 ## O que eu faria a seguir
 
 **Se o alvo tratar dado sensível, a ordem muda**, e a auditoria de 2026-09-07
-propõe esta: (1) log de evento de segurança — sem ele nada mais é observável;
-(2) `helmet` e TTL do access token; (3) colunas de dispositivo e notificação de
-reuso, enquanto a migration ainda é de graça; (4) reabrir o lockout; (5) trilha
-de auditoria e teto absoluto de sessão; (6) MFA, antes do login social. Para o
-boilerplate genérico, segue valendo o que está abaixo.
+propõe esta: ~~(1) log de evento de segurança — sem ele nada mais é
+observável~~ fechado em 2026-09-08; (2) `helmet` e TTL do access token; (3)
+colunas de dispositivo e notificação de reuso, enquanto a migration ainda é de
+graça; (4) reabrir o lockout; (5) trilha de auditoria e teto absoluto de
+sessão; (6) MFA, antes do login social. Para o boilerplate genérico, segue
+valendo o que está abaixo.
 
 Login social / OAuth com Google. Com a recuperação de senha fechada, o `auth`
 está completo como boilerplate v1 e o próximo grande bloco de valor é entrar sem
