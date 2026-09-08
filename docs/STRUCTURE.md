@@ -92,8 +92,8 @@ src/
 └── main/                       # entrypoints + composition root
     ├── container.ts            # compõe os containers dos módulos
     ├── http.ts                 # monta o container e REGISTRA as rotas
-    ├── run-cron.ts             # runJobs + runCron: monta o grafo, roda os jobs de cada módulo
-    ├── cron.ts                 # one-shot: chama runCron, loga, exit 0/1 — agendado pela plataforma
+    ├── run-cron.ts             # qualify/selectJobs/runJobs/runCron — monta o grafo e roda os jobs
+    ├── cron.ts                 # one-shot: `cron.js [módulo|módulo:job]`, loga, exit 0/1/2
     └── worker.ts               # aspiracional (decisão 10)
 
 tests/integration/              # suíte com banco real

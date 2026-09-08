@@ -1767,8 +1767,16 @@ Desenho completo em
 
 ### 30 — Cron: `cron.ts` one-shot, registry de jobs por módulo, poda com retenção
 
+> **Emendada em 2026-09-07**, ainda dentro da fatia 13, antes do merge. A versão
+> original rodava **todos** os jobs a cada invocação e listava a seleção por
+> argv como descartada. O motivo da virada não é cadência, é que **o `cron.ts` é
+> global**: com um segundo módulo registrando jobs, uma invocação única obriga
+> `billing` a rodar na cadência de `auth`, um job lento de um módulo atrasa a
+> manutenção de outro, e o exit code vira um bit só para todos — o alerta diz
+> "o cron falhou", não qual módulo. O parágrafo de seleção abaixo é a emenda.
+
 A decisão 10 reservou o entrypoint `main/cron.ts` e nunca o construiu. A fatia da
-poda de tokens expirados o materializa, e com ele três sub-decisões.
+poda de tokens expirados o materializa, e com ele quatro sub-decisões.
 
 **One-shot + scheduler externo.** `cron.ts` sobe, roda os jobs de manutenção,
 loga o resultado de cada um, `exit 0` se todos passaram e `exit 1` se algum
@@ -1778,11 +1786,44 @@ compose). O scheduler da plataforma já entrega retry, histórico, alerting e
 timezone.
 
 - **Como agendar em produção:** Kubernetes `CronJob` executando `node
-  dist/main/cron.js`; ou ECS Scheduled Task; ou uma linha de `crontab` chamando
-  o mesmo comando. Nada disso mora no repo — cada app derivado escolhe.
+  dist/main/cron.js <alvo>`; ou ECS Scheduled Task; ou uma linha de `crontab`
+  chamando o mesmo comando. Nada disso mora no repo — cada app derivado escolhe.
 - **Em dev não há scheduler.** A poda só roda quando invocada à mão: `node
   --conditions=development --env-file-if-exists=.env --import tsx src/main/cron.ts`.
   Poda é manutenção, não corretude.
+
+**Seleção de alvo por argumento posicional, com nome qualificado pelo módulo.**
+O alvo é `módulo:job`, e o argumento é opcional:
+
+```
+node dist/main/cron.js                                       # tudo, todos os módulos
+node dist/main/cron.js auth                                  # todos os jobs do auth
+node dist/main/cron.js auth:prune-expired-refresh-tokens     # um job
+```
+
+A qualificação acontece no `run-cron.ts`, **no ponto em que as listas dos módulos
+são concatenadas** (`qualify(AUTH_MODULE, container.auth.jobs)`), e não no
+módulo: lá o prefixo seria convenção que um autor pode esquecer, e a colisão
+entre módulos voltaria. Aqui ela é impossível por construção.
+
+- **Sem argumento roda todos.** Conveniência de dev e de app pequeno com uma
+  entrada só. **Custo aceito:** se o scheduler de produção tiver entradas por
+  job E sobrar uma invocação sem argumento, as tabelas são varridas duas vezes —
+  inofensivo (a poda é idempotente), mas o único indício no log é
+  `cron run complete {jobs: 3}` contra `{jobs: 1}`. **Produção nomeia o alvo.**
+- **Custo aceito:** agendar por job significa N entradas no scheduler, cada uma
+  documentada pelo app derivado. Era o motivo pelo qual a versão original
+  descartava o argv; deixou de ser motivo para descartar e virou custo da
+  escolha.
+- **Alvo inexistente sai `exit 2`** (`CRON_EXIT_BAD_INVOCATION`), não `1`: é task
+  definition quebrada, não job quebrado, e um alerta que confunde os dois pagina
+  a pessoa errada. O erro carrega a lista de alvos válidos. `CronInvocationError`
+  é o tipo que separa isso de um banco fora do ar, que continua saindo `1`.
+- **Sem multi-seleção** (`cron.js a b`): precisa de dois, roda duas vezes. Um
+  argumento extra é recusado em vez de ignorado em silêncio.
+- **A validação roda depois de montar o container**, não antes: o container é a
+  fonte única de verdade sobre quais alvos existem, e um typo pagar a abertura de
+  um pool é mais barato que manter uma segunda lista em sincronia.
 
 **Descartado — processo longo com `node-cron`/`setInterval`:** auto-contido, mas
 traz dependência nova, um processo a mais para manter no ar, e dispara N vezes

@@ -10,6 +10,16 @@
 
 **Spec:** [`docs/superpowers/specs/2026-09-07-token-pruning-cron-design.md`](../specs/2026-09-07-token-pruning-cron-design.md)
 
+> **Emenda de 2026-09-07, depois da Task 5 e antes do merge.** As cinco tasks
+> abaixo ficam como executadas — não as reescrevi. Uma sexta mudança entrou
+> depois: **seleção de alvo por argv, com nome qualificado pelo módulo**
+> (`cron.js [módulo | módulo:job]`), porque o `cron.ts` é um entrypoint global e
+> sem seleção um módulo dita a cadência de todos os outros. O que ela adicionou:
+> `qualify`, `jobArgFrom`, `selectJobs` e `CronInvocationError` em `run-cron.ts`;
+> `CRON_EXIT_BAD_INVOCATION = 2` e um `try/catch` em `cron.ts`; três casos novos
+> em `cron.spec.ts` e dez em `run-cron.spec.ts`. Desenho e motivo na spec (§3.2
+> e §5.1) e na decisão 30.
+
 ## Global Constraints
 
 - **English only** in code, identifiers, strings, comments. Portuguese is allowed only in `*.md`.

@@ -4,6 +4,12 @@
 > [`2026-09-07-handoff-password-recovery.md`](../2026-09-07-handoff-password-recovery.md) §8.
 > Primeira dívida de manutenção do `auth` a virar fatia: três tabelas crescem
 > sem teto desde as fatias 4, 11 e 12.
+>
+> **Emendado em 2026-09-07**, depois da implementação e antes do merge: a §3.2
+> descartava a seleção de alvo por argv, e passou a adotá-la com nome
+> qualificado (`módulo:job`). O motivo não é cadência — é que o `cron.ts` é um
+> entrypoint **global**, e sem seleção um módulo dita a cadência de todos os
+> outros. Ver §3.2 e §5.1.
 
 ## 1. O que esta fatia entrega
 
@@ -79,10 +85,30 @@ uma linha e pronto. Perde porque não generaliza: o segundo módulo com job, ou 
 job de dispatch do outbox, força o formato de lista de qualquer jeito — melhor
 nascer com ele.
 
-**Descartado — `cron.ts <job-name>` por argv:** granularidade máxima (agendar
-cada job no seu horário), mas o scheduler externo vira N entradas e o boilerplate
-teria de documentar todas. Se algum app precisar de cadências diferentes, o
-scheduler pode filtrar por nome depois — fora de escopo.
+**Adotado (emenda) — alvo por argv, qualificado pelo módulo.**
+`node dist/main/cron.js [módulo | módulo:job]`; sem argumento roda tudo. O
+descarte original dizia "se algum app precisar de cadências diferentes, o
+scheduler filtra depois" — e isso não se sustenta: **o `cron.ts` é global**. Com
+um segundo módulo publicando jobs, uma invocação única obriga `billing` a rodar
+na cadência de `auth`, um job lento atrasa a manutenção de um módulo que não tem
+relação com ele, e o exit code vira um bit para todos.
+
+A qualificação (`auth:prune-expired-refresh-tokens`) é feita pelo `run-cron.ts`
+ao concatenar as listas, não pelos módulos: no módulo o prefixo seria convenção
+esquecível e a colisão entre módulos voltaria; no ponto de concatenação é
+estrutural.
+
+**Custo aceito (era o motivo do descarte):** agendar por job significa N entradas
+no scheduler, cada uma documentada pelo app derivado. E "sem argumento roda
+tudo" convive com entradas por job — se as duas coisas existirem, as tabelas são
+varridas duas vezes (idempotente, mas confuso no log). Produção nomeia o alvo.
+
+**Descartado — variável de ambiente** (`CRON_JOB=… node cron.js`): menos visível
+no `ps` e nos logs do ECS, e viraria mais uma chave no schema de config para não
+violar R6.
+
+**Descartado — multi-seleção** (`cron.js a b`): precisa de dois, roda duas vezes.
+Argumento extra é recusado, não ignorado.
 
 ### 3.3 — Camada da poda: use-case puro por tabela
 
@@ -277,11 +303,28 @@ return { /* ...tudo que já retorna... */, jobs }
 
 ### 5.1 — `main/run-cron.ts`, a função testável
 
-Três exports: `runJobs` (o laço, sobre uma lista explícita de `CronJob`, sem
-banco), `runCron` (monta o grafo, chama `runJobs`, fecha o pool) e `cronExitCode`
-(função pura sobre os `outcomes`). Separar `runJobs` do `runCron` é o que torna
-"um job que lança não derruba os outros", a ordem e o `cronExitCode` testáveis
-sem banco — `runCron` lê `container.auth.jobs` e não aceita job falso injetado.
+Cinco funções puras mais `runCron`, que é a única que toca o mundo:
+
+| Export | O que faz |
+|---|---|
+| `qualify(módulo, jobs)` | prefixa `módulo:` em cada job, no ponto da concatenação |
+| `jobArgFrom(argv)` | lê o alvo opcional de `process.argv`; arg extra → lança |
+| `selectJobs(jobs, alvo?)` | sem alvo → todos; `auth` → o módulo; `auth:x` → um; nada casou → lança |
+| `runJobs(jobs)` | o laço: série, isola job que lança, devolve `JobOutcome[]` |
+| `cronExitCode(outcomes)` | `0` / `1` sobre a lista |
+| `runCron(env, logger, alvo?)` | abre pool, monta o grafo, `qualify` → `selectJobs` → `runJobs`, fecha o pool |
+
+`CronInvocationError` acompanha: é o tipo que faz `cron.ts` responder `exit 2`
+para alvo inválido e manter `exit 1` para tudo o mais que pode falhar no
+caminho — um banco que recusa conexão não é task definition quebrada.
+
+Separar as puras do `runCron` é o que torna a ordem, "um job que lança não
+derruba os outros", a seleção e o exit code testáveis **sem banco** — `runCron`
+lê `container.auth.jobs` e não aceita job falso injetado.
+
+`qualify` e `selectJobs` moram no mesmo arquivo de propósito: são as duas
+metades de um formato — uma escreve `módulo:job`, a outra faz o parse. Separadas,
+o `JOB_NAME_SEPARATOR` e o formato derivam.
 
 ```ts
 export interface JobOutcome {
@@ -293,6 +336,38 @@ export interface JobOutcome {
 
 export const CRON_EXIT_OK = 0
 export const CRON_EXIT_JOB_FAILED = 1
+export const CRON_EXIT_BAD_INVOCATION = 2
+
+export const JOB_NAME_SEPARATOR = ':'
+export const AUTH_MODULE = 'auth'
+
+export class CronInvocationError extends Error { /* name = 'CronInvocationError' */ }
+
+export function qualify(moduleName: string, jobs: readonly CronJob[]): CronJob[] {
+  return jobs.map((job) => ({
+    ...job,
+    name: `${moduleName}${JOB_NAME_SEPARATOR}${job.name}`,
+  }))
+}
+
+export function jobArgFrom(argv: readonly string[]): string | undefined {
+  if (argv.length > MAX_ARGV_LENGTH) throw new CronInvocationError(TOO_MANY_ARGS)
+  return argv[SELECTOR_ARG_INDEX]
+}
+
+export function selectJobs(jobs: readonly CronJob[], selector?: string): CronJob[] {
+  if (selector === undefined) return [...jobs]
+
+  const selected = selector.includes(JOB_NAME_SEPARATOR)
+    ? jobs.filter((job) => job.name === selector)
+    : jobs.filter((job) => job.name.startsWith(`${selector}${JOB_NAME_SEPARATOR}`))
+
+  if (selected.length === 0) {
+    // The message is what an operator reads after a typo in a task definition.
+    throw new CronInvocationError(`${UNKNOWN_TARGET} "${selector}" — known targets: …`)
+  }
+  return selected
+}
 
 export async function runJobs(jobs: readonly CronJob[]): Promise<JobOutcome[]> {
   const outcomes: JobOutcome[] = []
@@ -314,11 +389,16 @@ export function cronExitCode(outcomes: readonly JobOutcome[]): number {
     : CRON_EXIT_OK
 }
 
-export async function runCron(env: Env, logger: AppLogger): Promise<JobOutcome[]> {
+export async function runCron(
+  env: Env,
+  logger: AppLogger,
+  selector?: string,
+): Promise<JobOutcome[]> {
   const { db, pool } = createDatabase(env)
   try {
     const container = makeContainer(db, env, logger)
-    return await runJobs([...container.auth.jobs])
+    const jobs = qualify(AUTH_MODULE, container.auth.jobs)
+    return await runJobs(selectJobs(jobs, selector))
   } finally {
     await pool.end()
   }
@@ -338,6 +418,16 @@ export async function runCron(env: Env, logger: AppLogger): Promise<JobOutcome[]
   passa pelo `IClock` de propósito.
 - `runCron` recebe `logger` porque `makeContainer` exige (o
   `BestEffortEmailSender`), mesmo não logando nada ele próprio.
+- **`AUTH_MODULE` é listado à mão**, como o `AUTH_PREFIX` do `app.ts`. Um módulo
+  que registre jobs e seja esquecido aqui nunca roda — por isso a linha tem de
+  aparecer no diff. A alternativa (iterar `Object.entries(container)`) exigiria
+  que toda fatia de container tivesse `jobs`, e isso fecharia de esguelha a §11
+  do `STRUCTURE.md`, que está em aberto.
+- **`selectJobs` roda depois do `makeContainer`.** O container é a fonte única de
+  verdade sobre quais alvos existem; validar antes exigiria uma segunda lista
+  para manter em sincronia, e um typo pagar a abertura de um pool é ruído.
+- **Alvo que não casa nada lança**, em vez de rodar zero jobs e reportar sucesso:
+  um typo no schedule pareceria uma execução saudável para sempre.
 
 ### 5.2 — `main/cron.ts`, a casca
 
@@ -347,7 +437,18 @@ import { createLogger } from '#infra/observability/logger'
 import { cronExitCode, runCron } from './run-cron.js'
 
 const logger = createLogger(env)
-const outcomes = await runCron(env, logger)
+
+let selector: string | undefined
+let outcomes: JobOutcome[]
+try {
+  selector = jobArgFrom(process.argv)
+  outcomes = await runCron(env, logger, selector)
+} catch (error) {
+  logger.error({ err: error, selector }, 'cron run aborted')
+  process.exit(
+    error instanceof CronInvocationError ? CRON_EXIT_BAD_INVOCATION : CRON_EXIT_JOB_FAILED,
+  )
+}
 
 for (const outcome of outcomes) {
   if (outcome.error) {
@@ -364,13 +465,16 @@ for (const outcome of outcomes) {
 }
 
 const exitCode = cronExitCode(outcomes)
-logger.info({ jobs: outcomes.length, exitCode }, 'cron run complete')
+logger.info({ jobs: outcomes.length, selector, exitCode }, 'cron run complete')
 process.exit(exitCode)
 ```
 
-Sem tratamento de erro fatal próprio: se `runCron` lançar (falha ao criar o pool,
-`makeContainer` explode), a promise rejeita, o Node imprime o stack e sai não-zero
-sozinho — que é o que um scheduler quer ver.
+O `catch` existe para o operador ler **uma linha** em vez de um stack de
+unhandled rejection, e — mais importante — para os dois modos de falha saírem com
+códigos diferentes: alvo inválido é `CRON_EXIT_BAD_INVOCATION` (task definition
+quebrada), qualquer outra coisa que estoure antes dos jobs rodarem (pool, grafo)
+é `CRON_EXIT_JOB_FAILED`. Conflatá-los pagina a pessoa errada. `selector` entra
+no log das duas saídas, para o operador saber o que foi pedido.
 
 ### 5.3 — Fronteira
 
@@ -421,16 +525,29 @@ confere a contagem **e que a linha viva continua lá** (deleção antes da troca
 `migrate-test-database` / `test-database-url` dos vizinhos). Semeia as três
 tabelas com expiradas + frescas, roda, assere:
 
-- 3 `outcomes`, todos sem `error`;
-- `rowsDeleted` por job bate com o semeado;
-- expiradas sumiram, frescas intactas;
-- `cronExitCode(outcomes) === CRON_EXIT_OK`.
+- **sem alvo:** 3 `outcomes` sem `error`, `rowsDeleted` por job bate com o
+  semeado, expiradas sumiram, frescas intactas, `cronExitCode === CRON_EXIT_OK`;
+- **alvo qualificado** (`auth:prune-expired-refresh-tokens`): 1 `outcome`, com o
+  nome qualificado; `refresh_tokens` podada — **e a falsificação:** as outras
+  duas tabelas continuam com as DUAS linhas, provando que os outros jobs não
+  rodaram. Sem essa asserção, um seletor que silenciosamente rodasse tudo passa;
+- **alvo de módulo** (`auth`): volta aos 3 `outcomes`;
+- **alvo inexistente:** a promise rejeita com `CronInvocationError`, em vez de
+  resolver com lista vazia.
 
-**Unit — 1 arquivo novo** (`src/main/run-cron.spec.ts`): `runJobs` com jobs
-falsos e `cronExitCode` sobre `outcomes` montados à mão. **O negativo:** um
-`CronJob` que lança na lista → o `outcome` dele carrega `error`, o job seguinte
-ainda roda, e `cronExitCode` devolve `CRON_EXIT_JOB_FAILED`. Fica aqui e não no
-`cron.spec.ts` porque `runCron` lê `container.auth.jobs` e não aceita job falso.
+**Unit — 1 arquivo novo** (`src/main/run-cron.spec.ts`): `runJobs`, `cronExitCode`,
+`qualify`, `jobArgFrom` e `selectJobs` com jobs falsos e `outcomes` montados à
+mão — inclusive um `billing:reconcile` fictício, para exercitar a seleção com
+mais de um módulo antes de existir um segundo módulo de verdade.
+
+**O negativo do laço:** um `CronJob` que lança na lista → o `outcome` dele
+carrega `error`, o job seguinte ainda roda, e `cronExitCode` devolve
+`CRON_EXIT_JOB_FAILED`. Fica aqui e não no `cron.spec.ts` porque `runCron` lê
+`container.auth.jobs` e não aceita job falso injetado.
+
+**Os negativos da invocação:** argumento extra e alvo desconhecido lançam
+`CronInvocationError` — o **tipo** é asserido, não só o throw, porque é ele que
+decide entre `exit 2` e `exit 1`. E um prefixo parcial (`aut`) não casa `auth:…`.
 
 ## 8. Custos aceitos
 
