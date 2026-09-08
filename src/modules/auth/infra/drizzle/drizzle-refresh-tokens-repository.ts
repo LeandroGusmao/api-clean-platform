@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from 'drizzle-orm'
+import { and, eq, isNull, lte, sql } from 'drizzle-orm'
 import type { Database } from '#infra/database/client'
 import {
   findDriverError,
@@ -18,6 +18,9 @@ import {
 
 /** Every lookup here returns at most one row. */
 const SINGLE_ROW = 1
+
+/** What `rowCount` means when the pg driver surfaces `null`. */
+const NO_ROW_AFFECTED = 0
 
 /**
  * Deliberately shorter than the connection-wide 5s of the connection-limits
@@ -153,5 +156,13 @@ export class DrizzleRefreshTokensRepository implements IRefreshTokensRepository 
       .update(refreshTokens)
       .set({ revokedAt })
       .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)))
+  }
+
+  async deleteExpiredBefore(cutoff: Date): Promise<number> {
+    const result = await this.db
+      .delete(refreshTokens)
+      .where(lte(refreshTokens.expiresAt, cutoff))
+
+    return result.rowCount ?? NO_ROW_AFFECTED
   }
 }

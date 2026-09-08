@@ -41,6 +41,11 @@ const NO_ROWS = 0
 const TWO_ROWS = 2
 const ID_PAD_LENGTH = 12
 
+const PRUNE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
+const ONE_HOUR_MS = 60 * 60 * 1000
+const PRUNED_ONE = 1
+const KEPT_ONE = 1
+
 let db: Database
 let pool: Pool
 let uow: IAuthUnitOfWork
@@ -234,5 +239,41 @@ describe('DrizzleRefreshTokensRepository', () => {
 
     await expect(failure).rejects.toThrow()
     expect(await db.select().from(refreshTokens)).toHaveLength(NO_ROWS)
+  })
+
+  it('deleteExpiredBefore removes only rows expired at or before the cutoff, and counts them', async () => {
+    const cutoff = new Date(NOW.getTime() - PRUNE_RETENTION_MS)
+    const dead = RefreshToken.fromTrusted({
+      id: nextId(),
+      userId,
+      tokenHash: HASH_A,
+      familyId: FAMILY_A,
+      expiresAt: new Date(cutoff.getTime() - ONE_HOUR_MS),
+      revokedAt: null,
+      replacedBy: null,
+      createdAt: new Date(cutoff.getTime() - ONE_HOUR_MS),
+    })
+    // Expired, but still inside the retention window — must survive.
+    const alive = RefreshToken.fromTrusted({
+      id: nextId(),
+      userId,
+      tokenHash: HASH_B,
+      familyId: FAMILY_A,
+      expiresAt: new Date(cutoff.getTime() + ONE_HOUR_MS),
+      revokedAt: null,
+      replacedBy: null,
+      createdAt: new Date(cutoff.getTime() + ONE_HOUR_MS),
+    })
+
+    const deleted = await uow(async ({ refreshTokens: repo }) => {
+      await repo.save(dead)
+      await repo.save(alive)
+      return repo.deleteExpiredBefore(cutoff)
+    })
+
+    expect(deleted).toBe(PRUNED_ONE)
+    const survivors = await db.select().from(refreshTokens)
+    expect(survivors).toHaveLength(KEPT_ONE)
+    expect(survivors[0]?.id).toBe(alive.id)
   })
 })

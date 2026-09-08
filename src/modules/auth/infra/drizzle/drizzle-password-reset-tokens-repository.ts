@@ -125,4 +125,12 @@ export class DrizzlePasswordResetTokensRepository
     // must fail CLOSED, not open, if the driver ever surfaces `null`.
     return (result.rowCount ?? NO_ROW_AFFECTED) !== NO_ROW_AFFECTED
   }
+
+  async deleteExpiredBefore(cutoff: Date): Promise<number> {
+    const result = await this.db
+      .delete(passwordResetTokens)
+      .where(lte(passwordResetTokens.expiresAt, cutoff))
+
+    return result.rowCount ?? NO_ROW_AFFECTED
+  }
 }

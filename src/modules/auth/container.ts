@@ -11,6 +11,7 @@ import { Sha256TokenDigest } from '#infra/providers/sha256-token-digest'
 import { SmtpEmailSender } from '#infra/providers/smtp-email-sender'
 import { SystemClock } from '#infra/providers/system-clock'
 import { UuidIdGenerator } from '#infra/providers/uuid-id-generator'
+import type { CronJob } from '#shared/ports/cron-job'
 import type { AuthConfig } from './config.js'
 
 /** Windows are configured in seconds; the entity and the rate limiter take milliseconds. */
@@ -49,6 +50,18 @@ import { GetUserProfileUseCase } from './use-cases/get-user-profile.js'
 import { LoginUserUseCase } from './use-cases/login-user.js'
 import { LogoutUseCase } from './use-cases/logout.js'
 import { LogoutAllUseCase } from './use-cases/logout-all.js'
+import {
+  PRUNE_EXPIRED_PASSWORD_RESET_TOKENS_JOB,
+  PruneExpiredPasswordResetTokensUseCase,
+} from './use-cases/prune-expired-password-reset-tokens.js'
+import {
+  PRUNE_EXPIRED_PENDING_REGISTRATIONS_JOB,
+  PruneExpiredPendingRegistrationsUseCase,
+} from './use-cases/prune-expired-pending-registrations.js'
+import {
+  PRUNE_EXPIRED_REFRESH_TOKENS_JOB,
+  PruneExpiredRefreshTokensUseCase,
+} from './use-cases/prune-expired-refresh-tokens.js'
 import { RefreshTokenUseCase } from './use-cases/refresh-token.js'
 import { RegisterUserUseCase } from './use-cases/register-user.js'
 import { RequestEmailVerificationUseCase } from './use-cases/request-email-verification.js'
@@ -122,6 +135,51 @@ export function makeAuthContainer(
    * sender, so an undeliverable verification code still fails loudly.
    */
   const bestEffortEmailSender = new BestEffortEmailSender(emailSender, logger)
+
+  const pruneExpiredRefreshTokens = new PruneExpiredRefreshTokensUseCase(
+    refreshTokensRepository,
+    clock,
+    config.REFRESH_TOKEN_PRUNE_RETENTION_SECONDS * MILLISECONDS_PER_SECOND,
+  )
+  const pruneExpiredPendingRegistrations = new PruneExpiredPendingRegistrationsUseCase(
+    pendingRegistrationsRepository,
+    clock,
+    config.PENDING_REGISTRATION_PRUNE_RETENTION_SECONDS * MILLISECONDS_PER_SECOND,
+  )
+  const pruneExpiredPasswordResetTokens = new PruneExpiredPasswordResetTokensUseCase(
+    passwordResetTokensRepository,
+    clock,
+    config.PASSWORD_RESET_TOKEN_PRUNE_RETENTION_SECONDS * MILLISECONDS_PER_SECOND,
+  )
+  /**
+   * What this module hands the `cron.ts` entrypoint. Each `run` re-wraps the
+   * use case's `{ rowsDeleted }` into a fresh object literal — that is what
+   * makes it a `Record<string, number>` for the runner's log line, without the
+   * use cases having to know the `CronJob` shape.
+   */
+  const jobs: CronJob[] = [
+    {
+      name: PRUNE_EXPIRED_REFRESH_TOKENS_JOB,
+      run: async () => {
+        const { rowsDeleted } = await pruneExpiredRefreshTokens.execute()
+        return { rowsDeleted }
+      },
+    },
+    {
+      name: PRUNE_EXPIRED_PENDING_REGISTRATIONS_JOB,
+      run: async () => {
+        const { rowsDeleted } = await pruneExpiredPendingRegistrations.execute()
+        return { rowsDeleted }
+      },
+    },
+    {
+      name: PRUNE_EXPIRED_PASSWORD_RESET_TOKENS_JOB,
+      run: async () => {
+        const { rowsDeleted } = await pruneExpiredPasswordResetTokens.execute()
+        return { rowsDeleted }
+      },
+    },
+  ]
 
   return {
     registerUser: new RegisterUserUseCase(
@@ -287,6 +345,12 @@ export function makeAuthContainer(
      * exercise the primitive on its own.
      */
     uow,
+    /**
+     * The module's maintenance jobs for the `cron.ts` entrypoint (decision 30).
+     * `run-cron.ts` concatenates every module's list; nothing here knows how
+     * they are scheduled.
+     */
+    jobs,
     /**
      * Drains the SMTP transport's pooled connections. `buildApp` wires this
      * into Fastify's `onClose`, next to the database pool's own `pool.end()` —

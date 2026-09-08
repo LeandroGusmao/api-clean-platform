@@ -132,6 +132,8 @@ function trackedRepos(): AuthRepos {
         refreshTokensRepository.revokeFamily(familyId, revokedAt),
       revokeAllForUser: (userId, revokedAt) =>
         refreshTokensRepository.revokeAllForUser(userId, revokedAt),
+      deleteExpiredBefore: (cutoff) =>
+        refreshTokensRepository.deleteExpiredBefore(cutoff),
     },
     pendingRegistrations: {
       save: (pending) => pendingRepo.save(pending),
@@ -147,6 +149,7 @@ function trackedRepos(): AuthRepos {
         return pendingRepo.consume(id, at)
       },
       deleteExpiredByEmail: (email, at) => pendingRepo.deleteExpiredByEmail(email, at),
+      deleteExpiredBefore: (cutoff) => pendingRepo.deleteExpiredBefore(cutoff),
     },
   }
 }

@@ -88,6 +88,14 @@ export class InMemoryPendingRegistrationsRepository
     }
   }
 
+  async deleteExpiredBefore(cutoff: Date): Promise<number> {
+    const survivors = this.rows.filter((each) => each.expiresAt > cutoff)
+    const deleted = this.rows.length - survivors.length
+    this.rows.length = 0
+    this.rows.push(...survivors)
+    return deleted
+  }
+
   /** The entity is frozen, so "updating" means rebuilding it in place. */
   #replaceMatching(
     matches: (pending: PendingRegistration) => boolean,

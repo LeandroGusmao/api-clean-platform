@@ -37,4 +37,16 @@ export interface IRefreshTokensRepository {
 
   /** Revokes every still-active token of one user, across every chain. */
   revokeAllForUser(userId: string, revokedAt: Date): Promise<void>
+
+  /**
+   * Full sweep for the cron. Deletes every row whose `expires_at` is at or
+   * before `cutoff`; the use case passes `clock.now() - retention`, so a dead
+   * row lingers one retention window and stays available for a post-mortem
+   * (design §3.4). Returns the deleted-row count for the run log.
+   *
+   * An unconditional `DELETE`: no transaction, no lock, no ordering. The prune
+   * tables share no invariant, and `replaced_by` carries no FK (decision 11)
+   * exactly so a chain need not be deleted in order.
+   */
+  deleteExpiredBefore(cutoff: Date): Promise<number>
 }

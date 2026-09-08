@@ -79,6 +79,10 @@ ficasse rasa em tudo, e são atacados nesta ordem:
 | 24 | Posse de tabela e FK entre módulos | Schema mora no módulo; FK só dentro do módulo |
 | 25 | Contrato do `register` | `202` sempre, sem corpo — quebra deliberada do `201`/`409` publicado |
 | 26 | Backfill de `email_verified_at` | Nenhum; ressalva normativa para apps derivados em produção |
+| 27 | Conta nasce na confirmação | `register` grava pendente sem senha; `email/verify` cria a conta com a senha daquele request |
+| 28 | Exceção pontual a R4 | Migration de `email_verification_tokens` apagada; não se repete |
+| 29 | Recuperação de senha | `forgot`/`reset` com token opaco de 256 bits, upsert com cooldown na cláusula `WHERE` |
+| 30 | Cron / poda | `cron.ts` one-shot + scheduler externo; registry de jobs por módulo; poda com janela de retenção por tabela |
 
 ---
 
@@ -1758,6 +1762,104 @@ tokens). Cinco decisões do desenho:
 
 Desenho completo em
 [`specs/2026-09-07-password-recovery-design.md`](superpowers/specs/2026-09-07-password-recovery-design.md).
+
+---
+
+### 30 — Cron: `cron.ts` one-shot, registry de jobs por módulo, poda com retenção
+
+> **Emendada em 2026-09-07**, ainda dentro da fatia 13, antes do merge. A versão
+> original rodava **todos** os jobs a cada invocação e listava a seleção por
+> argv como descartada. O motivo da virada não é cadência, é que **o `cron.ts` é
+> global**: com um segundo módulo registrando jobs, uma invocação única obriga
+> `billing` a rodar na cadência de `auth`, um job lento de um módulo atrasa a
+> manutenção de outro, e o exit code vira um bit só para todos — o alerta diz
+> "o cron falhou", não qual módulo. O parágrafo de seleção abaixo é a emenda.
+
+A decisão 10 reservou o entrypoint `main/cron.ts` e nunca o construiu. A fatia da
+poda de tokens expirados o materializa, e com ele quatro sub-decisões.
+
+**One-shot + scheduler externo.** `cron.ts` sobe, roda os jobs de manutenção,
+loga o resultado de cada um, `exit 0` se todos passaram e `exit 1` se algum
+lançou. Quem o agenda é a plataforma. É o padrão de deploy conteinerizado, e
+encaixa na decisão 16 (aplicação roda como processo, não como serviço no
+compose). O scheduler da plataforma já entrega retry, histórico, alerting e
+timezone.
+
+- **Como agendar em produção:** Kubernetes `CronJob` executando `node
+  dist/main/cron.js <alvo>`; ou ECS Scheduled Task; ou uma linha de `crontab`
+  chamando o mesmo comando. Nada disso mora no repo — cada app derivado escolhe.
+- **Em dev não há scheduler.** A poda só roda quando invocada à mão: `node
+  --conditions=development --env-file-if-exists=.env --import tsx src/main/cron.ts`.
+  Poda é manutenção, não corretude.
+
+**Seleção de alvo por argumento posicional, com nome qualificado pelo módulo.**
+O alvo é `módulo:job`, e o argumento é opcional:
+
+```
+node dist/main/cron.js                                       # tudo, todos os módulos
+node dist/main/cron.js auth                                  # todos os jobs do auth
+node dist/main/cron.js auth:prune-expired-refresh-tokens     # um job
+```
+
+A qualificação acontece no `run-cron.ts`, **no ponto em que as listas dos módulos
+são concatenadas** (`qualify(AUTH_MODULE, container.auth.jobs)`), e não no
+módulo: lá o prefixo seria convenção que um autor pode esquecer, e a colisão
+entre módulos voltaria. Aqui ela é impossível por construção.
+
+- **Sem argumento roda todos.** Conveniência de dev e de app pequeno com uma
+  entrada só. **Custo aceito:** se o scheduler de produção tiver entradas por
+  job E sobrar uma invocação sem argumento, as tabelas são varridas duas vezes —
+  inofensivo (a poda é idempotente), mas o único indício no log é
+  `cron run complete {jobs: 3}` contra `{jobs: 1}`. **Produção nomeia o alvo.**
+- **Custo aceito:** agendar por job significa N entradas no scheduler, cada uma
+  documentada pelo app derivado. Era o motivo pelo qual a versão original
+  descartava o argv; deixou de ser motivo para descartar e virou custo da
+  escolha.
+- **Alvo inexistente sai `exit 2`** (`CRON_EXIT_BAD_INVOCATION`), não `1`: é task
+  definition quebrada, não job quebrado, e um alerta que confunde os dois pagina
+  a pessoa errada. O erro carrega a lista de alvos válidos. `CronInvocationError`
+  é o tipo que separa isso de um banco fora do ar, que continua saindo `1`.
+- **Sem multi-seleção** (`cron.js a b`): precisa de dois, roda duas vezes. Um
+  argumento extra é recusado em vez de ignorado em silêncio.
+- **A validação roda depois de montar o container**, não antes: o container é a
+  fonte única de verdade sobre quais alvos existem, e um typo pagar a abertura de
+  um pool é mais barato que manter uma segunda lista em sincronia.
+
+**Descartado — processo longo com `node-cron`/`setInterval`:** auto-contido, mas
+traz dependência nova, um processo a mais para manter no ar, e dispara N vezes
+sob réplicas sem um lock. É padrão de monólito pequeno sem orquestrador.
+
+**Descartado — `pg_cron`:** contradiz a decisão 10, exige extensão no banco, e
+tira a poda do código versionado e testável.
+
+**Registry de jobs por módulo.** Cada módulo expõe `jobs: CronJob[]` na sua fatia
+do container; `run-cron.ts` concatena as listas. Módulo novo com job novo não
+toca `cron.ts`. É acesso a propriedade da fatia injetada, o mesmo mecanismo de
+`verifyAccessToken` — nenhum import entre módulos.
+
+**Descartado — método único `container.auth.pruneExpired()`:** não generaliza
+para o segundo módulo com job, nem para o dispatch do outbox.
+
+**Poda com janela de retenção por tabela.** `DELETE ... WHERE expires_at <=
+$cutoff`, com `cutoff = now − retention`. Cada tabela tem a sua env var
+(`*_PRUNE_RETENTION_SECONDS`, defaults 7 dias / 24 h / 24 h). Uma linha morta
+fica investigável por uma janela; `created_at` já era imutável "para ordenação
+de poda e auditoria".
+
+**Descartado — deletar no instante da expiração:** tira o rastro de post-mortem.
+**Descartado — retenção global única:** 7 dias de tokens de reset mortos é mais
+lixo do que o TTL de 30 min justifica. **Descartado — predicado com
+`revoked_at`/`consumed_at`:** um predicado único sobre a coluna `NOT NULL` que as
+três tabelas têm é o que qualquer leitor entende; o custo é um token revogado
+cedo com `expires_at` futuro ficar até `expires_at + retention`, limitado pelo
+TTL.
+
+**Fora de escopo:** o outbox transacional. Ele reusa este registry — é mais um
+`CronJob` de dispatch —, mas põe o código de verificação em texto claro em
+repouso no banco, e o §5.3 da fatia 10 adiou isso de propósito.
+
+Desenho completo em
+[`specs/2026-09-07-token-pruning-cron-design.md`](superpowers/specs/2026-09-07-token-pruning-cron-design.md).
 
 ---
 

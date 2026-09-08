@@ -40,4 +40,13 @@ export interface IPasswordResetTokensRepository {
    * conditional update and the caller turns that into the same generic failure.
    */
   consume(id: string, at: Date): Promise<boolean>
+
+  /**
+   * Full sweep for the cron. Deletes every row whose `expires_at` is at or
+   * before `cutoff`; the use case passes `clock.now() - retention`, so a dead
+   * row lingers one retention window and stays available for a post-mortem
+   * (design §3.4). Returns the deleted-row count for the run log. An
+   * unconditional `DELETE`: no transaction, no lock, no ordering.
+   */
+  deleteExpiredBefore(cutoff: Date): Promise<number>
 }

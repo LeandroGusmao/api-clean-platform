@@ -29,6 +29,11 @@ const ONE_WINNER = 1
 const ZERO = 0
 const START_ATTEMPTS = 3
 
+const PRUNE_RETENTION_MS = 24 * 60 * 60 * 1000
+const HOUR_MS = 60 * 60 * 1000
+const PRUNED_ONE = 1
+const KEPT_ONE = 1
+
 let db: Database
 let pool: Pool
 let repo: DrizzlePendingRegistrationsRepository
@@ -152,5 +157,20 @@ describe('DrizzlePendingRegistrationsRepository', () => {
 
     const remaining = await db.select().from(pendingRegistrations)
     expect(remaining.map((r) => r.id)).toEqual([ID_NEWER])
+  })
+
+  it('deleteExpiredBefore removes only rows expired at or before the cutoff, and counts them', async () => {
+    const cutoff = new Date(NOW.getTime() - PRUNE_RETENTION_MS)
+    const deadAgeMs = PRUNE_RETENTION_MS + TTL_SECONDS * MILLISECONDS_PER_SECOND + HOUR_MS
+    await repo.save(pendingAt(ID_OLDER, deadAgeMs, DIGEST_A))
+    // Expired, but still inside the retention window — must survive.
+    await repo.save(pendingAt(ID_NEWER, HOUR_MS, DIGEST_B))
+
+    const deleted = await repo.deleteExpiredBefore(cutoff)
+
+    expect(deleted).toBe(PRUNED_ONE)
+    const survivors = await db.select().from(pendingRegistrations)
+    expect(survivors).toHaveLength(KEPT_ONE)
+    expect(survivors[0]?.id).toBe(ID_NEWER)
   })
 })

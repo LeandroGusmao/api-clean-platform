@@ -31,6 +31,11 @@ const CONCURRENT = 8
 const ONE_WINNER = 1
 const ONE_ROW = 1
 
+const PRUNE_RETENTION_MS = 24 * 60 * 60 * 1000
+const GAP_MS = 60 * 60 * 1000
+const PRUNED_ONE = 1
+const KEPT_ONE = 1
+
 let db: Database
 let pool: Pool
 let repo: DrizzlePasswordResetTokensRepository
@@ -228,5 +233,39 @@ describe('DrizzlePasswordResetTokensRepository', () => {
     ])
 
     expect(outcomes.filter(Boolean)).toHaveLength(ONE_WINNER)
+  })
+
+  it('deleteExpiredBefore removes only rows expired at or before the cutoff, and counts them', async () => {
+    const cutoff = new Date(NOW.getTime() - PRUNE_RETENTION_MS)
+    const otherUserId = await insertOtherUser()
+    const deadAt = new Date(cutoff.getTime() - GAP_MS)
+    // Expired, but still inside the retention window — must survive.
+    const liveAt = new Date(cutoff.getTime() + GAP_MS)
+
+    await db.insert(passwordResetTokens).values({
+      id: ID_FIRST,
+      userId,
+      tokenHash: DIGEST_A,
+      issuedAt: deadAt,
+      expiresAt: deadAt,
+      consumedAt: null,
+      createdAt: deadAt,
+    })
+    await db.insert(passwordResetTokens).values({
+      id: ID_SECOND,
+      userId: otherUserId,
+      tokenHash: DIGEST_B,
+      issuedAt: liveAt,
+      expiresAt: liveAt,
+      consumedAt: null,
+      createdAt: liveAt,
+    })
+
+    const deleted = await repo.deleteExpiredBefore(cutoff)
+
+    expect(deleted).toBe(PRUNED_ONE)
+    const survivors = await db.select().from(passwordResetTokens)
+    expect(survivors).toHaveLength(KEPT_ONE)
+    expect(survivors[0]?.id).toBe(ID_SECOND)
   })
 })

@@ -144,3 +144,6 @@ vite.config.ts.timestamp-*
 
 #Local docs for reference
 docs/local.md
+
+# Visual brainstorming companion mockups
+.superpowers/brainstorm/
