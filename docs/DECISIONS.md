@@ -1887,6 +1887,49 @@ Desenho completo em
 
 ---
 
+### 31 — Login com Google: client-driven, verificação de ID token, sem merge silencioso
+
+A fatia 14 entrega `POST /auth/google`. O cliente roda o SDK do Google e manda o
+**ID token**; a API verifica a assinatura contra o JWKS público (`jose`,
+`createRemoteJWKSet` + `jwtVerify`), **sem client secret**. O fluxo redirect/BFF
+(`/start` + `/callback`, com `state`+PKCE e `GOOGLE_CLIENT_SECRET`) fica para uma
+fatia futura que reusa o núcleo de vínculo desta — é o padrão para um front web
+com backend próprio, mas o client-driven é o que a maioria dos apps mobile faz, é
+a entrega menor, e casa com a decisão 12 (corpo, um processo para os dois
+clientes) e a decisão 13 (que já previu *receber* um token).
+
+**Tabela `federated_identities`** — `(provider, provider_user_id)` e
+`(user_id, provider)` únicos, FK para `users` com `ON DELETE CASCADE`. Não guarda
+token do Google, só a identidade; `email_at_link` audita o endereço afirmado no
+vínculo sem virar autoridade sobre ele.
+
+**`users.password_hash` passa a aceitar `NULL`** — uma conta federada não tem
+senha. `login` já a absorve pelo decoy (`?? dummyHash`); `change-password` ganha
+um guard com decoy. Sentinela foi descartada: mentira gravada, frágil no
+`argon2.compare`.
+
+**Sem merge silencioso.** Google sobre um e-mail com conta-senha responde
+**`409 GOOGLE_LINK_REQUIRES_PASSWORD`**; o cliente repete o request com a senha do
+app, que é conferida (argon2 **fora** da transação, §8 do Unit of Work) antes de
+vincular. A recusa é **específica** de propósito — seguro só aqui porque o IdP já
+provou o endereço (§6, item 3). `email_verified: true` é obrigatório: sem ele o
+Google não provou nada, e `InvalidGoogleIdentityError` (401) cobre esse e todos os
+outros modos de falha de identidade num erro só.
+
+**`GOOGLE_CLIENT_ID` obrigatório no boot**, como `JWT_SECRET` (decisão 14).
+`GOOGLE_JWKS_URI` entra no env com default de produção (padrão do `MAIL_HOST`),
+para o teste de integração apontar para um JWKS local via override no `buildApp`.
+
+Resolve os itens 1, 2 e 3 de "Login social / OAuth (Google primeiro)" da §6: sem
+troca de e-mail (casa por `sub`); Google ganha de um cadastro pendente (conta
+nasce verificada, pendentes apagados no mesmo `uow`); Google sobre conta-senha
+exige a senha.
+
+Desenho completo em
+[`specs/2026-09-08-google-sign-in-design.md`](superpowers/specs/2026-09-08-google-sign-in-design.md).
+
+---
+
 ## 3. Defaults assumidos (não debatidos, abertos a objeção)
 
 | Tema | Escolha | Nota |
@@ -2141,9 +2184,14 @@ bloqueavam (lint de fronteira, build e path alias, mappers) viraram as decisões
   12** (decisão 29): `POST /auth/password/forgot` e `POST /auth/password/reset`
   entregues, reusando a infraestrutura de e-mail e o padrão de tabela com
   hash/expiração/uso único.
-- **Login social / OAuth (Google primeiro)** — a fatia continua em aberto, mas
-  três perguntas dela foram **decididas em 2026-09-06**, porque decidi-las
-  enquanto não existe usuário é de graça e depois vira migração de dados:
+- ~~**Login social / OAuth (Google primeiro)**~~ — **RESOLVIDA pela fatia 14
+  (decisão 31).** `POST /auth/google` client-driven: a API verifica o ID token
+  contra o JWKS do Google, sem client secret. Tabela `federated_identities`,
+  `users.password_hash` nulável, e os três itens abaixo implementados. O que fica
+  para fatias próprias: fluxo redirect/BFF, desvincular provedor, definir a
+  primeira senha numa conta só-Google, listar provedores no `/me`, restrição de
+  domínio `hd`. O registro dos três itens fica porque continua sendo o mapa do
+  desenho:
 
   1. **Não haverá troca de e-mail.** Com identidade federada o endereço deixa de
      ser um campo que o usuário possui e passa a ser **asserção do provedor**.

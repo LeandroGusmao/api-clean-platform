@@ -1,9 +1,9 @@
 # Módulo `auth`
 
 Autenticação e sessão. É o único módulo que sabe o que é uma credencial: cuida
-de cadastro, verificação de e-mail, login, sessão (via refresh token), troca de
-senha e logout. Outros módulos só recebem o `id` do usuário já autenticado — não
-importam nada daqui.
+de cadastro, verificação de e-mail, login (por senha ou com Google), sessão (via
+refresh token), troca e recuperação de senha e logout. Outros módulos só recebem
+o `id` do usuário já autenticado — não importam nada daqui.
 
 Este documento é para quem **consome** ou **lê** o `auth` e quer entender o
 fluxo. Detalhe de implementação e o porquê de cada decisão estão em
@@ -21,6 +21,7 @@ Todos sob o prefixo `/auth`.
 | `POST /email/verify/resend` | Reenvia o código de verificação | não |
 | `POST /email/verify` | Confirma o e-mail com o código + a senha escolhida; **cria a conta** e abre a sessão | não |
 | `POST /login` | Autentica por e-mail e senha; abre a sessão | não |
+| `POST /google` | Troca um ID token do Google por uma sessão; cria ou vincula a conta | não |
 | `POST /refresh` | Rotaciona o refresh token (renova a sessão) | refresh token |
 | `POST /logout` | Encerra esta sessão | refresh token |
 | `POST /logout-all` | Encerra **todas** as sessões da conta | access token |
@@ -70,10 +71,34 @@ com uma senha que ele conhece.
 **`POST /auth/login`** — corpo `{ email, password, refreshTransport? }`.
 Responde `200` com `{ accessToken, refreshToken? }`.
 
-- **`401 INVALID_CREDENTIALS`** — e-mail ou senha errados. Não diz qual.
+- **`401 INVALID_CREDENTIALS`** — e-mail ou senha errados. Não diz qual. Uma
+  conta só-Google (sem senha) cai aqui em qualquer tentativa.
 - **`403 EMAIL_NOT_VERIFIED`** — credencial certa, e-mail ainda não confirmado.
-  Na prática toda conta nasce verificada (passo 3 do cadastro); este gate fica
-  como defesa em profundidade e para o login social futuro.
+  Na prática toda conta nasce verificada (passo 3 do cadastro, ou o login com
+  Google); este gate fica como defesa em profundidade.
+
+### Login com Google
+
+**`POST /auth/google`** — corpo `{ idToken, password?, refreshTransport? }`. O
+cliente roda o SDK do Google, obtém o **ID token** e o manda aqui. A API verifica
+a assinatura contra o JWKS público do Google (`email_verified: true` é
+obrigatório) e emite `200` com `{ accessToken, refreshToken? }` — a mesma sessão
+do `login`.
+
+- **E-mail novo** → cria uma conta **verificada e sem senha**, vincula a
+  identidade Google, e abre a sessão.
+- **Cadastro pendente para o e-mail** → o Google ganha: a conta nasce verificada
+  e os pendentes daquele endereço são apagados.
+- **Segundo sign-in do mesmo Google** → caminho rápido; casa a identidade
+  guardada e abre a sessão.
+- **E-mail já tem conta com senha** → **`409 GOOGLE_LINK_REQUIRES_PASSWORD`**.
+  Reenvie o mesmo request com `password` (a senha **do app**) para provar a posse
+  e vincular o Google; senha errada → **`401 INVALID_CREDENTIALS`**. O vínculo
+  dispara um e-mail de aviso ao dono. Depois de vinculada, a conta entra tanto
+  pelo Google quanto pela senha.
+- **`401 INVALID_GOOGLE_IDENTITY`** — token inválido, expirado, de outro
+  `client_id`, de outro emissor, ou com `email_verified` falso. Um erro só para
+  todos.
 
 ### Sessão — dois tokens
 
@@ -156,8 +181,13 @@ quando um conflito no banco sobrevive às retentativas.
 
 ## O que este módulo **não** faz (ainda)
 
-- **Login social / OAuth** (Google) — decisões já tomadas no `DECISIONS.md §6`,
-  fatia futura.
+- **Fluxo redirect / BFF do Google** (`/start` + `/callback`, com `state`+PKCE e
+  `client_secret`) — o `POST /auth/google` client-driven já cobre mobile e SPA;
+  o redirect é fatia futura que reusa o mesmo núcleo de vínculo.
+- **Desvincular um provedor** de uma conta.
+- **Definir a primeira senha** numa conta só-Google.
+- **Listar os provedores vinculados** no `GET /me`.
+- **Restrição de domínio** (`hd` / Google Workspace).
 - **Deleção de conta.**
 
 ---
@@ -172,7 +202,12 @@ quando um conflito no banco sobrevive às retentativas.
   idêntica.
 - `reset` tem **um erro só** (`422 PASSWORD_RESET_FAILED`) para todos os modos
   de falha de token.
-- A conta só existe **depois** da confirmação; antes disso, `login` naquele
-  e-mail responde `401` (a conta não existe).
+- A conta só existe **depois** da confirmação (ou do primeiro login com Google);
+  antes disso, `login` naquele e-mail responde `401` (a conta não existe).
+- `POST /auth/google` só emite sessão para um ID token com `email_verified:
+  true`.
+- A recusa `409 GOOGLE_LINK_REQUIRES_PASSWORD` é **específica de propósito** — o
+  Google já provou o e-mail, então dizer "este endereço já tem conta" não vaza
+  nada. É a única porta do módulo que abre essa exceção ao anti-enumeração.
 - O hash da senha nunca aparece em resposta nem em log.
 - `code` de erro é contrato estável; `message` não é.
