@@ -37,5 +37,9 @@ export function noopAuthRepos(): AuthRepos {
       consume: async () => false,
       deleteExpiredBefore: async () => 0,
     },
+    federatedIdentities: {
+      save: async () => {},
+      findByProviderUserId: async () => null,
+    },
   }
 }

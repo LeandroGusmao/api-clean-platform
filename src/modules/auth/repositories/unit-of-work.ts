@@ -1,4 +1,5 @@
 import type { IUnitOfWork } from '#shared/ports/unit-of-work'
+import type { IFederatedIdentitiesRepository } from './federated-identities-repository.js'
 import type { IPasswordResetTokensRepository } from './password-reset-tokens-repository.js'
 import type { IPendingRegistrationsRepository } from './pending-registrations-repository.js'
 import type { IRefreshTokensRepository } from './refresh-tokens-repository.js'
@@ -17,12 +18,16 @@ import type { IUsersRepository } from './users-repository.js'
  *
  * `passwordResetTokens` likewise: a reset burns the token, writes the new
  * password hash and revokes every session in one transaction — one fact.
+ *
+ * `federatedIdentities` for the Google sign-in: it creates the `users` row, the
+ * identity link and the first refresh token in one transaction — one fact.
  */
 export interface AuthRepos {
   users: IUsersRepository
   refreshTokens: IRefreshTokensRepository
   pendingRegistrations: IPendingRegistrationsRepository
   passwordResetTokens: IPasswordResetTokensRepository
+  federatedIdentities: IFederatedIdentitiesRepository
 }
 
 export type IAuthUnitOfWork = IUnitOfWork<AuthRepos>
