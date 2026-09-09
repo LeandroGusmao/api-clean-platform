@@ -8,6 +8,7 @@ const ALREADY_EXISTS_SUBJECT = 'Someone tried to register with your address'
 const PASSWORD_CHANGED_SUBJECT = 'Your password was changed'
 const PASSWORD_RESET_SUBJECT = 'Reset your password'
 const PASSWORD_RESET_COMPLETED_SUBJECT = 'Your password was reset'
+const GOOGLE_ACCOUNT_LINKED_SUBJECT = 'A Google sign-in was connected to your account'
 
 /**
  * Pure functions rather than bodies inlined in the use cases: this is the one
@@ -100,5 +101,22 @@ export function passwordResetCompletedEmail(to: Email): EmailMessage {
       'every session was signed out.\n\n' +
       'If this was not you, reset your password again immediately to sign out ' +
       'whoever did.',
+  }
+}
+
+/**
+ * Sent when Google sign-in is linked to an account that already had a password.
+ * The link means someone can now sign in without the password, so the owner
+ * finding out is what makes an unwanted link recoverable — the same role
+ * `passwordChangedEmail` plays for the password change.
+ */
+export function googleAccountLinkedEmail(to: Email): EmailMessage {
+  return {
+    to: to.value,
+    subject: GOOGLE_ACCOUNT_LINKED_SUBJECT,
+    text:
+      'Sign in with Google was just connected to your account.\n\n' +
+      'If this was not you, reset your password immediately — whoever ' +
+      'connected it can then sign in without your password.',
   }
 }
