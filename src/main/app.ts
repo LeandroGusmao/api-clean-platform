@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import type { Env } from '#infra/config/env'
 import { createDatabase } from '#infra/database/client'
 import { makeAuthGuard } from '#infra/http/auth-guard'
+import { registerCors } from '#infra/http/cors'
 import { healthRoute } from '#infra/http/endpoints/health'
 import { registerOpenApi } from '#infra/http/openapi'
 import { registerRateLimit } from '#infra/http/rate-limit'
@@ -42,6 +43,10 @@ export async function buildApp(
   // after the routes, because it decorates the request rather than hooking
   // `onRoute` — but it belongs with the rest of the global setup.
   await app.register(fastifyCookie)
+
+  // Before the rate limiter, so a preflight `OPTIONS` is answered by the CORS
+  // plugin's own route rather than counting against the per-address ceiling.
+  await registerCors(app)
 
   // Before any route, because the ceiling has to cover everything registered
   // after it. It counts requests and not failed logins — that half is the
