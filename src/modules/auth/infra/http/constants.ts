@@ -15,6 +15,13 @@ export const UNAUTHORIZED_STATUS = 401
 export const FORBIDDEN_STATUS = 403
 export const NOT_FOUND_STATUS = 404
 /**
+ * A conflict with the current state. Google sign-in produces it two ways: the
+ * email already has a password account and no password was supplied to link
+ * (`GOOGLE_LINK_REQUIRES_PASSWORD`), or the address belongs to a mismatched
+ * federated-only account (`GOOGLE_SIGN_IN_CONFLICT`).
+ */
+export const CONFLICT_STATUS = 409
+/**
  * A rule failed on a request that was well-formed and properly authenticated.
  * The password change endpoint is the first to produce it from a domain error.
  */

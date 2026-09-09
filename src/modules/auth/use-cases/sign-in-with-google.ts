@@ -23,8 +23,12 @@ import type { IIdGenerator } from '#shared/ports/id-generator'
 /** Raw, untrusted input. */
 export interface SignInWithGoogleCommand {
   idToken: string
-  /** Present only when linking over an existing password account. */
-  password?: string
+  /**
+   * Present only when linking over an existing password account. `| undefined`
+   * spelled out for `exactOptionalPropertyTypes`: the HTTP body carries the key
+   * with an `undefined` value when the client omits it.
+   */
+  password?: string | undefined
 }
 
 export interface SignInWithGoogleResult {
