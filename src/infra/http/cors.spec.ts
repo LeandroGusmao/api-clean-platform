@@ -37,10 +37,9 @@ describe('registerCors', () => {
       headers: { origin: 'http://evil.example' },
     })
 
-    // The plugin pins a single static origin, so a foreign caller only ever
-    // sees the local one — which its browser then rejects as a mismatch.
-    expect(response.headers['access-control-allow-origin']).toBe(ALLOWED_ORIGIN)
-    expect(response.headers['access-control-allow-origin']).not.toContain('evil')
+    // With a list, the plugin reflects a listed origin and omits the header for
+    // anyone else — the foreign caller's browser then blocks the response.
+    expect(response.headers['access-control-allow-origin']).toBeUndefined()
     await app.close()
   })
 })
