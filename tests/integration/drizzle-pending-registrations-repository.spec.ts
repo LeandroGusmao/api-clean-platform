@@ -159,6 +159,42 @@ describe('DrizzlePendingRegistrationsRepository', () => {
     expect(remaining.map((r) => r.id)).toEqual([ID_NEWER])
   })
 
+  it('deleteAllByEmail wipes every row for the address — live and consumed alike — case-insensitively', async () => {
+    await repo.save(pendingAt(ID_NEWER, 0)) // live, EMAIL
+    await db.insert(pendingRegistrations).values({
+      id: ID_OLDER,
+      email: EMAIL,
+      codeHash: DIGEST_B,
+      attempts: ZERO,
+      codeIssuedAt: NOW,
+      expiresAt: new Date(NOW.getTime() + TTL_SECONDS * MILLISECONDS_PER_SECOND),
+      consumedAt: NOW,
+      createdAt: NOW,
+    })
+
+    await repo.deleteAllByEmail(Email.create(MIXED_CASE_EMAIL))
+
+    expect(await db.select().from(pendingRegistrations)).toHaveLength(0)
+  })
+
+  it('deleteAllByEmail leaves rows for other addresses untouched', async () => {
+    await repo.save(pendingAt(ID_NEWER, 0)) // EMAIL
+    await db.insert(pendingRegistrations).values({
+      id: ID_OLDER,
+      email: OTHER_EMAIL,
+      codeHash: DIGEST_A,
+      attempts: ZERO,
+      codeIssuedAt: NOW,
+      expiresAt: new Date(NOW.getTime() + TTL_SECONDS * MILLISECONDS_PER_SECOND),
+      createdAt: NOW,
+    })
+
+    await repo.deleteAllByEmail(Email.create(EMAIL))
+
+    const rows = await db.select().from(pendingRegistrations)
+    expect(rows.map((r) => r.email)).toEqual([OTHER_EMAIL])
+  })
+
   it('deleteExpiredBefore removes only rows expired at or before the cutoff, and counts them', async () => {
     const cutoff = new Date(NOW.getTime() - PRUNE_RETENTION_MS)
     const deadAgeMs = PRUNE_RETENTION_MS + TTL_SECONDS * MILLISECONDS_PER_SECOND + HOUR_MS

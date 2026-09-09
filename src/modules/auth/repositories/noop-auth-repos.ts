@@ -29,6 +29,7 @@ export function noopAuthRepos(): AuthRepos {
       registerFailedAttempt: async () => false,
       consume: async () => false,
       deleteExpiredByEmail: async () => {},
+      deleteAllByEmail: async () => {},
       deleteExpiredBefore: async () => 0,
     },
     passwordResetTokens: {

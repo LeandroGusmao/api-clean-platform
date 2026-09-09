@@ -88,6 +88,12 @@ export class InMemoryPendingRegistrationsRepository
     }
   }
 
+  async deleteAllByEmail(email: Email): Promise<void> {
+    const survivors = this.rows.filter((each) => !each.email.equals(email))
+    this.rows.length = 0
+    this.rows.push(...survivors)
+  }
+
   async deleteExpiredBefore(cutoff: Date): Promise<number> {
     const survivors = this.rows.filter((each) => each.expiresAt > cutoff)
     const deleted = this.rows.length - survivors.length
