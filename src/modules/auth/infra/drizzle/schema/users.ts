@@ -30,7 +30,11 @@ export const users = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     email: text('email').notNull(),
-    passwordHash: text('password_hash').notNull(),
+    /**
+     * Null for federated-identity accounts (slice 14), which have no password.
+     * Every other account is born with a hash at confirmation.
+     */
+    passwordHash: text('password_hash'),
     /**
      * Null until the account is verified. A reserved seat: nothing reads it
      * until the email verification slice, and it is here now so that neither

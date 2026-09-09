@@ -53,6 +53,10 @@ export class LoginUserUseCase {
     // Always compares, decoy included, so a missing account and a wrong
     // password cost the same. Returning early here would let the response time
     // answer "does this account exist?".
+    //
+    // A federated-only account has `passwordHash === null`; `??` funnels it to
+    // the decoy too, so it fails as `InvalidCredentialsError` like any other
+    // wrong credential — no separate branch, no oracle.
     const hashed = user?.passwordHash ?? this.hashProvider.dummyHash
     const matches = await this.hashProvider.compare(command.password, hashed)
 

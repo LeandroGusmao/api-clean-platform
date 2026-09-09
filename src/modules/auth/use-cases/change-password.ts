@@ -68,6 +68,17 @@ export class ChangePasswordUseCase {
     // still in the wild. No enumeration concern — the caller owns the account.
     if (user === null) throw new UserNotFoundError()
 
+    // A federated-only account has no current password to confirm. Run the
+    // decoy so the timing matches a wrong-password attempt, then refuse.
+    // "Set a first password" is a future slice.
+    if (user.passwordHash === null) {
+      await this.hashProvider.compare(
+        command.currentPassword,
+        this.hashProvider.dummyHash,
+      )
+      throw new InvalidCurrentPasswordError()
+    }
+
     // Argon2 #1, outside any transaction.
     const matches = await this.hashProvider.compare(
       command.currentPassword,

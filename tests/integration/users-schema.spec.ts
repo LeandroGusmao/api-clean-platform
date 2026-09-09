@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { env } from '#infra/config/env'
@@ -62,5 +63,13 @@ describe('users table', () => {
     expect(inserted?.id).toMatch(UUID_PATTERN)
     expect(inserted?.createdAt).toBeInstanceOf(Date)
     expect(inserted?.updatedAt).toBeInstanceOf(Date)
+  })
+
+  it('accepts a user row with no password hash (federated account)', async () => {
+    await db.insert(users).values({ email: EMAIL })
+
+    const [stored] = await db.select().from(users).where(eq(users.email, EMAIL))
+
+    expect(stored?.passwordHash).toBeNull()
   })
 })

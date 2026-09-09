@@ -28,6 +28,7 @@ export const toDomainUser = (row: UserRow): User =>
     id: row.id,
     // Wrapping the primitive is infra's job, not the domain's.
     email: Email.fromTrusted(row.email),
+    // Null for a federated account; `fromTrusted` accepts it.
     passwordHash: row.passwordHash,
     emailVerifiedAt: row.emailVerifiedAt,
     createdAt: row.createdAt,

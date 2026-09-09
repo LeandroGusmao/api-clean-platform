@@ -234,4 +234,22 @@ describe('LoginUserUseCase', () => {
 
     expect(result.accessToken).toBe(ACCESS_TOKEN)
   })
+
+  it('rejects a federated-only account (null hash) as invalid credentials, via the decoy', async () => {
+    // A federated account has no password. The `?? dummyHash` on the compare
+    // funnels it here, so any password fails as `InvalidCredentialsError` — no
+    // separate branch, no oracle.
+    usersRepository.users[0] = User.fromTrusted({
+      id: USER_ID,
+      email: Email.create(EMAIL),
+      passwordHash: null,
+      emailVerifiedAt: NOW,
+      createdAt: NOW,
+      updatedAt: NOW,
+    })
+
+    await expect(
+      useCase.execute({ email: EMAIL, password: PASSWORD }),
+    ).rejects.toBeInstanceOf(InvalidCredentialsError)
+  })
 })
