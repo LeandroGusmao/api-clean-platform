@@ -100,6 +100,10 @@ jobs:
           PORT: 3000
           DATABASE_URL: postgres://api_clean_platform:api_clean_platform_local_dev@127.0.0.1:5433/api_clean_platform_test
           JWT_SECRET: a-ci-secret-with-at-least-32-characters
+          # Required at boot with no default, like JWT_SECRET (decision 14).
+          # Any non-empty value lets the process start; this step never
+          # exchanges a real Google ID token.
+          GOOGLE_CLIENT_ID: a-ci-google-client-id.apps.googleusercontent.com
           # Required in production by env.ts, so the process refuses to boot
           # without them. Unroutable on purpose: this step only proves the
           # binary boots and answers /health, and never sends — the pooled
