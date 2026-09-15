@@ -1,5 +1,10 @@
 # Dev Database Seed Implementation Plan
 
+> **Emendado na execução:** não existe `infra/seeds/constants.ts`. Cada constante
+> mora no arquivo que a usa (`SEED_EMAIL_DOMAIN` em `factories.ts`,
+> `SEED_PASSWORD` em `index.ts`, e-mails e código nos arquivos de cenário). A
+> Task 3 abaixo descreve o layout planejado; a spec §4 e §5.2 refletem o final.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** `pnpm db:seed` brings the local development database to a known, reproducible state through per-module seed scenarios, plus the `db:*` scripts the byteflow project has and this one lacks.
