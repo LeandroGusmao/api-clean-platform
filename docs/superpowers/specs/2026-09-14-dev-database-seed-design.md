@@ -129,6 +129,8 @@ export interface SeedScenario<TPreparation = unknown> {
   readonly name: string
   /** One line for `--list`. */
   readonly description: string
+  /** Selected when `pnpm db:seed` runs with no target. */
+  readonly byDefault?: boolean
   /** Qualified names: `auth:base-users`. */
   readonly dependsOn?: readonly string[]
   run(ctx: SeedRunContext<TPreparation>): Promise<void>
@@ -223,7 +225,9 @@ Módulo sozinho seleciona o módulo inteiro — a mesma regra do seletor do
 - `runSeed(env, logger, selectors, modules = SEED_MODULES)`:
   1. `assertSeedTarget(env)`;
   2. resolve seleção e ordem **antes** de abrir conexão — o registry é
-     estático, não há container a consultar;
+     estático, não há container a consultar. Os defaults são os cenários com
+     `byDefault: true`, declarados pelo próprio módulo: o runner não conhece
+     nome de cenário nenhum;
   3. `createDatabase(env)` e `prepare()` de cada módulo;
   4. `createTransactionRunner` — uma transação: `wipe` de **todos** os módulos
      em ordem inversa de `SEED_MODULES`, depois os cenários em ordem;
