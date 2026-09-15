@@ -1,5 +1,12 @@
 # O que falta
 
+> **Fatia 14 (2026-09-08) entregou o login com Google client-driven.** `POST
+> /auth/google` verifica o ID token contra o JWKS do Google, sem client secret;
+> tabela `federated_identities`; `users.password_hash` nulável para contas
+> federadas. Fecha os três itens de "Login social" da §6 do `DECISIONS.md`
+> (decisão 31). O próximo grande bloco genérico é o **outbox transacional** —
+> `cron.ts` e o registry já existem, falta a tabela e a escrita transacional.
+>
 > Atualizado em 2026-09-07, ao fim da fatia 13 (poda de tokens no `cron.ts`).
 > Reescrito ao fim da fatia 12: a versão anterior, do fim da fatia 11,
 > recomendava a recuperação de senha como próximo passo — a fatia 12 a fechou,
@@ -70,7 +77,7 @@ emendados junto, para não voltar a ler como coberto.
 | Item | Depende de | Nota |
 |---|---|---|
 | ~~Poda de tokens expirados~~ | — | **fechada pela fatia 13.** `cron.ts` one-shot + registry de jobs por módulo; três use-cases de poda com janela de retenção por tabela varrem `refresh_tokens`, `pending_registrations` e `password_reset_tokens`. Decisão 30; spec `2026-09-07-token-pruning-cron-design.md` |
-| Login social / OAuth (Google) | decisão em aberto | três sub-perguntas já resolvidas — ver `DECISIONS.md` §6. **Não** haverá troca de e-mail, por causa disto. Interage com a recuperação de senha (conta ligada ao Google não tem senha para "recuperar") |
+| ~~Login social / OAuth (Google)~~ | — | **fechado pela fatia 14** (client-driven `POST /auth/google`, decisão 31). Falta: fluxo redirect/BFF, desvincular provedor, definir a primeira senha numa conta só-Google, listar provedores no `/me`, restrição de domínio `hd` |
 | Throttle de `confirm` por e-mail | nada | um anônimo pode manter um endereço não-confirmável queimando o teto de cinco tentativas do código a cada cooldown — o teto por IP não segura. Conserto: throttle por conta/e-mail |
 | CORS | primeiro front web | sem ele o modo cookie não funciona cross-origin |
 | Outbox transacional | **destravado** pela fatia 13 | o `cron.ts` e o registry de jobs existem — o dispatch do outbox é mais um `CronJob`. Falta a tabela e a escrita transacional. Um crash entre o `COMMIT` e o envio SMTP perde o e-mail em silêncio; custos aceitos no §11 da spec da fatia 11 e §5.3 da fatia 10 |
@@ -154,15 +161,17 @@ propõe esta: ~~(1) log de evento de segurança — sem ele nada mais é
 observável~~ fechado em 2026-09-08; (2) `helmet` e TTL do access token; (3)
 colunas de dispositivo e notificação de reuso, enquanto a migration ainda é de
 graça; (4) reabrir o lockout; (5) trilha de auditoria e teto absoluto de
-sessão; (6) MFA, antes do login social. Para o boilerplate genérico, segue
-valendo o que está abaixo.
+sessão; (6) MFA. Para o boilerplate genérico, segue valendo o que está abaixo.
 
-Login social / OAuth com Google. Com a recuperação de senha fechada, o `auth`
-está completo como boilerplate v1 e o próximo grande bloco de valor é entrar sem
-senha — as sub-perguntas de design já estão resolvidas (`DECISIONS.md` §6), e ele
-encosta na recuperação: conta ligada ao Google não tem senha para "recuperar".
+~~Login social / OAuth com Google~~ — **entregue pela fatia 14** (decisão 31).
+O `auth` agora tem identidade federada: cadastro, verificação, login por senha
+**ou com Google**, sessão com rotação, troca e recuperação de senha.
 
-A poda de tokens expirados que estava aqui **foi entregue pela fatia 13** — o
-`cron.ts` e o registry de jobs existem. O ganho de tabela é o **outbox
-transacional**: agora é só mais um `CronJob` de dispatch, mais a tabela e a
-escrita transacional nos use-cases que mandam e-mail.
+O próximo grande bloco genérico é o **outbox transacional**. O `cron.ts` e o
+registry de jobs já existem (fatia 13) — é só mais um `CronJob` de dispatch, mais
+a tabela e a escrita transacional nos use-cases que mandam e-mail. Fecha o furo
+de "crash entre o `COMMIT` e o envio SMTP perde o e-mail em silêncio".
+
+Miúdos que ficaram da fatia 14: fluxo redirect/BFF do Google, desvincular
+provedor, definir a primeira senha numa conta só-Google, listar provedores
+vinculados no `/me`, restrição de domínio `hd`.

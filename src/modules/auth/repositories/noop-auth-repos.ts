@@ -29,6 +29,7 @@ export function noopAuthRepos(): AuthRepos {
       registerFailedAttempt: async () => false,
       consume: async () => false,
       deleteExpiredByEmail: async () => {},
+      deleteAllByEmail: async () => {},
       deleteExpiredBefore: async () => 0,
     },
     passwordResetTokens: {
@@ -36,6 +37,10 @@ export function noopAuthRepos(): AuthRepos {
       findByHash: async () => null,
       consume: async () => false,
       deleteExpiredBefore: async () => 0,
+    },
+    federatedIdentities: {
+      save: async () => {},
+      findByProviderUserId: async () => null,
     },
   }
 }

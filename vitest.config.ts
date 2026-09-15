@@ -10,6 +10,7 @@ const INTEGRATION_GLOBAL_SETUP = './tests/integration/setup/migrate-test-databas
 
 const NODE_ENV_TEST = 'test'
 const TEST_JWT_SECRET = 'an-integration-test-secret-32-chars'
+const TEST_GOOGLE_CLIENT_ID = 'integration-test-google-client-id'
 
 /**
  * No `resolve.conditions` here on purpose: Vite already asks for the
@@ -49,6 +50,9 @@ export default defineConfig({
       // exits the process on an invalid environment, so without this the whole
       // integration project fails to boot rather than failing a test.
       JWT_SECRET: TEST_JWT_SECRET,
+      // Same story: required with no default (decision 14), so the integration
+      // project cannot boot without it.
+      GOOGLE_CLIENT_ID: TEST_GOOGLE_CLIENT_ID,
     },
   },
 })

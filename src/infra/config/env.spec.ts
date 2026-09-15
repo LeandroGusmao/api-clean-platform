@@ -25,6 +25,9 @@ import {
   DEFAULT_EMAIL_VERIFY_RATE_LIMIT_WINDOW_SECONDS,
   DEFAULT_EMAIL_VERIFY_RESEND_RATE_LIMIT_MAX_REQUESTS,
   DEFAULT_EMAIL_VERIFY_RESEND_RATE_LIMIT_WINDOW_SECONDS,
+  DEFAULT_GOOGLE_JWKS_URI,
+  DEFAULT_GOOGLE_SIGN_IN_RATE_LIMIT_MAX_REQUESTS,
+  DEFAULT_GOOGLE_SIGN_IN_RATE_LIMIT_WINDOW_SECONDS,
   DEFAULT_LOGIN_RATE_LIMIT_MAX_REQUESTS,
   DEFAULT_LOGIN_RATE_LIMIT_WINDOW_SECONDS,
   DEFAULT_PASSWORD_CHANGE_RATE_LIMIT_MAX_REQUESTS,
@@ -46,12 +49,14 @@ import {
 
 const VALID_DATABASE_URL = 'postgres://user:pass@localhost:5432/app'
 const VALID_JWT_SECRET = 'a-test-secret-with-at-least-32-chars'
+const VALID_GOOGLE_CLIENT_ID = 'client.apps.googleusercontent.com'
 
 describe('parseEnv', () => {
   it('rejects an empty PORT instead of coercing it to zero', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       PORT: '',
     })
 
@@ -76,6 +81,7 @@ describe('parseEnv', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
     })
 
     expect(result.success).toBe(true)
@@ -87,6 +93,12 @@ describe('parseEnv', () => {
       LOG_LEVEL: DEFAULT_LOG_LEVEL,
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
+      GOOGLE_JWKS_URI: DEFAULT_GOOGLE_JWKS_URI,
+      GOOGLE_SIGN_IN_RATE_LIMIT_MAX_REQUESTS:
+        DEFAULT_GOOGLE_SIGN_IN_RATE_LIMIT_MAX_REQUESTS,
+      GOOGLE_SIGN_IN_RATE_LIMIT_WINDOW_SECONDS:
+        DEFAULT_GOOGLE_SIGN_IN_RATE_LIMIT_WINDOW_SECONDS,
       RATE_LIMIT_MAX_REQUESTS: DEFAULT_RATE_LIMIT_MAX_REQUESTS,
       RATE_LIMIT_WINDOW_SECONDS: DEFAULT_RATE_LIMIT_WINDOW_SECONDS,
       ACCESS_TOKEN_TTL_SECONDS: DEFAULT_ACCESS_TOKEN_TTL_SECONDS,
@@ -151,6 +163,7 @@ describe('parseEnv', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       DATABASE_STATEMENT_TIMEOUT_MS: '',
     })
 
@@ -165,6 +178,7 @@ describe('parseEnv', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       DATABASE_STATEMENT_TIMEOUT_MS: '0',
     })
 
@@ -176,6 +190,7 @@ describe('parseEnv', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       DATABASE_LOCK_TIMEOUT_MS: '-1',
     })
 
@@ -189,6 +204,7 @@ describe('parseEnv', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       DATABASE_POOL_MAX: '0',
     })
 
@@ -202,6 +218,7 @@ describe('parseEnv', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       TRUST_PROXY: 'true',
     })
 
@@ -215,6 +232,7 @@ describe('parseEnv', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       TRUST_PROXY: '1',
     })
 
@@ -230,6 +248,7 @@ describe('parseEnv', () => {
       const result = parseEnv({
         DATABASE_URL: VALID_DATABASE_URL,
         JWT_SECRET: VALID_JWT_SECRET,
+        GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
         ...(value === undefined ? {} : { TRUST_PROXY: value }),
       })
 
@@ -242,6 +261,7 @@ describe('parseEnv', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       TRUST_PROXY: ' 10.0.0.0/8,loopback ',
     })
 
@@ -270,6 +290,7 @@ describe('mail configuration in production', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       NODE_ENV: NODE_ENV_PRODUCTION,
     })
 
@@ -280,6 +301,7 @@ describe('mail configuration in production', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       NODE_ENV: NODE_ENV_PRODUCTION,
       MAIL_HOST: VALID_PRODUCTION_MAIL_HOST,
       MAIL_PORT: VALID_PRODUCTION_MAIL_PORT,
@@ -294,6 +316,7 @@ describe('mail configuration in production', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       NODE_ENV: NODE_ENV_PRODUCTION,
       MAIL_HOST: VALID_PRODUCTION_MAIL_HOST,
       MAIL_PORT: VALID_PRODUCTION_MAIL_PORT,
@@ -317,6 +340,7 @@ describe('MAIL_USER and MAIL_PASSWORD must travel together', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       MAIL_USER: MAIL_USER_VALUE,
     })
 
@@ -327,6 +351,7 @@ describe('MAIL_USER and MAIL_PASSWORD must travel together', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       MAIL_PASSWORD: MAIL_PASSWORD_VALUE,
     })
 
@@ -337,6 +362,7 @@ describe('MAIL_USER and MAIL_PASSWORD must travel together', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       MAIL_USER: MAIL_USER_VALUE,
       MAIL_PASSWORD: MAIL_PASSWORD_VALUE,
     })
@@ -348,6 +374,7 @@ describe('MAIL_USER and MAIL_PASSWORD must travel together', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
     })
 
     expect(result.success).toBe(true)

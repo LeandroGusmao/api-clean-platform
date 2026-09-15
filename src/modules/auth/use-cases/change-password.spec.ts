@@ -358,6 +358,28 @@ describe('ChangePasswordUseCase', () => {
     expect(uowSpy).not.toHaveBeenCalled()
   })
 
+  it('refuses a federated-only account (null hash) after a decoy compare, writing nothing', async () => {
+    // No current password to confirm. The decoy keeps the timing level with a
+    // wrong-password attempt; "set a first password" is a future slice.
+    usersRepository.users.push(
+      User.fromTrusted({
+        id: USER_ID,
+        email: Email.fromTrusted(EMAIL),
+        passwordHash: null,
+        emailVerifiedAt: null,
+        createdAt: CREATED_AT,
+        updatedAt: CREATED_AT,
+      }),
+    )
+
+    await expect(change({ currentPassword: 'x' })).rejects.toBeInstanceOf(
+      InvalidCurrentPasswordError,
+    )
+    expect(compareSpy).toHaveBeenCalledWith('x', DUMMY_HASH)
+    expect(storedUser()?.passwordHash).toBeNull()
+    expect(uowSpy).not.toHaveBeenCalled()
+  })
+
   it('stamps updatedAt from the injected clock', async () => {
     storeUser(CURRENT_HASH)
 

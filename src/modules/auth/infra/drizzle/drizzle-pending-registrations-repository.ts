@@ -126,6 +126,12 @@ export class DrizzlePendingRegistrationsRepository
       )
   }
 
+  async deleteAllByEmail(email: Email): Promise<void> {
+    await this.db
+      .delete(pendingRegistrations)
+      .where(sql`lower(${pendingRegistrations.email}) = ${email.value}`)
+  }
+
   async deleteExpiredBefore(cutoff: Date): Promise<number> {
     const result = await this.db
       .delete(pendingRegistrations)

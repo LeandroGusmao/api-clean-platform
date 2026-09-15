@@ -5,6 +5,9 @@ import {
   DEFAULT_EMAIL_VERIFICATION_TTL_SECONDS,
   DEFAULT_EMAIL_VERIFY_RATE_LIMIT_MAX_REQUESTS,
   DEFAULT_EMAIL_VERIFY_RESEND_RATE_LIMIT_MAX_REQUESTS,
+  DEFAULT_GOOGLE_JWKS_URI,
+  DEFAULT_GOOGLE_SIGN_IN_RATE_LIMIT_MAX_REQUESTS,
+  DEFAULT_GOOGLE_SIGN_IN_RATE_LIMIT_WINDOW_SECONDS,
   DEFAULT_PASSWORD_RESET_TOKEN_PRUNE_RETENTION_SECONDS,
   DEFAULT_PENDING_REGISTRATION_PRUNE_RETENTION_SECONDS,
   DEFAULT_REFRESH_TOKEN_PRUNE_RETENTION_SECONDS,
@@ -13,6 +16,9 @@ import {
 
 const VALID_SECRET = 'a-test-secret-with-at-least-32-chars'
 const TOO_SHORT_SECRET = 'a'.repeat(31)
+const VALID_GOOGLE_CLIENT_ID = 'client.apps.googleusercontent.com'
+/** The two required, no-default fields — spread into every otherwise-minimal env. */
+const MINIMAL_ENV = { JWT_SECRET: VALID_SECRET, GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID }
 
 describe('authEnvSchema', () => {
   it('rejects a secret shorter than 32 characters', () => {
@@ -26,7 +32,7 @@ describe('authEnvSchema', () => {
   it('rejects an empty TTL instead of coercing it to zero', () => {
     // A TTL of zero would mint every token already expired.
     const result = authEnvSchema.safeParse({
-      JWT_SECRET: VALID_SECRET,
+      ...MINIMAL_ENV,
       ACCESS_TOKEN_TTL_SECONDS: '',
     })
 
@@ -34,14 +40,14 @@ describe('authEnvSchema', () => {
   })
 
   it('defaults the TTL to one hour', () => {
-    const result = authEnvSchema.safeParse({ JWT_SECRET: VALID_SECRET })
+    const result = authEnvSchema.safeParse(MINIMAL_ENV)
 
     expect(result.success).toBe(true)
     expect(result.data?.ACCESS_TOKEN_TTL_SECONDS).toBe(DEFAULT_ACCESS_TOKEN_TTL_SECONDS)
   })
 
   it('defaults the verification code TTL to 15 minutes', () => {
-    const result = authEnvSchema.safeParse({ JWT_SECRET: VALID_SECRET })
+    const result = authEnvSchema.safeParse(MINIMAL_ENV)
 
     expect(result.success).toBe(true)
     expect(result.data?.EMAIL_VERIFICATION_TTL_SECONDS).toBe(
@@ -52,7 +58,7 @@ describe('authEnvSchema', () => {
   it('rejects an empty verification TTL instead of coercing it to zero', () => {
     // A TTL of zero would expire every code before it could ever be used.
     const result = authEnvSchema.safeParse({
-      JWT_SECRET: VALID_SECRET,
+      ...MINIMAL_ENV,
       EMAIL_VERIFICATION_TTL_SECONDS: '',
     })
 
@@ -60,7 +66,7 @@ describe('authEnvSchema', () => {
   })
 
   it('gives register its own rate limit pair, not the login one', () => {
-    const result = authEnvSchema.safeParse({ JWT_SECRET: VALID_SECRET })
+    const result = authEnvSchema.safeParse(MINIMAL_ENV)
 
     expect(result.success).toBe(true)
     expect(result.data?.REGISTER_RATE_LIMIT_MAX_REQUESTS).toBe(
@@ -69,7 +75,7 @@ describe('authEnvSchema', () => {
   })
 
   it('defaults the email-verify and resend rate limits independently', () => {
-    const result = authEnvSchema.safeParse({ JWT_SECRET: VALID_SECRET })
+    const result = authEnvSchema.safeParse(MINIMAL_ENV)
 
     expect(result.success).toBe(true)
     expect(result.data?.EMAIL_VERIFY_RATE_LIMIT_MAX_REQUESTS).toBe(
@@ -81,7 +87,7 @@ describe('authEnvSchema', () => {
   })
 
   it('defaults the password recovery knobs', () => {
-    const config = authEnvSchema.parse({ JWT_SECRET: VALID_SECRET })
+    const config = authEnvSchema.parse(MINIMAL_ENV)
 
     expect(config.PASSWORD_RESET_TTL_SECONDS).toBe(1800)
     expect(config.PASSWORD_FORGOT_RESEND_COOLDOWN_SECONDS).toBe(60)
@@ -93,12 +99,12 @@ describe('authEnvSchema', () => {
 
   it('rejects a zero TTL for the reset token', () => {
     expect(() =>
-      authEnvSchema.parse({ JWT_SECRET: VALID_SECRET, PASSWORD_RESET_TTL_SECONDS: '0' }),
+      authEnvSchema.parse({ ...MINIMAL_ENV, PASSWORD_RESET_TTL_SECONDS: '0' }),
     ).toThrow()
   })
 
   it('defaults the per-table prune retention windows', () => {
-    const config = authEnvSchema.parse({ JWT_SECRET: VALID_SECRET })
+    const config = authEnvSchema.parse(MINIMAL_ENV)
 
     expect(config.REFRESH_TOKEN_PRUNE_RETENTION_SECONDS).toBe(
       DEFAULT_REFRESH_TOKEN_PRUNE_RETENTION_SECONDS,
@@ -116,9 +122,26 @@ describe('authEnvSchema', () => {
     // post-mortem window with them.
     expect(() =>
       authEnvSchema.parse({
-        JWT_SECRET: VALID_SECRET,
+        ...MINIMAL_ENV,
         PENDING_REGISTRATION_PRUNE_RETENTION_SECONDS: '',
       }),
     ).toThrow()
+  })
+
+  it('requires GOOGLE_CLIENT_ID and has no default for it', () => {
+    // Like JWT_SECRET: a missing value must fail at boot, not ship undefined.
+    expect(authEnvSchema.safeParse({ JWT_SECRET: VALID_SECRET }).success).toBe(false)
+  })
+
+  it('defaults GOOGLE_JWKS_URI and the Google sign-in rate limit pair', () => {
+    const config = authEnvSchema.parse(MINIMAL_ENV)
+
+    expect(config.GOOGLE_JWKS_URI).toBe(DEFAULT_GOOGLE_JWKS_URI)
+    expect(config.GOOGLE_SIGN_IN_RATE_LIMIT_MAX_REQUESTS).toBe(
+      DEFAULT_GOOGLE_SIGN_IN_RATE_LIMIT_MAX_REQUESTS,
+    )
+    expect(config.GOOGLE_SIGN_IN_RATE_LIMIT_WINDOW_SECONDS).toBe(
+      DEFAULT_GOOGLE_SIGN_IN_RATE_LIMIT_WINDOW_SECONDS,
+    )
   })
 })

@@ -134,4 +134,50 @@ describe('User.fromTrusted', () => {
 
     expect(user.createdAt.getFullYear()).not.toBe(MUTATED_YEAR)
   })
+
+  it('rehydrates a federated (passwordless) row', () => {
+    const user = User.fromTrusted({
+      id: ID,
+      email: Email.fromTrusted(EMAIL),
+      passwordHash: null,
+      emailVerifiedAt: new Date(NOW),
+      createdAt: new Date(NOW),
+      updatedAt: new Date(NOW),
+    })
+
+    expect(user.passwordHash).toBeNull()
+  })
+})
+
+describe('User.createFederated', () => {
+  it('is born verified: the provider has already proven the email', () => {
+    const user = User.createFederated({
+      id: ID,
+      email: Email.create(EMAIL),
+      now: new Date(NOW),
+    })
+
+    expect(user.emailVerifiedAt).toEqual(NOW)
+  })
+
+  it('has no password hash — a federated account has no password', () => {
+    const user = User.createFederated({
+      id: ID,
+      email: Email.create(EMAIL),
+      now: new Date(NOW),
+    })
+
+    expect(user.passwordHash).toBeNull()
+  })
+
+  it('stamps createdAt and updatedAt from the injected clock', () => {
+    const user = User.createFederated({
+      id: ID,
+      email: Email.create(EMAIL),
+      now: new Date(NOW),
+    })
+
+    expect(user.createdAt).toEqual(NOW)
+    expect(user.updatedAt).toEqual(NOW)
+  })
 })

@@ -40,6 +40,7 @@ export type AuthContainerConfig = AuthConfig &
 
 import { authRepositories } from './infra/drizzle/auth-repositories.js'
 import { Argon2HashProvider } from './infra/providers/argon2-hash-provider.js'
+import { JoseGoogleIdentityVerifier } from './infra/providers/jose-google-identity-verifier.js'
 import { JwtTokenSigner } from './infra/providers/jwt-token-signer.js'
 import { EmailVerificationIssuer } from './services/email-verification-issuer.js'
 import { PasswordResetIssuer } from './services/password-reset-issuer.js'
@@ -67,6 +68,7 @@ import { RegisterUserUseCase } from './use-cases/register-user.js'
 import { RequestEmailVerificationUseCase } from './use-cases/request-email-verification.js'
 import { RequestPasswordResetUseCase } from './use-cases/request-password-reset.js'
 import { ResetPasswordUseCase } from './use-cases/reset-password.js'
+import { SignInWithGoogleUseCase } from './use-cases/sign-in-with-google.js'
 
 /**
  * The module's slice of the dependency graph. This file is `composition`: it is
@@ -89,11 +91,13 @@ export function makeAuthContainer(
     refreshTokens: refreshTokensRepository,
     pendingRegistrations: pendingRegistrationsRepository,
     passwordResetTokens: passwordResetTokensRepository,
+    federatedIdentities: federatedIdentitiesRepository,
   } = authRepositories(db)
   const hashProvider = new Argon2HashProvider()
   const clock = new SystemClock()
   const idGenerator = new UuidIdGenerator()
   const tokenSigner = new JwtTokenSigner(config, clock)
+  const googleIdentityVerifier = new JoseGoogleIdentityVerifier(config)
   const tokenGenerator = new RandomTokenGenerator()
   const tokenDigest = new Sha256TokenDigest()
   const uow = createUnitOfWork(runner, authRepositories)
@@ -201,6 +205,19 @@ export function makeAuthContainer(
       refreshTokenIssuer,
       clock,
     ),
+    signInWithGoogle: new SignInWithGoogleUseCase(
+      googleIdentityVerifier,
+      usersRepository,
+      federatedIdentitiesRepository,
+      refreshTokensRepository,
+      uow,
+      refreshTokenIssuer,
+      tokenSigner,
+      hashProvider,
+      idGenerator,
+      clock,
+      bestEffortEmailSender,
+    ),
     getUserProfile: new GetUserProfileUseCase(usersRepository),
     refreshToken: new RefreshTokenUseCase(
       uow,
@@ -290,6 +307,16 @@ export function makeAuthContainer(
     loginRateLimit: {
       max: config.LOGIN_RATE_LIMIT_MAX_REQUESTS,
       timeWindow: config.LOGIN_RATE_LIMIT_WINDOW_SECONDS * MILLISECONDS_PER_SECOND,
+    },
+    /**
+     * Its own ceiling, like login: the link path of `POST /auth/google` carries
+     * a password guess. Milliseconds because that is what the limiter's
+     * `timeWindow` takes.
+     */
+    googleSignInRateLimit: {
+      max: config.GOOGLE_SIGN_IN_RATE_LIMIT_MAX_REQUESTS,
+      timeWindow:
+        config.GOOGLE_SIGN_IN_RATE_LIMIT_WINDOW_SECONDS * MILLISECONDS_PER_SECOND,
     },
     /**
      * The confirm route declares its own ceiling, like login: a request here

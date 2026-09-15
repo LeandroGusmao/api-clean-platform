@@ -127,12 +127,48 @@ export const DEFAULT_PENDING_REGISTRATION_PRUNE_RETENTION_SECONDS = 86_400
 export const DEFAULT_PASSWORD_RESET_TOKEN_PRUNE_RETENTION_SECONDS = 86_400
 
 /**
+ * Where `jose` fetches Google's signing keys. A default of the real endpoint,
+ * the way `MAIL_HOST` defaults to the dev Mailpit host: it is a service
+ * endpoint, and the integration test overrides it to a local JWKS server the
+ * same way `verify-email.spec.ts` overrides the rate-limit ceilings.
+ */
+export const DEFAULT_GOOGLE_JWKS_URI = 'https://www.googleapis.com/oauth2/v3/certs'
+
+/**
+ * Ten attempts a minute from one address on `POST /auth/google`. The link path
+ * of that route carries a password guess, so the reasoning is login's: it counts
+ * REQUESTS not failures, sits far above human retry and far below anything
+ * useful to an attacker. Its own pair, not login's — a field named for one route
+ * used by another is a comment that lies.
+ */
+export const DEFAULT_GOOGLE_SIGN_IN_RATE_LIMIT_MAX_REQUESTS = 10
+export const DEFAULT_GOOGLE_SIGN_IN_RATE_LIMIT_WINDOW_SECONDS = 60
+
+/**
  * The module owns its own variables (decision 14). `infra/config/env.ts` merges
  * this into the core schema so the process dies at boot listing every problem
  * at once, instead of revealing one per restart.
  */
 export const authEnvSchema = z.object({
   JWT_SECRET: z.string().min(MIN_JWT_SECRET_LENGTH),
+  /**
+   * The OAuth client id from Google Cloud Console. Public, not a secret:
+   * ID-token verification is public-key crypto. Required, no default, like
+   * `JWT_SECRET` — ship a placeholder in `.env.example` for setups without
+   * Google sign-in.
+   */
+  GOOGLE_CLIENT_ID: z.string().min(1),
+  GOOGLE_JWKS_URI: z.url().default(DEFAULT_GOOGLE_JWKS_URI),
+  GOOGLE_SIGN_IN_RATE_LIMIT_MAX_REQUESTS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_GOOGLE_SIGN_IN_RATE_LIMIT_MAX_REQUESTS),
+  GOOGLE_SIGN_IN_RATE_LIMIT_WINDOW_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_GOOGLE_SIGN_IN_RATE_LIMIT_WINDOW_SECONDS),
   // `.int().positive()` is not decoration: bare `z.coerce.number()` turns an
   // empty value into 0 in silence, and a TTL of zero mints expired tokens.
   ACCESS_TOKEN_TTL_SECONDS: z.coerce

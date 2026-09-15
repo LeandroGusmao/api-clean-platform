@@ -159,31 +159,28 @@ Nada a jusante decide sobre isso.
 
 ### 4.3 — Novo adapter `infra/providers/jose-google-identity-verifier.ts`
 
-Constantes no arquivo — fatos do Google, **não** config de deploy, então não vão
-para o env:
+`GOOGLE_ISSUERS` é constante no arquivo — fato do Google, valor fechado, não muda
+entre ambientes:
 
 ```
-GOOGLE_ISSUERS  = ['https://accounts.google.com', 'accounts.google.com']  // os dois válidos
-GOOGLE_JWKS_URI = 'https://www.googleapis.com/oauth2/v3/certs'
+GOOGLE_ISSUERS = ['https://accounts.google.com', 'accounts.google.com']  // os dois válidos
 ```
 
+A **URI do JWKS entra no env** (`GOOGLE_JWKS_URI`) com **default de produção**,
+exatamente como `MAIL_HOST` tem um default de desenvolvimento: é o endpoint de um
+serviço externo, e o teste de integração precisa apontar o adapter para um JWKS
+local. O construtor recebe a **fatia de config**, como `JwtTokenSigner` recebe
+`Pick<AuthConfig, 'JWT_SECRET' | 'ACCESS_TOKEN_TTL_SECONDS'>`:
+
 ```
-// A URI do JWKS e os issuers são ARGUMENTOS com default de produção, não
-// literais amarrados dentro do verify. É a mesma costura do `JwtTokenSigner`,
-// que recebe a fatia de config em vez de ler o env: aqui, um teste de
-// integração aponta o adapter para um JWKS local (par de chaves do próprio
-// teste) e exercita o caminho real de `jwtVerify` sem tocar a rede.
-constructor(
-  clientId: string,                      // GOOGLE_CLIENT_ID; nenhum secret
-  jwksUri: string   = GOOGLE_JWKS_URI,
-  issuers: string[] = GOOGLE_ISSUERS,
-)
-  #jwks = createRemoteJWKSet(new URL(jwksUri))   // cache interno do jose
+constructor(config: Pick<AuthConfig, 'GOOGLE_CLIENT_ID' | 'GOOGLE_JWKS_URI'>)
+  #clientId = config.GOOGLE_CLIENT_ID          // nenhum secret
+  #jwks     = createRemoteJWKSet(new URL(config.GOOGLE_JWKS_URI))   // cache interno do jose
 
 async verify(idToken):
   try:
     { payload } = await jwtVerify(idToken, this.#jwks, {
-      issuer: this.#issuers,
+      issuer: GOOGLE_ISSUERS,
       audience: this.#clientId,        // load-bearing: sem isso, token de OUTRO client_id passa
     })                                  // jwtVerify já cobre assinatura, iss, aud, exp, nbf
     if (payload.email_verified !== true) throw ...
@@ -193,6 +190,11 @@ async verify(idToken):
   catch:
     throw new InvalidGoogleIdentityError()   // UM erro para todo modo de falha
 ```
+
+O teste de integração assina um ID token com `iss: 'https://accounts.google.com'`
+(um dos valores de `GOOGLE_ISSUERS`), então não precisa sobrepor os issuers —
+só a `GOOGLE_JWKS_URI`, via override de env no `buildApp`, como
+`verify-email.spec.ts` já faz com os tetos de rate limit.
 
 **Um `throw` só** para assinatura, `iss`, `aud`, `exp`, `email_verified` false,
 `email`/`sub` ausente — mesma doutrina do `throw` único do `login-user.ts`: ramos
@@ -437,6 +439,14 @@ text:    "Sign in with Google was just connected to your account.\n\n
 GOOGLE_CLIENT_ID: z.string().min(1),
 
 /**
+ * Where `jose` fetches Google's signing keys. A default of the real endpoint,
+ * like MAIL_HOST defaults to the dev Mailpit: it is a service endpoint, and the
+ * integration test overrides it to a local JWKS server the same way
+ * verify-email.spec.ts overrides the rate-limit ceilings.
+ */
+GOOGLE_JWKS_URI: z.url().default(DEFAULT_GOOGLE_JWKS_URI),   // https://www.googleapis.com/oauth2/v3/certs
+
+/**
  * A request on the link path carries a password guess. Same shape and reasoning
  * as login: counts requests, not failures, far above human retry and far below
  * anything useful to an attacker. Its own pair, not login's — a field named for
@@ -446,10 +456,16 @@ GOOGLE_SIGN_IN_RATE_LIMIT_MAX_REQUESTS:   z.coerce.number().int().positive().def
 GOOGLE_SIGN_IN_RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().positive().default(DEFAULT_GOOGLE_SIGN_IN_RATE_LIMIT_WINDOW_SECONDS),  // 60
 ```
 
-- `GOOGLE_ISSUERS` e `GOOGLE_JWKS_URI` **não** entram no env — constantes no
-  adapter (§4.3).
+- `GOOGLE_ISSUERS` **não** entra no env — constante no adapter, valor fechado
+  (§4.3).
 - `.env.example` e `docs/local.md` ganham `GOOGLE_CLIENT_ID` com um valor
-  placeholder e um comentário.
+  placeholder e um comentário; `GOOGLE_JWKS_URI` fica de fora (o default serve
+  produção e desenvolvimento).
+- `src/infra/config/fixtures/test-env.ts` ganha `GOOGLE_CLIENT_ID`,
+  `GOOGLE_JWKS_URI` (o default) e o par de rate limit — o fixture é exaustivo, e
+  `env.ts` mata o processo num env inválido.
+- `vitest.config.ts` (`test.env`) ganha `GOOGLE_CLIENT_ID` — o projeto de
+  integração usa `parseEnv`, que morre sem ele.
 
 ### 7.2 — Migration
 
@@ -471,12 +487,11 @@ Sem exceção a R4 — nada apagado, só um `ALTER` aditivo e uma tabela nova.
 - `authRepositories(db)` passa a devolver também `federatedIdentities: new
   DrizzleFederatedIdentitiesRepository(db)`.
 - `AuthRepos` ganha `federatedIdentities`; comentário de doutrina atualizado.
-- `makeAuthContainer` ganha um último parâmetro **opcional**
-  `googleIdentityVerifier?: IGoogleIdentityVerifier`, com default `new
-  JoseGoogleIdentityVerifier(config.GOOGLE_CLIENT_ID)` — só o `clientId`; a URI do
-  JWKS e os issuers ficam nos defaults de produção do construtor (§4.3). O
-  parâmetro é a costura que o teste e2e do §9.2 usa para passar um fake; produção
-  nunca o informa.
+- `makeAuthContainer`: `const googleIdentityVerifier = new
+  JoseGoogleIdentityVerifier(config)` — a fatia `Pick<AuthConfig,
+  'GOOGLE_CLIENT_ID' | 'GOOGLE_JWKS_URI'>` sai do `config` que já chega. Sem
+  parâmetro novo: o e2e do §9.2 troca a `GOOGLE_JWKS_URI` via override de env no
+  `buildApp`, não por injeção.
   - `signInWithGoogle: new SignInWithGoogleUseCase(googleIdentityVerifier,
     usersRepository, federatedIdentitiesRepository, uow, refreshTokenIssuer,
     tokenSigner, hashProvider, idGenerator, clock, bestEffortEmailSender)`.
@@ -503,6 +518,7 @@ Sem exceção a R4 — nada apagado, só um `ALTER` aditivo e uma tabela nova.
 - `src/modules/auth/errors/google-sign-in-conflict-error.ts`
 - `src/modules/auth/use-cases/sign-in-with-google.ts` + `.spec.ts`
 - `src/modules/auth/infra/http/endpoints/sign-in-with-google.ts`
+- `tests/integration/setup/google-jwks.ts` (helper: par RS256 + servidor JWKS efêmero + assinatura de ID token de teste)
 - `tests/integration/drizzle-federated-identities-repository.spec.ts`
 - `tests/integration/federated-identities-schema.spec.ts`
 - `tests/integration/jose-google-identity-verifier.spec.ts`
@@ -518,9 +534,11 @@ Sem exceção a R4 — nada apagado, só um `ALTER` aditivo e uma tabela nova.
 - `src/modules/auth/infra/drizzle/drizzle-pending-registrations-repository.ts` + in-memory + `.spec.ts` de integração
 - `src/modules/auth/repositories/unit-of-work.ts` — `AuthRepos.federatedIdentities` + comentário
 - `src/modules/auth/infra/drizzle/auth-repositories.ts` — monta o repo novo
-- `src/modules/auth/config.ts` — `GOOGLE_CLIENT_ID`, `GOOGLE_SIGN_IN_RATE_LIMIT_*`
-- `src/infra/config/env.ts` — nada (merge automático pelo `.extend(authEnvSchema.shape)`); só o `fixtures/test-env.ts` ganha `GOOGLE_CLIENT_ID`
-- `src/modules/auth/container.ts` — verifier, use case, rate limit, repo; `makeAuthContainer` ganha um parâmetro opcional `IGoogleIdentityVerifier` (default: o real), a costura que o e2e do §9.2 usa
+- `src/modules/auth/config.ts` — `GOOGLE_CLIENT_ID`, `GOOGLE_JWKS_URI`, `GOOGLE_SIGN_IN_RATE_LIMIT_*` + os `DEFAULT_*`
+- `src/infra/config/env.ts` — nada (merge automático pelo `.extend(authEnvSchema.shape)`)
+- `src/infra/config/fixtures/test-env.ts` — `GOOGLE_CLIENT_ID`, `GOOGLE_JWKS_URI`, `GOOGLE_SIGN_IN_RATE_LIMIT_*`
+- `vitest.config.ts` — `test.env.GOOGLE_CLIENT_ID` (o projeto de integração roda `parseEnv`)
+- `src/modules/auth/container.ts` — `new JoseGoogleIdentityVerifier(config)`, o use case, o rate limit, o repo. Sem parâmetro novo na assinatura
 - `src/modules/auth/infra/http/routes.ts` — uma linha
 - `src/modules/auth/infra/http/constants.ts` — se algum status novo faltar (409 já existe)
 - `src/modules/auth/use-cases/login-user.ts` — comentário do ramo `null`
@@ -572,24 +590,23 @@ Sem exceção a R4 — nada apagado, só um `ALTER` aditivo e uma tabela nova.
   segundo vínculo do mesmo provedor; FK `ON DELETE CASCADE` ao deletar o `users`.
 - **Novo** `federated-identities-schema.spec.ts` — colunas, os três índices, sem
   defaults de coluna, FK `ON DELETE CASCADE`.
-- **Novo** `jose-google-identity-verifier.spec.ts` — o adapter **real**. O teste
-  gera um par RS256, sobe um servidor HTTP efêmero servindo o JWK Set público, e
-  constrói `new JoseGoogleIdentityVerifier(clientId, <uri local>, <issuer de
-  teste>)` (a costura de construtor do §4.3). Assina os ID tokens com a chave
+- **Novo** `jose-google-identity-verifier.spec.ts` — o adapter **real**, com o
+  helper `setup/google-jwks.ts` (par RS256 + servidor HTTP efêmero servindo o JWK
+  Set). Constrói `new JoseGoogleIdentityVerifier({ GOOGLE_CLIENT_ID: <fixo>,
+  GOOGLE_JWKS_URI: <uri local do helper> })` e assina os ID tokens com a chave
   privada. É integração e não unit porque `createRemoteJWKSet` busca o JWKS por
-  HTTP. Casos: token válido → `{ subject, email }`; `aud` errado →
-  `InvalidGoogleIdentityError`; `iss` errado → idem; expirado → idem; assinatura
-  de outra chave → idem; `email_verified:false` → idem; `email`/`sub` ausente →
-  idem. **Regressão do pin de `audience`**: um token com `aud` de outro client
-  passa se o pin for removido.
-- **Novo** `sign-in-with-google.spec.ts` (ponta a ponta) — o helper de app de
-  teste monta o container com um **fake `IGoogleIdentityVerifier`** que devolve
-  uma identidade fixa (`{ subject, email }`). O contrato do port é a fronteira:
-  o fluxo de vínculo de conta e a wiring HTTP são o que este teste prova; o
-  `jwtVerify` real é do teste do adapter (§9.1). Costura: `makeAuthContainer`
-  aceita um `IGoogleIdentityVerifier` opcional (default `new
-  JoseGoogleIdentityVerifier(config.GOOGLE_CLIENT_ID)`) — a alternativa seria pôr
-  `GOOGLE_JWKS_URI` no env só para o teste, o que o §4.3 recusa. Casos:
+  HTTP. Casos: token válido (`iss` = um de `GOOGLE_ISSUERS`) → `{ subject, email }`;
+  `aud` errado → `InvalidGoogleIdentityError`; `iss` errado → idem; expirado →
+  idem; assinatura de outra chave → idem; `email_verified:false` → idem;
+  `email`/`sub` ausente → idem. **Regressão do pin de `audience`**: um token com
+  `aud` de outro client passa se o pin for removido.
+- **Novo** `sign-in-with-google.spec.ts` (ponta a ponta) — o `JoseGoogleIdentityVerifier`
+  **real**, com `buildApp({ ...env, GOOGLE_JWKS_URI: <servidor local> })`. O
+  `beforeAll` sobe o helper `tests/integration/setup/google-jwks.ts` (par RS256 +
+  servidor HTTP efêmero servindo o JWK Set) e assina os ID tokens com a chave
+  privada, `iss: 'https://accounts.google.com'`, `aud: env.GOOGLE_CLIENT_ID`.
+  Exercita o caminho real de `jwtVerify` sem tocar a rede do Google e sem fake.
+  Casos:
   - e-mail novo → `200` + sessão + linha em `users` (hash null) + linha em
     `federated_identities`;
   - segundo sign-in com o mesmo `sub` → `200` pelo fast path (nenhuma linha nova

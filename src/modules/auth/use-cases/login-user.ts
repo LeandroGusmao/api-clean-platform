@@ -53,6 +53,10 @@ export class LoginUserUseCase {
     // Always compares, decoy included, so a missing account and a wrong
     // password cost the same. Returning early here would let the response time
     // answer "does this account exist?".
+    //
+    // A federated-only account has `passwordHash === null`; `??` funnels it to
+    // the decoy too, so it fails as `InvalidCredentialsError` like any other
+    // wrong credential — no separate branch, no oracle.
     const hashed = user?.passwordHash ?? this.hashProvider.dummyHash
     const matches = await this.hashProvider.compare(command.password, hashed)
 
@@ -66,11 +70,11 @@ export class LoginUserUseCase {
     // Checking first would hand any anonymous caller an account oracle — the
     // very thing the decoy hash above exists to deny them.
     //
-    // Since slice 11 every `users` row is born verified (the account is created
-    // at confirmation), so this branch has no producer today. It stays as
-    // defence in depth and for the social-login slice, which will create
-    // verified accounts and needs the same column and gate (§4.3 of the
-    // pre-hijacking design).
+    // Every `users` row is born verified — the account is created at
+    // confirmation (slice 11) or at the first Google sign-in (slice 14) — so
+    // this branch has no producer. It stays as defence in depth for any
+    // unverified path a later slice reintroduces, and needs the same column and
+    // gate (§4.3 of the pre-hijacking design).
     if (user.emailVerifiedAt === null) throw new EmailNotVerifiedError()
 
     // A fresh family per login: each device owns its chain, so logging out on

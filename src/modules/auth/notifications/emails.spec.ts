@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  googleAccountLinkedEmail,
   passwordResetCompletedEmail,
   passwordResetEmail,
 } from '#modules/auth/notifications/emails'
@@ -27,5 +28,15 @@ describe('passwordResetCompletedEmail', () => {
     expect(message.to).toBe(TO.value)
     expect(message.text.toLowerCase()).toContain('reset')
     expect(message.text.toLowerCase()).toContain('sign')
+  })
+})
+
+describe('googleAccountLinkedEmail', () => {
+  it('addresses the owner and tells them how to react', () => {
+    const message = googleAccountLinkedEmail(TO)
+
+    expect(message.to).toBe(TO.value)
+    expect(message.text.toLowerCase()).toContain('google')
+    expect(message.text.toLowerCase()).toContain('reset your password')
   })
 })

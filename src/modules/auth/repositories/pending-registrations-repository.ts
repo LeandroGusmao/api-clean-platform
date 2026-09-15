@@ -62,6 +62,16 @@ export interface IPendingRegistrationsRepository {
   deleteExpiredByEmail(email: Email, now: Date): Promise<void>
 
   /**
+   * Total wipe for one address: `DELETE ... WHERE lower(email) = ?`, with no
+   * expiry or `consumed_at` filter. Called when a federated sign-in takes the
+   * address (§6 item 2 of `DECISIONS.md`) — a concurrent confirm that was about
+   * to consume one of these rows then loses its `consume` and reports the same
+   * generic failure. Distinct from `deleteExpiredByEmail`, which is opportunistic
+   * and never touches a live row.
+   */
+  deleteAllByEmail(email: Email): Promise<void>
+
+  /**
    * Full sweep for the cron, across every address. Deletes every row whose
    * `expires_at` is at or before `cutoff`; the use case passes `clock.now() -
    * retention`, so a dead row lingers one retention window and stays available

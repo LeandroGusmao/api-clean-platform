@@ -11,6 +11,7 @@ import { refreshRoute } from './endpoints/refresh.js'
 import { registerRoute } from './endpoints/register.js'
 import { resendVerificationRoute } from './endpoints/resend-verification.js'
 import { resetPasswordRoute } from './endpoints/reset-password.js'
+import { signInWithGoogleRoute } from './endpoints/sign-in-with-google.js'
 
 /**
  * The module's HTTP surface. Thin by design: a new endpoint is a new file plus
@@ -28,6 +29,7 @@ export const authRoutes: FastifyPluginAsync<{
   await app.register(confirmEmailRoute, { container })
   await app.register(resendVerificationRoute, { container })
   await app.register(loginRoute, { container })
+  await app.register(signInWithGoogleRoute, { container })
   await app.register(refreshRoute, { container })
   await app.register(forgotPasswordRoute, { container })
   await app.register(resetPasswordRoute, { container })

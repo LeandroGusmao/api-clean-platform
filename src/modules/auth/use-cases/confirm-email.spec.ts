@@ -149,6 +149,7 @@ function trackedRepos(): AuthRepos {
         return pendingRepo.consume(id, at)
       },
       deleteExpiredByEmail: (email, at) => pendingRepo.deleteExpiredByEmail(email, at),
+      deleteAllByEmail: (email) => pendingRepo.deleteAllByEmail(email),
       deleteExpiredBefore: (cutoff) => pendingRepo.deleteExpiredBefore(cutoff),
     },
   }
