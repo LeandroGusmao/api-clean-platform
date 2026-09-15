@@ -7,7 +7,7 @@ import { authEnvSchema } from '#modules/auth/config'
  */
 export const NODE_ENV_DEVELOPMENT = 'development'
 export const NODE_ENV_TEST = 'test'
-const NODE_ENV_PRODUCTION = 'production'
+export const NODE_ENV_PRODUCTION = 'production'
 const NODE_ENVS = [NODE_ENV_DEVELOPMENT, NODE_ENV_TEST, NODE_ENV_PRODUCTION] as const
 
 const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const
