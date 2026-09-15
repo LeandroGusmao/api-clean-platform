@@ -1,5 +1,9 @@
 # O que falta
 
+> **Fatia 15 (2026-09-14) entregou o seed do banco local** (`pnpm db:seed`,
+> decisão 32) e os scripts `db:up`/`db:down`/`db:logs`/`db:studio`. É tooling de
+> desenvolvimento: não fecha nenhum item abaixo, e a ordem de urgência não muda.
+>
 > **Fatia 14 (2026-09-08) entregou o login com Google client-driven.** `POST
 > /auth/google` verifica o ID token contra o JWKS do Google, sem client secret;
 > tabela `federated_identities`; `users.password_hash` nulável para contas
@@ -79,7 +83,7 @@ emendados junto, para não voltar a ler como coberto.
 | ~~Poda de tokens expirados~~ | — | **fechada pela fatia 13.** `cron.ts` one-shot + registry de jobs por módulo; três use-cases de poda com janela de retenção por tabela varrem `refresh_tokens`, `pending_registrations` e `password_reset_tokens`. Decisão 30; spec `2026-09-07-token-pruning-cron-design.md` |
 | ~~Login social / OAuth (Google)~~ | — | **fechado pela fatia 14** (client-driven `POST /auth/google`, decisão 31). Falta: fluxo redirect/BFF, desvincular provedor, definir a primeira senha numa conta só-Google, listar provedores no `/me`, restrição de domínio `hd` |
 | Throttle de `confirm` por e-mail | nada | um anônimo pode manter um endereço não-confirmável queimando o teto de cinco tentativas do código a cada cooldown — o teto por IP não segura. Conserto: throttle por conta/e-mail |
-| CORS | primeiro front web | sem ele o modo cookie não funciona cross-origin |
+| ~~CORS~~ | — | **já existe** em `src/infra/http/cors.ts` (lista de origens permitidas, registrado no `buildApp`). Entrou sem decisão no `DECISIONS.md` — registrar quando o primeiro front web definir a política |
 | Outbox transacional | **destravado** pela fatia 13 | o `cron.ts` e o registry de jobs existem — o dispatch do outbox é mais um `CronJob`. Falta a tabela e a escrita transacional. Um crash entre o `COMMIT` e o envio SMTP perde o e-mail em silêncio; custos aceitos no §11 da spec da fatia 11 e §5.3 da fatia 10 |
 | Listar sessões ativas | nada | cai quase de graça agora que há `family_id` |
 | Invalidar sessões + notificar o dono na verificação | nada | defesa em profundidade que a literatura recomenda por cima da correção estrutural (§4.4 do handoff da fatia 11) |

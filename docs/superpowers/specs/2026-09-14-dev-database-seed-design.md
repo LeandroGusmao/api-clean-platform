@@ -80,11 +80,10 @@ constante.
 src/infra/database/seeds/
 └── seed-module.ts          # o contrato: SeedModule, SeedScenario, SeedRunContext
 src/modules/auth/infra/seeds/
-├── constants.ts            # SEED_EMAIL_DOMAIN, SEED_PASSWORD, e-mails, código
-├── factories.ts            # createPasswordUser, createGoogleUser, createPendingRegistration
-├── base-users.ts           # cenário auth:base-users
-├── pending-registration.ts # cenário auth:pending-registration
-└── index.ts                # authSeedModule: SeedModule
+├── factories.ts            # SEED_EMAIL_DOMAIN, createPasswordUser, createGoogleUser, createPendingRegistration, wipe
+├── base-users.ts           # cenário auth:base-users + seus e-mails
+├── pending-registration.ts # cenário auth:pending-registration + e-mail e código
+└── index.ts                # authSeedModule + SEED_PASSWORD
 src/main/seeds/
 ├── runner.ts               # seleção, ordem, travas, transação
 ├── runner.spec.ts
@@ -178,7 +177,9 @@ cachear. Não há senha por usuário.
   o módulo de seed não recebe a config do container, e um código que expira em
   minutos não serve a quem semeia de manhã e testa à tarde.
 
-Todas as constantes em `src/modules/auth/infra/seeds/constants.ts`.
+Cada constante mora no arquivo que a usa, como o `CLAUDE.md` pede; não há
+`constants.ts`. A única reusada entre arquivos é `SEED_EMAIL_DOMAIN`, e ela fica
+em `factories.ts`, ao lado do `wipe` que apaga por ela.
 `SEED_PASSWORD` tem ao menos o piso de oito caracteres do `Password`.
 
 ### 5.3 — `wipe` do `auth`

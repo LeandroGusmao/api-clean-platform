@@ -157,6 +157,21 @@ bits fecham força bruta por construção.
 
 ---
 
+## Dados de seed (desenvolvimento)
+
+`pnpm db:seed` cria, **só no banco local**, contas sob `@seed.local` — rodar de
+novo apaga e recria esse namespace, e nada fora dele. Cada valor mora no arquivo
+do cenário que o usa, em `infra/seeds/`.
+
+| Cenário | Conta | Como usar |
+|---|---|---|
+| `auth:base-users` (default) | `dev@seed.local` | login com a senha `seed-Dev-2026!` |
+| | `google@seed.local` | só Google, sem senha — login por senha responde `401` |
+| `auth:pending-registration` | `pending@seed.local` | `POST /auth/email/verify` com o código `123456` e uma senha válida |
+
+A senha fica aqui e em `SEED_PASSWORD` (`infra/seeds/index.ts`), nunca no log do
+seed.
+
 ## Formato de erro
 
 Todo erro tem a mesma forma:

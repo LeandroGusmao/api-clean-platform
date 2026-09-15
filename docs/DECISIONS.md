@@ -83,6 +83,8 @@ ficasse rasa em tudo, e são atacados nesta ordem:
 | 28 | Exceção pontual a R4 | Migration de `email_verification_tokens` apagada; não se repete |
 | 29 | Recuperação de senha | `forgot`/`reset` com token opaco de 256 bits, upsert com cooldown na cláusula `WHERE` |
 | 30 | Cron / poda | `cron.ts` one-shot + scheduler externo; registry de jobs por módulo; poda com janela de retenção por tabela |
+| 31 | Login com Google | Client-driven, verificação de ID token, sem merge silencioso |
+| 32 | Seed de dev | Cenários por módulo fora do container; runner em `main/`; `wipe` por namespace; só banco local |
 
 ---
 
@@ -1927,6 +1929,48 @@ exige a senha.
 
 Desenho completo em
 [`specs/2026-09-08-google-sign-in-design.md`](superpowers/specs/2026-09-08-google-sign-in-design.md).
+
+---
+
+### 32 — Seed de dev: cenários por módulo, runner no composition root, só banco local
+
+`pnpm db:seed` leva o banco **local** a um estado conhecido. Paridade de uso com
+o `db:seed` do byteflow; a estrutura diverge onde as fronteiras daqui exigem.
+
+**Cenários por módulo, fora do container.** Cada módulo publica um `SeedModule`
+em `modules/<m>/infra/seeds/`; `main/seeds/runner.ts` os lista à mão
+(`SEED_MODULES`), como o `run-cron.ts` lista os jobs, e qualifica os nomes
+(`auth:base-users`). Nada de seed entra no container: dado de dev fica fora do
+grafo de produção. `**/seeds/**` sai do `dist` pelo `tsconfig.build.json`.
+
+**O contrato mora em `#infra`.** Em `#main` o seed do módulo dispararia
+`INFRA-MAIN`; em `#shared`, camada pura, não poderia citar `Database`.
+
+**Escrita por entidade + repositório.** As factories usam `User.create`,
+`FederatedIdentity.create`, `PendingRegistration.create` e os repositórios
+Drizzle — as invariantes e os mappers valem para o seed como para a API. A única
+escrita crua é o `wipe`.
+
+**Uma transação; `wipe` de todos os módulos.** Cada módulo apaga o próprio
+namespace (no `auth`, `@seed.local`) em ordem inversa, e só então os cenários
+rodam. Todos os módulos, não só os selecionados: sem FK entre módulos
+(decisão 24), nenhuma cascata limpa um pelo outro. O `prepare()` de cada módulo
+roda antes da transação — é onde o argon2 da senha de seed vai.
+
+**Duas travas de alvo, sem flag de contorno.** Recusa `NODE_ENV=production` e
+qualquer host de `DATABASE_URL` fora de `localhost`/`127.0.0.1`/`::1`. A segunda
+existe porque `NODE_ENV` tem `development` como default: um shell de servidor
+sem a variável passaria pela primeira e plantaria uma conta com senha publicada.
+Semear staging, se um dia fizer sentido, é outra decisão.
+
+**Descartados.** `src/seeds/` global (cópia literal do byteflow): cai em
+`LAYER-UNKNOWN` e concentra o concreto de todos os módulos num lugar só. Seed via
+use cases: exige ler o código de seis dígitos do e-mail, não alcança conta
+só-Google sem fake, e não cabe numa transação — cada use case abre a sua, e o
+runner recusa aninhamento.
+
+Desenho completo em
+[`specs/2026-09-14-dev-database-seed-design.md`](superpowers/specs/2026-09-14-dev-database-seed-design.md).
 
 ---
 
