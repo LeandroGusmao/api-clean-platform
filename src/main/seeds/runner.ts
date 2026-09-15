@@ -61,6 +61,8 @@ const SEED_INVOCATION_ERROR_NAME = 'SeedInvocationError'
 const SEED_DEFINITION_ERROR_NAME = 'SeedDefinitionError'
 const SEED_TARGET_ERROR_NAME = 'SeedTargetError'
 
+// Not `AppError`s: none of these reaches HTTP or carries a client-facing `code`.
+
 /** The command line asked for something that does not exist. */
 export class SeedInvocationError extends Error {
   constructor(message: string) {
