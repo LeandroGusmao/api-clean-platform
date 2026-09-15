@@ -39,7 +39,9 @@ src/
 │   │   ├── client.ts               # pool pg + instância Drizzle
 │   │   ├── driver-error.ts         # converte erro do driver antes de sair do infra/
 │   │   ├── transaction-runner.ts   # abre a transação, faz commit/rollback e recusa aninhamento
-│   │   └── unit-of-work.ts         # createUnitOfWork(runner, buildRepos) — casca genérica (decisão 22)
+│   │   ├── unit-of-work.ts         # createUnitOfWork(runner, buildRepos) — casca genérica (decisão 22)
+│   │   └── seeds/
+│   │       └── seed-module.ts      # contrato do seed de dev; fora do dist (decisão 32)
 │   ├── health/
 │   │   └── checks/
 │   │       └── database-check.ts   # um arquivo por dependência checada
@@ -89,6 +91,7 @@ src/
 │           │   ├── drizzle-refresh-tokens-repository.ts
 │           │   └── auth-repositories.ts    # monta AuthRepos — único lugar que instancia os repositórios do módulo
 │           ├── in-memory/           # repositório de teste (decisão 09)
+│           ├── seeds/               # cenários de `pnpm db:seed` do módulo; fora do dist (decisão 32)
 │           ├── providers/           # adapters dos contratos de ports/ — argon2, jose
 │           └── http/
 │               ├── constants.ts     # status HTTP e tag do OpenAPI do módulo
@@ -111,7 +114,10 @@ src/
 └── main/
     ├── container.ts                 # composition root: junta os módulos
     ├── app.ts                      # compõe a aplicação: docs + rotas + deps, SEM escutar
-    └── http.ts                     # entrypoint: sobe o servidor e trata shutdown
+    ├── http.ts                     # entrypoint: sobe o servidor e trata shutdown
+    └── seeds/
+        ├── index.ts                # entrypoint de `pnpm db:seed`: argv, log, exit code
+        └── runner.ts               # travas de alvo, seleção, ordem, uma transação (decisão 32)
 
 tests/
 └── integration/
@@ -1070,7 +1076,12 @@ pnpm lint              # biome check  (formatação + lint + ordem de imports)
 pnpm lint:fix          # biome check --write
 pnpm db:generate --name=create_users_table   # gera migration a partir do schema dos módulos
                                              # SEMPRE com --name; sem ele o nome é sorteado (§6)
-pnpm db:migrate        # drizzle-kit migrate — aplica migrations pendentes
+pnpm db:migrate        # drizzle-kit migrate — aplica migrations pendentes (lê o .env)
+pnpm db:up             # docker compose up -d --wait — postgres, postgres-test e mailpit
+pnpm db:down           # docker compose down — o volume do dev sobrevive
+pnpm db:logs           # logs do postgres de dev
+pnpm db:studio         # drizzle-kit studio
+pnpm db:seed           # estado conhecido no banco LOCAL: cenários default (--list, --all, auth, auth:<cenário>)
 ```
 
 O servidor sobe com uma única rota de aplicação, `GET /health` (§7) — mais

@@ -37,8 +37,13 @@
     "test:watch": "vitest",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f postgres",
+    "db:generate": "node --env-file-if-exists=.env node_modules/drizzle-kit/bin.cjs generate",
+    "db:migrate": "node --env-file-if-exists=.env node_modules/drizzle-kit/bin.cjs migrate",
+    "db:studio": "node --env-file-if-exists=.env node_modules/drizzle-kit/bin.cjs studio",
+    "db:seed": "node --conditions=development --env-file-if-exists=.env --import tsx src/main/seeds/index.ts"
   },
   "dependencies": {
     "@fastify/cookie": "11.1.2",
