@@ -85,6 +85,7 @@ ficasse rasa em tudo, e são atacados nesta ordem:
 | 30 | Cron / poda | `cron.ts` one-shot + scheduler externo; registry de jobs por módulo; poda com janela de retenção por tabela |
 | 31 | Login com Google | Client-driven, verificação de ID token, sem merge silencioso |
 | 32 | Seed de dev | Cenários por módulo fora do container; runner em `main/`; `wipe` por namespace; só banco local |
+| 33 | Outbox transacional | Escopado aos três avisos pós-commit; estado por timestamp nulável; retry com teto simples (sem backoff explícito); tabela no módulo `auth` |
 
 ---
 
@@ -2265,6 +2266,34 @@ bloqueavam (lint de fronteira, build e path alias, mappers) viraram as decisões
   OAuth tem corpo de erro mandatório pela RFC 6749 e fica fora da convenção
   deste projeto.
 - Multi-tenancy
+
+---
+
+### 33 — Outbox transacional: três avisos pós-commit, estado por timestamp, retry com teto simples
+
+Fecha o furo "crash entre o `COMMIT` e o envio SMTP perde o e-mail em silêncio",
+para os três avisos que o encerram: `passwordChangedEmail`,
+`passwordResetCompletedEmail`, `googleAccountLinkedEmail`.
+
+**Escopo deliberadamente parcial.** `verificationEmail` e `passwordResetEmail`
+seguem fora — carregam segredo em texto claro, e colocar a linha em repouso no
+banco até o despacho é exatamente o motivo que adiou o outbox inteiro na fatia
+10. `accountAlreadyExistsEmail` também fica fora: sem escrita transacional
+precedente, não há buraco de atomicidade ali para fechar.
+
+**Estado por timestamp nulável, não enum.** `dispatched_at`/`failed_at` seguem
+o mesmo idioma de `consumed_at`/`revoked_at`.
+
+**Retry: contador simples com teto, sem backoff explícito.** O intervalo do
+scheduler externo que já invoca `cron.ts` (decisão 30) cumpre esse papel.
+
+**Rejeitados:** um outbox genérico em `shared/`, antes de um segundo módulo
+para validar a forma certa (YAGNI); um worker de longa duração com
+LISTEN/NOTIFY do Postgres em vez do poll one-shot do `cron.ts` (contradiria a
+decisão 16 e o modelo one-shot da decisão 30).
+
+Desenho completo em
+[`2026-09-15-transactional-outbox-design.md`](superpowers/specs/2026-09-15-transactional-outbox-design.md).
 
 ---
 

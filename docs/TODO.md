@@ -1,5 +1,11 @@
 # O que falta
 
+> **Fatia 16 (2026-09-16) entregou o outbox transacional** (decisão 33).
+> `outbox_messages` no módulo `auth`; os três avisos pós-commit (senha alterada,
+> senha resetada, Google vinculado) são gravados dentro da mesma transação que
+> muda o estado; `CronJob`s de dispatch e poda. Fecha o furo de "crash entre o
+> `COMMIT` e o envio SMTP perde o e-mail em silêncio".
+>
 > **Fatia 15 (2026-09-14) entregou o seed do banco local** (`pnpm db:seed`,
 > decisão 32) e os scripts `db:up`/`db:down`/`db:logs`/`db:studio`. É tooling de
 > desenvolvimento: não fecha nenhum item abaixo, e a ordem de urgência não muda.
@@ -84,7 +90,7 @@ emendados junto, para não voltar a ler como coberto.
 | ~~Login social / OAuth (Google)~~ | — | **fechado pela fatia 14** (client-driven `POST /auth/google`, decisão 31). Listar provedores vinculados no `/me` fica em espera até o front precisar. Descartados: fluxo redirect/BFF (o front já lida com o redirect), desvincular provedor, definir a primeira senha numa conta só-Google, restrição de domínio `hd` (produto é global, não B2B/Workspace) |
 | Throttle de `confirm` por e-mail | nada | um anônimo pode manter um endereço não-confirmável queimando o teto de cinco tentativas do código a cada cooldown — o teto por IP não segura. Conserto: throttle por conta/e-mail |
 | ~~CORS~~ | — | **já existe** em `src/infra/http/cors.ts` (lista de origens permitidas, registrado no `buildApp`). Entrou sem decisão no `DECISIONS.md` — registrar quando o primeiro front web definir a política |
-| Outbox transacional | **destravado** pela fatia 13 | o `cron.ts` e o registry de jobs existem — o dispatch do outbox é mais um `CronJob`. Falta a tabela e a escrita transacional. Um crash entre o `COMMIT` e o envio SMTP perde o e-mail em silêncio; custos aceitos no §11 da spec da fatia 11 e §5.3 da fatia 10 |
+| ~~Outbox transacional~~ | — | **fechada por esta fatia.** `outbox_messages` no módulo `auth`; os três avisos pós-commit (senha alterada, senha resetada, Google vinculado) são gravados dentro da mesma transação que muda o estado; `CronJob`s de dispatch e poda. Decisão 33; spec `2026-09-15-transactional-outbox-design.md` |
 | Listar sessões ativas | nada | cai quase de graça agora que há `family_id` |
 | Invalidar sessões + notificar o dono na verificação | nada | defesa em profundidade que a literatura recomenda por cima da correção estrutural (§4.4 do handoff da fatia 11) |
 | RBAC / permissões | decisão em aberto | acoplada à 11: role no JWT significa até 1h de latência para revogar permissão |
@@ -171,10 +177,14 @@ sessão; (6) MFA. Para o boilerplate genérico, segue valendo o que está abaixo
 O `auth` agora tem identidade federada: cadastro, verificação, login por senha
 **ou com Google**, sessão com rotação, troca e recuperação de senha.
 
-O próximo grande bloco genérico é o **outbox transacional**. O `cron.ts` e o
-registry de jobs já existem (fatia 13) — é só mais um `CronJob` de dispatch, mais
-a tabela e a escrita transacional nos use-cases que mandam e-mail. Fecha o furo
-de "crash entre o `COMMIT` e o envio SMTP perde o e-mail em silêncio".
+~~Outbox transacional~~ — **entregue pela fatia 16** (decisão 33).
+`outbox_messages` no módulo `auth`; os três avisos pós-commit são gravados
+dentro da mesma transação que muda o estado. Fecha o furo de "crash entre o
+`COMMIT` e o envio SMTP perde o e-mail em silêncio".
+
+O próximo item genérico é o **throttle de `confirm` por e-mail**: um anônimo
+pode manter um endereço não-confirmável queimando o teto de tentativas a cada
+cooldown — o teto por IP não segura. Conserto: throttle por conta/e-mail.
 
 Miúdo que ficou da fatia 14: listar provedores vinculados no `/me` — em espera
 até o front ter necessidade disso.
