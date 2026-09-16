@@ -28,7 +28,7 @@ export function makeContainer(db: Database, env: Env, logger: AppLogger) {
   // independent transaction on the other, which runs in its own context.
   const runner = createTransactionRunner(db, logger)
 
-  return { auth: makeAuthContainer(db, env, runner, logger) }
+  return { auth: makeAuthContainer(db, env, runner) }
 }
 
 export type Container = ReturnType<typeof makeContainer>
