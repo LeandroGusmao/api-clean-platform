@@ -55,4 +55,37 @@ describe('PruneOutboxMessagesUseCase', () => {
     expect(result).toEqual({ rowsDeleted: NONE })
     expect(await repository.findPendingBatch(ONE)).toHaveLength(ONE)
   })
+
+  it('deletes a row whose settlement is exactly on the retention cutoff', async () => {
+    const cutoff = NOW.getTime() - RETENTION_MS
+    await repository.save(
+      OutboxMessage.create({
+        id: 'on-cutoff',
+        message: { to: 'a@example.com', subject: 's', text: 't' },
+        now: new Date(cutoff),
+      }),
+    )
+    await repository.markDispatched('on-cutoff', new Date(cutoff))
+
+    const result = await useCase.execute()
+
+    expect(result).toEqual({ rowsDeleted: ONE })
+  })
+
+  it('keeps a dispatched row still inside the retention window', async () => {
+    const cutoff = NOW.getTime() - RETENTION_MS
+    const insideWindow = new Date(cutoff + ONE_MINUTE_MS)
+    await repository.save(
+      OutboxMessage.create({
+        id: 'inside-window',
+        message: { to: 'a@example.com', subject: 's', text: 't' },
+        now: insideWindow,
+      }),
+    )
+    await repository.markDispatched('inside-window', insideWindow)
+
+    const result = await useCase.execute()
+
+    expect(result).toEqual({ rowsDeleted: NONE })
+  })
 })

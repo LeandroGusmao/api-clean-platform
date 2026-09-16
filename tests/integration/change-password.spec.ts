@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -5,6 +6,7 @@ import { env } from '#infra/config/env'
 import { createDatabase, type Database } from '#infra/database/client'
 import { buildApp } from '#main/app'
 import { DEFAULT_REFRESH_TOKEN_TTL_SECONDS } from '#modules/auth/config'
+import { outboxMessages } from '#modules/auth/infra/drizzle/schema/outbox-messages'
 import { refreshTokens } from '#modules/auth/infra/drizzle/schema/refresh-tokens'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
 import { arrangeAccount } from './setup/arrange-account.js'
@@ -50,6 +52,9 @@ const EMAIL = 'joao@example.com'
 const PASSWORD = 'sup3r-s3cr3t!'
 const NEW_PASSWORD = 'ev3n-b3tter!'
 const WRONG_PASSWORD = 'n0t-the-one!'
+/** The exact subject of `passwordChangedEmail`; spelled out, not imported. */
+const PASSWORD_CHANGED_SUBJECT = 'Your password was changed'
+const ONE_MESSAGE = 1
 
 interface SessionTokens {
   accessToken: string
@@ -87,6 +92,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await db.delete(refreshTokens)
+  await db.delete(outboxMessages)
   await db.delete(users)
   // Inserted directly: since slice 11 `register` writes a `pending_registrations`
   // row, and the real SMTP-delivered confirm flow is `verify-email.spec.ts`'s
@@ -152,6 +158,20 @@ describe('POST /auth/password', () => {
 
     expect((await login(PASSWORD)).statusCode).toBe(UNAUTHORIZED_STATUS_CODE)
     expect((await login(NEW_PASSWORD)).statusCode).toBe(OK_STATUS_CODE)
+  })
+
+  it('enqueues a "password was changed" notice in the outbox after success', async () => {
+    const session = await loggedIn()
+
+    await changePassword(session.accessToken)
+
+    const rows = await db
+      .select()
+      .from(outboxMessages)
+      .where(eq(outboxMessages.subject, PASSWORD_CHANGED_SUBJECT))
+
+    expect(rows).toHaveLength(ONE_MESSAGE)
+    expect(rows[0]?.dispatchedAt).toBeNull()
   })
 
   it('answers 422 with INVALID_CURRENT_PASSWORD for a wrong current password', async () => {
