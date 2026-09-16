@@ -10,7 +10,7 @@ import {
 import { outboxMessages } from './schema/outbox-messages.js'
 
 /** How many rows affected when none matched. */
-const NO_ROWS_AFFECTED = 0
+const NO_ROW_AFFECTED = 0
 
 /** One row increment for attempts counter. */
 const ONE_INCREMENT = 1
@@ -63,27 +63,16 @@ export class DrizzleOutboxMessagesRepository implements IOutboxMessagesRepositor
     maxAttempts: number,
   ): Promise<void> {
     try {
-      const rows = await this.db
-        .select()
-        .from(outboxMessages)
-        .where(eq(outboxMessages.id, id))
-
-      const message = rows[0]
-      if (!message) return
-
-      const attempts = message.attempts + ONE_INCREMENT
-      const failedAt = attempts >= maxAttempts ? at : null
-
       await this.db
         .update(outboxMessages)
         .set({
-          attempts,
+          attempts: sql`${outboxMessages.attempts} + ${ONE_INCREMENT}`,
           lastError: error,
-          failedAt,
+          failedAt: sql`case when ${outboxMessages.attempts} + ${ONE_INCREMENT} >= ${maxAttempts} then ${at} else ${outboxMessages.failedAt} end`,
         })
         .where(eq(outboxMessages.id, id))
-    } catch (error) {
-      throw toPersistenceError(error)
+    } catch (err) {
+      throw toPersistenceError(err)
     }
   }
 
@@ -104,7 +93,7 @@ export class DrizzleOutboxMessagesRepository implements IOutboxMessagesRepositor
           ),
         )
 
-      return result.rowCount ?? NO_ROWS_AFFECTED
+      return result.rowCount ?? NO_ROW_AFFECTED
     } catch (error) {
       throw toPersistenceError(error)
     }

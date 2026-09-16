@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm'
 import { index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 
 /**
@@ -23,11 +24,8 @@ export const outboxMessages = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   },
   (table) => [
-    // The pending-batch query and cleanup: find rows not yet settled, newest first
-    index('outbox_messages_pending_idx').on(
-      table.dispatchedAt,
-      table.failedAt,
-      table.createdAt,
-    ),
+    index('outbox_messages_pending_idx')
+      .on(table.createdAt)
+      .where(sql`${table.dispatchedAt} is null and ${table.failedAt} is null`),
   ],
 )

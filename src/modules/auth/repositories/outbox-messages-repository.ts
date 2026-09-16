@@ -14,11 +14,9 @@ export interface IOutboxMessagesRepository {
   markDispatched(id: string, at: Date): Promise<void>
 
   /**
-   * Increments `attempts`, records `lastError`, and sets `failedAt` once
-   * `attempts` reaches `maxAttempts` — never before. No corresponding
-   * `Promise<boolean>`: unlike `registerFailedAttempt`, only the dispatch job
-   * ever writes to one row, one at a time, so there is no race to serialize
-   * against.
+   * A single conditional `UPDATE`: `attempts = attempts + 1`, `failed_at`
+   * set via a SQL `CASE` once the cap is reached — computed entirely in SQL
+   * so the method is correct regardless of concurrent callers.
    */
   recordFailure(id: string, at: Date, error: string, maxAttempts: number): Promise<void>
 
