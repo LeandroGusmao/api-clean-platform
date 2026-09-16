@@ -81,7 +81,7 @@ emendados junto, para não voltar a ler como coberto.
 | Item | Depende de | Nota |
 |---|---|---|
 | ~~Poda de tokens expirados~~ | — | **fechada pela fatia 13.** `cron.ts` one-shot + registry de jobs por módulo; três use-cases de poda com janela de retenção por tabela varrem `refresh_tokens`, `pending_registrations` e `password_reset_tokens`. Decisão 30; spec `2026-09-07-token-pruning-cron-design.md` |
-| ~~Login social / OAuth (Google)~~ | — | **fechado pela fatia 14** (client-driven `POST /auth/google`, decisão 31). Falta: listar provedores vinculados no `/me`. Descartados: fluxo redirect/BFF (o front já lida com o redirect), desvincular provedor, definir a primeira senha numa conta só-Google, restrição de domínio `hd` (produto é global, não B2B/Workspace) |
+| ~~Login social / OAuth (Google)~~ | — | **fechado pela fatia 14** (client-driven `POST /auth/google`, decisão 31). Listar provedores vinculados no `/me` fica em espera até o front precisar. Descartados: fluxo redirect/BFF (o front já lida com o redirect), desvincular provedor, definir a primeira senha numa conta só-Google, restrição de domínio `hd` (produto é global, não B2B/Workspace) |
 | Throttle de `confirm` por e-mail | nada | um anônimo pode manter um endereço não-confirmável queimando o teto de cinco tentativas do código a cada cooldown — o teto por IP não segura. Conserto: throttle por conta/e-mail |
 | ~~CORS~~ | — | **já existe** em `src/infra/http/cors.ts` (lista de origens permitidas, registrado no `buildApp`). Entrou sem decisão no `DECISIONS.md` — registrar quando o primeiro front web definir a política |
 | Outbox transacional | **destravado** pela fatia 13 | o `cron.ts` e o registry de jobs existem — o dispatch do outbox é mais um `CronJob`. Falta a tabela e a escrita transacional. Um crash entre o `COMMIT` e o envio SMTP perde o e-mail em silêncio; custos aceitos no §11 da spec da fatia 11 e §5.3 da fatia 10 |
@@ -176,7 +176,8 @@ registry de jobs já existem (fatia 13) — é só mais um `CronJob` de dispatch
 a tabela e a escrita transacional nos use-cases que mandam e-mail. Fecha o furo
 de "crash entre o `COMMIT` e o envio SMTP perde o e-mail em silêncio".
 
-Miúdo que ficou da fatia 14: listar provedores vinculados no `/me`.
+Miúdo que ficou da fatia 14: listar provedores vinculados no `/me` — em espera
+até o front ter necessidade disso.
 
 Descartados, não pendências: fluxo redirect/BFF do Google (o front já lida com o
 redirect, não há BFF neste desenho), desvincular provedor e definir a primeira
