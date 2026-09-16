@@ -39,7 +39,7 @@ export interface TrustedOutboxMessageProps {
  * One notice promised inside a transaction, to be sent for real later by
  * `DispatchOutboxMessagesUseCase`. Carries no secret — the three e-mails it
  * exists for (`passwordChangedEmail`, `passwordResetCompletedEmail`,
- * `googleAccountLinkedEmail`) are avisos, not codes or tokens — but state still
+ * `googleAccountLinkedEmail`) are notices, not codes or tokens — but state still
  * lives in `#` private fields, non-enumerable at runtime, so a stray
  * `log.info({ message })` cannot leak a message body into the log stream.
  *
