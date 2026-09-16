@@ -1,13 +1,10 @@
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
-import {
-  BestEffortEmailSender,
-  type ErrorLogger,
-} from '#infra/providers/best-effort-email-sender'
 import { User } from '#modules/auth/entities/user'
 import { InvalidCurrentPasswordError } from '#modules/auth/errors/invalid-current-password-error'
 import { InvalidPasswordError } from '#modules/auth/errors/invalid-password-error'
 import { PasswordUnchangedError } from '#modules/auth/errors/password-unchanged-error'
 import { UserNotFoundError } from '#modules/auth/errors/user-not-found-error'
+import { InMemoryOutboxMessagesRepository } from '#modules/auth/infra/in-memory/in-memory-outbox-messages-repository'
 import { InMemoryRefreshTokensRepository } from '#modules/auth/infra/in-memory/in-memory-refresh-tokens-repository'
 import { InMemoryUsersRepository } from '#modules/auth/infra/in-memory/in-memory-users-repository'
 import { passwordChangedEmail } from '#modules/auth/notifications/emails'
@@ -19,7 +16,6 @@ import type { IUsersRepository } from '#modules/auth/repositories/users-reposito
 import { RefreshTokenIssuer } from '#modules/auth/services/refresh-token-issuer'
 import { ChangePasswordUseCase } from '#modules/auth/use-cases/change-password'
 import { Email } from '#modules/auth/value-objects/email'
-import type { EmailMessage, IEmailSender } from '#shared/ports/email-sender'
 
 const USER_ID = '3f2a1b4c-5d6e-4f70-8192-a3b4c5d6e7f8'
 const MISSING_USER_ID = '00000000-0000-4000-8000-000000000000'
@@ -58,20 +54,13 @@ const REVOKE_ALL_CALL = 'revokeAllForUser'
 const SAVE_TOKEN_CALL = 'saveToken'
 /** Pushed by the `uow` fake only when its callback RESOLVES — never on a rollback. */
 const COMMIT_CALL = 'commit'
-const SEND_EMAIL_CALL = 'sendEmail'
-
-const NOTIFICATION_FAILURE_MESSAGE = 'delivery unavailable'
-/** A logger double that discards everything: this test is about the use case's
- *  return value, not about what the decorator logs — that is covered on its own
- *  spec. */
-const silentLogger: ErrorLogger = { error: () => {} }
+const SAVE_OUTBOX_CALL = 'saveOutboxMessage'
 
 let callLog: string[]
-let sentEmails: EmailMessage[]
 let usersRepository: InMemoryUsersRepository
 let refreshTokensRepository: InMemoryRefreshTokensRepository
+let outboxMessages: InMemoryOutboxMessagesRepository
 let useCase: ChangePasswordUseCase
-let emailSender: IEmailSender
 // Typed with the real signatures rather than a bare `ReturnType<typeof vi.fn>`,
 // which erases them: the erased form compiles at the declaration and then fails
 // where the spy is handed to a port, several lines away.
@@ -103,9 +92,9 @@ const issuedToken = () =>
 
 beforeEach(() => {
   callLog = []
-  sentEmails = []
   usersRepository = new InMemoryUsersRepository()
   refreshTokensRepository = new InMemoryRefreshTokensRepository()
+  outboxMessages = new InMemoryOutboxMessagesRepository()
 
   // Wrapped so the log records the order the repositories were touched INSIDE
   // the transaction. Order is the whole point of two of the tests below.
@@ -137,6 +126,18 @@ beforeEach(() => {
       },
       deleteExpiredBefore: (cutoff) =>
         refreshTokensRepository.deleteExpiredBefore(cutoff),
+    },
+    outboxMessages: {
+      save: (message) => {
+        callLog.push(SAVE_OUTBOX_CALL)
+        return outboxMessages.save(message)
+      },
+      findPendingBatch: (limit) => outboxMessages.findPendingBatch(limit),
+      markDispatched: (id, at) => outboxMessages.markDispatched(id, at),
+      recordFailure: (id, at, error, maxAttempts) =>
+        outboxMessages.recordFailure(id, at, error, maxAttempts),
+      deleteDispatchedOrFailedBefore: (cutoff) =>
+        outboxMessages.deleteDispatchedOrFailedBefore(cutoff),
     },
   }
 
@@ -178,13 +179,6 @@ beforeEach(() => {
   // exactly what turns a wiring slip into an authorization bug.
   signSpy = vi.fn(async () => ACCESS_TOKEN)
 
-  emailSender = {
-    send: async (message) => {
-      callLog.push(SEND_EMAIL_CALL)
-      sentEmails.push(message)
-    },
-  }
-
   useCase = new ChangePasswordUseCase(
     readRepository,
     // Cast because `IAuthUnitOfWork` is generic in the callback's return type
@@ -200,7 +194,7 @@ beforeEach(() => {
       TTL_SECONDS,
     ),
     { now: () => NOW },
-    emailSender,
+    { generate: () => GENERATED_ID },
   )
 })
 
@@ -235,11 +229,10 @@ describe('ChangePasswordUseCase', () => {
    * One equality kills three mutations at once: deleting a step, swapping two,
    * and moving either argon2 call inside the transaction (§8 of the unit of
    * work design — 15ms of CPU with a pooled connection, of ten, standing
-   * still) — plus the one guarantee this task adds: a rollback must never
-   * precede a send, which is what would break first if the notification moved
-   * INSIDE `this.uow(...)`.
+   * still) — plus the one guarantee this task adds: the outbox row must land
+   * before the commit, not after it.
    */
-  it('notifies the owner AFTER the transaction commits', async () => {
+  it('writes the outbox row INSIDE the transaction, before it commits', async () => {
     storeUser(CURRENT_HASH)
 
     await change()
@@ -251,63 +244,23 @@ describe('ChangePasswordUseCase', () => {
       // above it must not.
       UOW_CALL,
       UPDATE_CALL,
-      // Before the insert, always: `revokeAllForUser` revokes every row of the
-      // user whose `revoked_at` is null, so inserting first means the brand new
-      // token is caught by that same UPDATE and is born revoked — the endpoint
-      // answers 200 and the first refresh answers 401.
       REVOKE_ALL_CALL,
       SAVE_TOKEN_CALL,
-      // COMMIT is pushed by the `uow` fake only once its callback resolves, and
-      // the notification is the very next thing the use case does — §8.
+      // The outbox row, before the commit: a crash right after this line still
+      // loses nothing, because the row and the state change are one fact.
+      SAVE_OUTBOX_CALL,
       COMMIT_CALL,
-      SEND_EMAIL_CALL,
     ])
   })
 
-  it('notifies the owner with the password-changed email', async () => {
+  it('enqueues the password-changed notice for the outbox to dispatch later', async () => {
     storeUser(CURRENT_HASH)
 
     await change()
 
-    expect(sentEmails).toEqual([passwordChangedEmail(Email.fromTrusted(EMAIL))])
-  })
-
-  it('still returns a session when the notification cannot be delivered', async () => {
-    storeUser(CURRENT_HASH)
-
-    // The REAL policy, not a mock of it: a sender that always rejects, wrapped
-    // by the same decorator the composition root uses for this notification.
-    // If `execute` still throws with this wiring, the use case — not just the
-    // decorator in isolation — is what is broken.
-    const resilientUseCase = new ChangePasswordUseCase(
-      usersRepository,
-      uowSpy as unknown as IAuthUnitOfWork,
-      { hash: hashSpy, compare: compareSpy, dummyHash: DUMMY_HASH },
-      { sign: signSpy, verify: async () => ({ sub: USER_ID }) },
-      new RefreshTokenIssuer(
-        { opaque: () => OPAQUE_TOKEN, numericCode: () => NUMERIC_CODE },
-        { hash: (value: string) => `${DIGEST_PREFIX}${value}` },
-        { generate: () => GENERATED_ID },
-        TTL_SECONDS,
-      ),
-      { now: () => NOW },
-      new BestEffortEmailSender(
-        {
-          send: async () => {
-            throw new Error(NOTIFICATION_FAILURE_MESSAGE)
-          },
-        },
-        silentLogger,
-      ),
-    )
-
-    await expect(
-      resilientUseCase.execute({
-        userId: USER_ID,
-        currentPassword: CURRENT_PASSWORD,
-        newPassword: NEW_PASSWORD,
-      }),
-    ).resolves.toHaveProperty('accessToken')
+    expect(outboxMessages.messages.map((message) => message.toEmailMessage())).toEqual([
+      passwordChangedEmail(Email.fromTrusted(EMAIL)),
+    ])
   })
 
   it('leaves the new token alive after the revocation', async () => {
@@ -426,7 +379,7 @@ describe('ChangePasswordUseCase', () => {
         TTL_SECONDS,
       ),
       { now: advancingClock },
-      emailSender,
+      { generate: () => GENERATED_ID },
     )
     storeUser(CURRENT_HASH)
 
