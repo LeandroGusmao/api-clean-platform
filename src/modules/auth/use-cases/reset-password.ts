@@ -68,7 +68,7 @@ export class ResetPasswordUseCase {
 
     // Reachable only in theory — the foreign key cascades, so a deleted user
     // takes its token row with it and the guard above would have thrown. Still
-    // generic, never a new error type. The address is what the send below needs.
+    // generic, never a new error type. The address is what the enqueue below needs.
     const user = await this.usersRepository.findById(token.userId)
     if (user === null) throw new PasswordResetFailedError()
 

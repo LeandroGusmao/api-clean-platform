@@ -125,7 +125,7 @@ describe('POST /auth/password/reset', () => {
       .from(outboxMessages)
       .where(eq(outboxMessages.subject, PASSWORD_RESET_COMPLETED_SUBJECT))
 
-    expect(rows).toHaveLength(1)
+    expect(rows).toHaveLength(ONE_MESSAGE)
     expect(rows[0]?.dispatchedAt).toBeNull()
   })
 

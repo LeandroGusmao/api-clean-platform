@@ -31,6 +31,7 @@ const HASH_LENGTH = 64
 const EXPECTED_JOBS = 5
 const ONE_JOB = 1
 const ROWS_DELETED_PER_JOB = 1
+const DISPATCHED_PER_RUN = 1
 const NONE = 0
 const SURVIVORS_PER_TABLE = 1
 /** Both rows still there — the table's job never ran. */
@@ -233,8 +234,8 @@ describe('runCron', () => {
     )
 
     expect(outcomes).toHaveLength(ONE_JOB)
-    expect(outcomes[0]?.metrics).toEqual({ dispatched: 1, failed: NONE })
+    expect(outcomes[0]?.metrics).toEqual({ dispatched: DISPATCHED_PER_RUN, failed: NONE })
     const [row] = await db.select().from(outboxMessages)
-    expect(row?.dispatchedAt).not.toBeNull()
+    expect(row?.dispatchedAt).toBeInstanceOf(Date)
   })
 })

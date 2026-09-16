@@ -165,9 +165,9 @@ export function makeAuthContainer(
   )
   /**
    * What this module hands the `cron.ts` entrypoint. Each `run` re-wraps the
-   * use case's `{ rowsDeleted }` into a fresh object literal — that is what
-   * makes it a `Record<string, number>` for the runner's log line, without the
-   * use cases having to know the `CronJob` shape.
+   * use case's result into a fresh object literal — that is what makes it a
+   * `Record<string, number>` for the runner's log line, without the use cases
+   * having to know the `CronJob` shape.
    */
   const jobs: CronJob[] = [
     {

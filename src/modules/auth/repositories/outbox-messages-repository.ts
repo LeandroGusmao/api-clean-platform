@@ -21,7 +21,7 @@ export interface IOutboxMessagesRepository {
   recordFailure(id: string, at: Date, error: string, maxAttempts: number): Promise<void>
 
   /**
-   * Poda: deletes rows that are dispatched OR failed, whichever happened at or
+   * Prune: deletes rows that are dispatched OR failed, whichever happened at or
    * before `cutoff`. Never touches a still-pending row. Mirrors
    * `deleteExpiredBefore` on the sibling repositories.
    */

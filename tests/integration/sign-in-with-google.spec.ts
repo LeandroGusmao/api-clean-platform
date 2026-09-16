@@ -127,7 +127,7 @@ describe('POST /auth/google', () => {
     expect(response.json().error.code).toBe('GOOGLE_LINK_REQUIRES_PASSWORD')
   })
 
-  it('links to the password account when the right password is supplied, and emails a warning', async () => {
+  it('links to the password account when the right password is supplied, and enqueues a warning notice', async () => {
     await createPasswordAccount()
 
     const response = await googleSignIn({
