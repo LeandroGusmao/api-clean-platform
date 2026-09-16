@@ -6,6 +6,7 @@ import { env } from '#infra/config/env'
 import { createDatabase, type Database } from '#infra/database/client'
 import { buildApp } from '#main/app'
 import { federatedIdentities } from '#modules/auth/infra/drizzle/schema/federated-identities'
+import { outboxMessages } from '#modules/auth/infra/drizzle/schema/outbox-messages'
 import { pendingRegistrations } from '#modules/auth/infra/drizzle/schema/pending-registrations'
 import { refreshTokens } from '#modules/auth/infra/drizzle/schema/refresh-tokens'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
@@ -133,7 +134,9 @@ describe('POST /auth/google', () => {
 
     expect(response.statusCode).toBe(OK)
     expect(await db.select().from(federatedIdentities)).toHaveLength(1)
-    await waitForMessageCount(ONE_MESSAGE)
+    const rows = await db.select().from(outboxMessages)
+    expect(rows).toHaveLength(ONE_MESSAGE)
+    expect(rows[0]?.dispatchedAt).toBeNull()
   })
 
   it('answers 401 for a wrong password on the link path', async () => {
