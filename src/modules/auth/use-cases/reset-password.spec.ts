@@ -1,12 +1,9 @@
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
-import {
-  BestEffortEmailSender,
-  type ErrorLogger,
-} from '#infra/providers/best-effort-email-sender'
 import { PasswordResetToken } from '#modules/auth/entities/password-reset-token'
 import { User } from '#modules/auth/entities/user'
 import { InvalidPasswordError } from '#modules/auth/errors/invalid-password-error'
 import { PasswordResetFailedError } from '#modules/auth/errors/password-reset-failed-error'
+import { InMemoryOutboxMessagesRepository } from '#modules/auth/infra/in-memory/in-memory-outbox-messages-repository'
 import { InMemoryRefreshTokensRepository } from '#modules/auth/infra/in-memory/in-memory-refresh-tokens-repository'
 import { InMemoryUsersRepository } from '#modules/auth/infra/in-memory/in-memory-users-repository'
 import { passwordResetCompletedEmail } from '#modules/auth/notifications/emails'
@@ -15,7 +12,7 @@ import { noopAuthRepos } from '#modules/auth/repositories/noop-auth-repos'
 import type { AuthRepos, IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
 import { ResetPasswordUseCase } from '#modules/auth/use-cases/reset-password'
 import { Email } from '#modules/auth/value-objects/email'
-import type { EmailMessage, IEmailSender } from '#shared/ports/email-sender'
+import type { IIdGenerator } from '#shared/ports/id-generator'
 
 const USER_ID = '3f2a1b4c-5d6e-4f70-8192-a3b4c5d6e7f8'
 const TOKEN_ID = 'a1a1a1a1-1111-4111-8111-111111111111'
@@ -48,14 +45,10 @@ const UPDATE_CALL = 'updatePasswordHash'
 const REVOKE_ALL_CALL = 'revokeAllForUser'
 /** Pushed by the `uow` fake only when its callback RESOLVES — never on a rollback. */
 const COMMIT_CALL = 'commit'
-const SEND_EMAIL_CALL = 'sendEmail'
-
-const NOTIFICATION_FAILURE_MESSAGE = 'delivery unavailable'
-/** Discards everything: what the decorator logs is covered on its own spec. */
-const silentLogger: ErrorLogger = { error: () => {} }
+const SAVE_OUTBOX_CALL = 'saveOutboxMessage'
 
 let callLog: string[]
-let sentEmails: EmailMessage[]
+let outboxMessagesRepository: InMemoryOutboxMessagesRepository
 let usersRepository: InMemoryUsersRepository
 let refreshTokensRepository: InMemoryRefreshTokensRepository
 let consumeResult: boolean
@@ -65,7 +58,6 @@ let consumeResult: boolean
 let hashSpy: Mock<IHashProvider['hash']>
 let findByHashSpy: Mock<() => Promise<PasswordResetToken | null>>
 let uowSpy: Mock<(work: (repos: AuthRepos) => Promise<unknown>) => Promise<unknown>>
-let emailSender: IEmailSender
 let useCase: ResetPasswordUseCase
 
 const storeUser = () => {
@@ -94,7 +86,7 @@ const liveToken = () =>
     createdAt: NOW,
   })
 
-const makeUseCase = (sender: IEmailSender) =>
+const makeUseCase = (idGenerator: IIdGenerator) =>
   new ResetPasswordUseCase(
     usersRepository,
     { findByHash: findByHashSpy },
@@ -105,12 +97,12 @@ const makeUseCase = (sender: IEmailSender) =>
     { hash: hashSpy, compare: async () => false, dummyHash: DUMMY_HASH },
     { hash: (value: string) => `${DIGEST_PREFIX}${value}` },
     { now: () => NOW },
-    sender,
+    idGenerator,
   )
 
 beforeEach(() => {
   callLog = []
-  sentEmails = []
+  outboxMessagesRepository = new InMemoryOutboxMessagesRepository()
   usersRepository = new InMemoryUsersRepository()
   refreshTokensRepository = new InMemoryRefreshTokensRepository()
   consumeResult = true
@@ -155,6 +147,18 @@ beforeEach(() => {
       },
       deleteExpiredBefore: async () => 0,
     },
+    outboxMessages: {
+      save: (message) => {
+        callLog.push(SAVE_OUTBOX_CALL)
+        return outboxMessagesRepository.save(message)
+      },
+      findPendingBatch: (limit) => outboxMessagesRepository.findPendingBatch(limit),
+      markDispatched: (id, at) => outboxMessagesRepository.markDispatched(id, at),
+      recordFailure: (id, at, error, maxAttempts) =>
+        outboxMessagesRepository.recordFailure(id, at, error, maxAttempts),
+      deleteDispatchedOrFailedBefore: (cutoff) =>
+        outboxMessagesRepository.deleteDispatchedOrFailedBefore(cutoff),
+    },
   }
 
   hashSpy = vi.fn(async (plain) => {
@@ -174,14 +178,7 @@ beforeEach(() => {
     return result
   })
 
-  emailSender = {
-    send: async (message) => {
-      callLog.push(SEND_EMAIL_CALL)
-      sentEmails.push(message)
-    },
-  }
-
-  useCase = makeUseCase(emailSender)
+  useCase = makeUseCase({ generate: () => 'generated-outbox-id' })
 })
 
 const reset = (overrides: Partial<Parameters<typeof useCase.execute>[0]> = {}) =>
@@ -199,7 +196,7 @@ describe('ResetPasswordUseCase', () => {
    * moving argon2 inside the transaction, and moving the notification inside it
    * — the send must follow the commit, never a rollback.
    */
-  it('hashes, consumes, writes the password, revokes every session, then emails — in that order', async () => {
+  it('hashes, consumes, writes the password, revokes every session, then enqueues the notice — in that order', async () => {
     storeUser()
 
     await reset()
@@ -214,8 +211,10 @@ describe('ResetPasswordUseCase', () => {
       CONSUME_CALL,
       UPDATE_CALL,
       REVOKE_ALL_CALL,
+      // The outbox row, INSIDE the transaction: a crash right after this line
+      // still loses nothing, because the row and the state change are one fact.
+      SAVE_OUTBOX_CALL,
       COMMIT_CALL,
-      SEND_EMAIL_CALL,
     ])
     expect(storedUser()?.passwordHash).toBe(NEW_HASH)
   })
@@ -228,12 +227,14 @@ describe('ResetPasswordUseCase', () => {
     expect(findByHashSpy).toHaveBeenCalledWith(TOKEN_HASH)
   })
 
-  it('notifies the owner with the reset-completed email', async () => {
+  it('enqueues the reset-completed notice for the outbox to dispatch later', async () => {
     storeUser()
 
     await reset()
 
-    expect(sentEmails).toEqual([passwordResetCompletedEmail(Email.fromTrusted(EMAIL))])
+    expect(outboxMessagesRepository.messages.map((m) => m.toEmailMessage())).toEqual([
+      passwordResetCompletedEmail(Email.fromTrusted(EMAIL)),
+    ])
   })
 
   it('stamps updatedAt from the injected clock', async () => {
@@ -317,30 +318,6 @@ describe('ResetPasswordUseCase', () => {
     // happens inside the callback, so the transaction aborts. No SEND either.
     expect(callLog).toEqual([HASH_CALL, UOW_CALL, CONSUME_CALL])
     expect(storedUser()?.passwordHash).toBe(OLD_HASH)
-    expect(sentEmails).toEqual([])
-  })
-
-  it('still resolves when the completion email cannot be delivered', async () => {
-    storeUser()
-
-    // The REAL policy, not a mock of it: a sender that always rejects, wrapped
-    // by the same decorator the composition root uses for this notification. If
-    // `execute` still throws with this wiring, the use case — not just the
-    // decorator in isolation — is what is broken.
-    const resilient = makeUseCase(
-      new BestEffortEmailSender(
-        {
-          send: async () => {
-            throw new Error(NOTIFICATION_FAILURE_MESSAGE)
-          },
-        },
-        silentLogger,
-      ),
-    )
-
-    await expect(
-      resilient.execute({ token: RAW_TOKEN, newPassword: NEW_PASSWORD }),
-    ).resolves.toBeUndefined()
-    expect(storedUser()?.passwordHash).toBe(NEW_HASH)
+    expect(outboxMessagesRepository.messages).toEqual([])
   })
 })
