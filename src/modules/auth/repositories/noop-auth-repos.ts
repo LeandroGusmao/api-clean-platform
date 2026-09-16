@@ -42,5 +42,12 @@ export function noopAuthRepos(): AuthRepos {
       save: async () => {},
       findByProviderUserId: async () => null,
     },
+    outboxMessages: {
+      save: async () => {},
+      findPendingBatch: async () => [],
+      markDispatched: async () => {},
+      recordFailure: async () => {},
+      deleteDispatchedOrFailedBefore: async () => 0,
+    },
   }
 }

@@ -1,6 +1,7 @@
 import type { Database } from '#infra/database/client'
 import type { AuthRepos } from '#modules/auth/repositories/unit-of-work'
 import { DrizzleFederatedIdentitiesRepository } from './drizzle-federated-identities-repository.js'
+import { DrizzleOutboxMessagesRepository } from './drizzle-outbox-messages-repository.js'
 import { DrizzlePasswordResetTokensRepository } from './drizzle-password-reset-tokens-repository.js'
 import { DrizzlePendingRegistrationsRepository } from './drizzle-pending-registrations-repository.js'
 import { DrizzleRefreshTokensRepository } from './drizzle-refresh-tokens-repository.js'
@@ -21,5 +22,6 @@ export function authRepositories(db: Database): AuthRepos {
     pendingRegistrations: new DrizzlePendingRegistrationsRepository(db),
     passwordResetTokens: new DrizzlePasswordResetTokensRepository(db),
     federatedIdentities: new DrizzleFederatedIdentitiesRepository(db),
+    outboxMessages: new DrizzleOutboxMessagesRepository(db),
   }
 }
