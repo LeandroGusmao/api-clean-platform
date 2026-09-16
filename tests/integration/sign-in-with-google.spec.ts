@@ -36,6 +36,8 @@ const JWT_PATTERN = /^[\w-]+\.[\w-]+\.[\w-]+$/
 const CEILING = 1000
 const NO_COOLDOWN = 0
 const ONE_MESSAGE = 1
+/** The exact subject of `googleAccountLinkedEmail`; spelled out, not imported. */
+const GOOGLE_ACCOUNT_LINKED_SUBJECT = 'A Google sign-in was connected to your account'
 
 let app: FastifyInstance
 let db: Database
@@ -67,6 +69,7 @@ beforeEach(async () => {
   await db.delete(refreshTokens)
   await db.delete(federatedIdentities)
   await db.delete(pendingRegistrations)
+  await db.delete(outboxMessages)
   await db.delete(users)
   await clearMailpit()
 })
@@ -134,7 +137,10 @@ describe('POST /auth/google', () => {
 
     expect(response.statusCode).toBe(OK)
     expect(await db.select().from(federatedIdentities)).toHaveLength(1)
-    const rows = await db.select().from(outboxMessages)
+    const rows = await db
+      .select()
+      .from(outboxMessages)
+      .where(eq(outboxMessages.subject, GOOGLE_ACCOUNT_LINKED_SUBJECT))
     expect(rows).toHaveLength(ONE_MESSAGE)
     expect(rows[0]?.dispatchedAt).toBeNull()
   })
