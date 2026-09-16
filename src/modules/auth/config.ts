@@ -127,6 +127,23 @@ export const DEFAULT_PENDING_REGISTRATION_PRUNE_RETENTION_SECONDS = 86_400
 export const DEFAULT_PASSWORD_RESET_TOKEN_PRUNE_RETENTION_SECONDS = 86_400
 
 /**
+ * Five attempts before a pending notice gives up and stops being retried
+ * (design §3, §8). The interval BETWEEN attempts is whatever the external
+ * scheduler invoking `cron.ts` is set to — that already is the backoff
+ * (decision 30, §3.1 of the slice 13 design).
+ */
+export const DEFAULT_OUTBOX_DISPATCH_MAX_ATTEMPTS = 5
+
+/** How many pending rows one dispatch run picks up. */
+export const DEFAULT_OUTBOX_DISPATCH_BATCH_SIZE = 100
+
+/**
+ * Seven days, same window as `refresh_tokens`: a dispatched or given-up-on
+ * notice stays available for a post-mortem before the prune job removes it.
+ */
+export const DEFAULT_OUTBOX_MESSAGE_PRUNE_RETENTION_SECONDS = 604_800
+
+/**
  * Where `jose` fetches Google's signing keys. A default of the real endpoint,
  * the way `MAIL_HOST` defaults to the dev Mailpit host: it is a service
  * endpoint, and the integration test overrides it to a local JWKS server the
@@ -316,6 +333,24 @@ export const authEnvSchema = z.object({
     .int()
     .positive()
     .default(DEFAULT_PASSWORD_RESET_TOKEN_PRUNE_RETENTION_SECONDS),
+  // `.int().positive()` for the same reason as every retention above: an
+  // empty value coerced to 0 would mark a message failed on its first
+  // attempt, or prune it the instant it is dispatched.
+  OUTBOX_DISPATCH_MAX_ATTEMPTS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_OUTBOX_DISPATCH_MAX_ATTEMPTS),
+  OUTBOX_DISPATCH_BATCH_SIZE: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_OUTBOX_DISPATCH_BATCH_SIZE),
+  OUTBOX_MESSAGE_PRUNE_RETENTION_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_OUTBOX_MESSAGE_PRUNE_RETENTION_SECONDS),
 })
 
 export type AuthConfig = z.infer<typeof authEnvSchema>
