@@ -117,4 +117,30 @@ describe('DispatchOutboxMessagesUseCase', () => {
     expect(result).toEqual({ dispatched: SMALL_BATCH_SIZE, failed: NONE })
     expect(await repository.findPendingBatch(THREE)).toHaveLength(ONE)
   })
+
+  /**
+   * If send succeeds but markDispatched throws (e.g. transient DB error), the
+   * error should propagate, not be silently caught and mislabeled as a send
+   * failure. This proves the fix: only send is inside try/catch.
+   */
+  it('propagates markDispatched errors instead of mislabeling them as send failures', async () => {
+    await seed('ok@example.com')
+
+    const failingRepository = Object.create(repository)
+    failingRepository.markDispatched = async () => {
+      throw new Error('db connection lost')
+    }
+
+    const useCaseWithFailingRepository = new DispatchOutboxMessagesUseCase(
+      failingRepository,
+      emailSender,
+      { now: () => NOW },
+      MAX_ATTEMPTS,
+      BATCH_SIZE,
+    )
+
+    await expect(useCaseWithFailingRepository.execute()).rejects.toThrow(
+      'db connection lost',
+    )
+  })
 })

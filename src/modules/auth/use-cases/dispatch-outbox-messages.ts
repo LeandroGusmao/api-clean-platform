@@ -35,15 +35,22 @@ export class DispatchOutboxMessagesUseCase {
 
     for (const message of pending) {
       const now = this.clock.now()
+      let sendError: unknown
+
       try {
         await this.emailSender.send(message.toEmailMessage())
+      } catch (error) {
+        sendError = error
+      }
+
+      if (sendError === undefined) {
         await this.outboxMessages.markDispatched(message.id, now)
         dispatched++
-      } catch (error) {
+      } else {
         await this.outboxMessages.recordFailure(
           message.id,
           now,
-          error instanceof Error ? error.message : String(error),
+          sendError instanceof Error ? sendError.message : String(sendError),
           this.maxAttempts,
         )
         failed++
