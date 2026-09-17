@@ -1,3 +1,4 @@
+import { OutboxMessage } from '#modules/auth/entities/outbox-message'
 import { InvalidCurrentPasswordError } from '#modules/auth/errors/invalid-current-password-error'
 import { PasswordUnchangedError } from '#modules/auth/errors/password-unchanged-error'
 import { UserNotFoundError } from '#modules/auth/errors/user-not-found-error'
@@ -9,7 +10,7 @@ import type { IUsersRepository } from '#modules/auth/repositories/users-reposito
 import type { RefreshTokenIssuer } from '#modules/auth/services/refresh-token-issuer'
 import { Password } from '#modules/auth/value-objects/password'
 import type { IClock } from '#shared/ports/clock'
-import type { IEmailSender } from '#shared/ports/email-sender'
+import type { IIdGenerator } from '#shared/ports/id-generator'
 
 /** Raw, untrusted input. `userId` comes from the verified token, never the body. */
 export interface ChangePasswordCommand {
@@ -54,7 +55,7 @@ export class ChangePasswordUseCase {
     private readonly tokenSigner: ITokenSigner,
     private readonly refreshTokenIssuer: RefreshTokenIssuer,
     private readonly clock: IClock,
-    private readonly emailSender: IEmailSender,
+    private readonly idGenerator: IIdGenerator,
   ) {}
 
   async execute(command: ChangePasswordCommand): Promise<ChangePasswordResult> {
@@ -112,7 +113,7 @@ export class ChangePasswordUseCase {
       now,
     )
 
-    await this.uow(async ({ users, refreshTokens }) => {
+    await this.uow(async ({ users, refreshTokens, outboxMessages }) => {
       await users.updatePasswordHash(user.id, passwordHash, now)
 
       // BEFORE the insert, always. `revokeAllForUser` revokes every row of this
@@ -122,13 +123,17 @@ export class ChangePasswordUseCase {
       await refreshTokens.revokeAllForUser(user.id, now)
 
       await refreshTokens.save(issued.entity)
-    })
 
-    // After the commit, like every other send in this module (§8). The wiring —
-    // not this line — is what makes a failure here harmless: the composition
-    // root hands this use case a best-effort sender, because the password has
-    // already changed and a 500 would misinform.
-    await this.emailSender.send(passwordChangedEmail(user.email))
+      // The notice, in the SAME transaction as the state it describes: a
+      // crash right after this still loses nothing (design §5).
+      await outboxMessages.save(
+        OutboxMessage.create({
+          id: this.idGenerator.generate(),
+          message: passwordChangedEmail(user.email),
+          now,
+        }),
+      )
+    })
 
     return {
       accessToken: await this.tokenSigner.sign({ sub: user.id }),

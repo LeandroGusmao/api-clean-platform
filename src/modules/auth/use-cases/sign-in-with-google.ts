@@ -2,6 +2,7 @@ import {
   FederatedIdentity,
   GOOGLE_PROVIDER,
 } from '#modules/auth/entities/federated-identity'
+import { OutboxMessage } from '#modules/auth/entities/outbox-message'
 import { User } from '#modules/auth/entities/user'
 import { GoogleLinkRequiresPasswordError } from '#modules/auth/errors/google-link-requires-password-error'
 import { GoogleSignInConflictError } from '#modules/auth/errors/google-sign-in-conflict-error'
@@ -17,7 +18,6 @@ import type { IUsersRepository } from '#modules/auth/repositories/users-reposito
 import type { RefreshTokenIssuer } from '#modules/auth/services/refresh-token-issuer'
 import { Email } from '#modules/auth/value-objects/email'
 import type { IClock } from '#shared/ports/clock'
-import type { IEmailSender } from '#shared/ports/email-sender'
 import type { IIdGenerator } from '#shared/ports/id-generator'
 
 /** Raw, untrusted input. */
@@ -67,7 +67,6 @@ export class SignInWithGoogleUseCase {
     private readonly hashProvider: IHashProvider,
     private readonly idGenerator: IIdGenerator,
     private readonly clock: IClock,
-    private readonly emailSender: IEmailSender,
   ) {}
 
   async execute(command: SignInWithGoogleCommand): Promise<SignInWithGoogleResult> {
@@ -126,14 +125,17 @@ export class SignInWithGoogleUseCase {
       now,
     )
 
-    await this.uow(async ({ federatedIdentities, refreshTokens }) => {
+    await this.uow(async ({ federatedIdentities, refreshTokens, outboxMessages }) => {
       await federatedIdentities.save(link)
       await refreshTokens.save(issued.entity)
+      await outboxMessages.save(
+        OutboxMessage.create({
+          id: this.idGenerator.generate(),
+          message: googleAccountLinkedEmail(existing.email),
+          now,
+        }),
+      )
     })
-
-    // After the commit, best-effort: the link is already made and a failed send
-    // must not undo it (the composition root hands this a best-effort sender).
-    await this.emailSender.send(googleAccountLinkedEmail(existing.email))
 
     return {
       accessToken: await this.tokenSigner.sign({ sub: existing.id }),

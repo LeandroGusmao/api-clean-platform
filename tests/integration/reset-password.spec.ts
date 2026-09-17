@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -5,6 +6,7 @@ import { env } from '#infra/config/env'
 import { createDatabase, type Database } from '#infra/database/client'
 import { Sha256TokenDigest } from '#infra/providers/sha256-token-digest'
 import { buildApp } from '#main/app'
+import { outboxMessages } from '#modules/auth/infra/drizzle/schema/outbox-messages'
 import { passwordResetTokens } from '#modules/auth/infra/drizzle/schema/password-reset-tokens'
 import { refreshTokens } from '#modules/auth/infra/drizzle/schema/refresh-tokens'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
@@ -40,7 +42,6 @@ const NEW_PASSWORD = 'ev3n-b3tter!'
 const MALFORMED_TOKEN = 'too-short'
 const WELL_FORMED_UNKNOWN_TOKEN = 'Z'.repeat(43)
 const ONE_MESSAGE = 1
-const TWO_MESSAGES = 2
 const CEILING_ABOVE_WHAT_THIS_SUITE_SPENDS = 1000
 
 let app: FastifyInstance
@@ -66,6 +67,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await db.delete(passwordResetTokens)
   await db.delete(refreshTokens)
+  await db.delete(outboxMessages)
   await db.delete(users)
   await clearMailpit()
   await arrangeAccount(db, { email: EMAIL, password: PASSWORD })
@@ -114,11 +116,17 @@ describe('POST /auth/password/reset', () => {
     expect(refreshed.statusCode).toBe(UNAUTHORIZED_STATUS_CODE)
   })
 
-  it('emails a "password was reset" notification after success', async () => {
+  it('enqueues a "password was reset" notice in the outbox after success', async () => {
     const token = await forgotAndFetchToken()
     await resetWith(token)
-    await waitForMessageCount(TWO_MESSAGES)
-    expect((await latestMessage()).subject).toBe(PASSWORD_RESET_COMPLETED_SUBJECT)
+
+    const rows = await db
+      .select()
+      .from(outboxMessages)
+      .where(eq(outboxMessages.subject, PASSWORD_RESET_COMPLETED_SUBJECT))
+
+    expect(rows).toHaveLength(ONE_MESSAGE)
+    expect(rows[0]?.dispatchedAt).toBeNull()
   })
 
   it('rejects a replay of a spent token with 422 PASSWORD_RESET_FAILED', async () => {

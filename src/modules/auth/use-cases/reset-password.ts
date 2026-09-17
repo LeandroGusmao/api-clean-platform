@@ -1,3 +1,4 @@
+import { OutboxMessage } from '#modules/auth/entities/outbox-message'
 import { PasswordResetFailedError } from '#modules/auth/errors/password-reset-failed-error'
 import { passwordResetCompletedEmail } from '#modules/auth/notifications/emails'
 import type { IHashProvider } from '#modules/auth/ports/hash-provider'
@@ -6,7 +7,7 @@ import type { IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
 import type { IUsersRepository } from '#modules/auth/repositories/users-repository'
 import { Password } from '#modules/auth/value-objects/password'
 import type { IClock } from '#shared/ports/clock'
-import type { IEmailSender } from '#shared/ports/email-sender'
+import type { IIdGenerator } from '#shared/ports/id-generator'
 import type { ITokenDigest } from '#shared/ports/token-digest'
 
 /** Raw, untrusted input. */
@@ -46,7 +47,7 @@ export class ResetPasswordUseCase {
     private readonly hashProvider: IHashProvider,
     private readonly tokenDigest: ITokenDigest,
     private readonly clock: IClock,
-    private readonly emailSender: IEmailSender,
+    private readonly idGenerator: IIdGenerator,
   ) {}
 
   async execute(command: ResetPasswordCommand): Promise<void> {
@@ -67,30 +68,36 @@ export class ResetPasswordUseCase {
 
     // Reachable only in theory — the foreign key cascades, so a deleted user
     // takes its token row with it and the guard above would have thrown. Still
-    // generic, never a new error type. The address is what the send below needs.
+    // generic, never a new error type. The address is what the enqueue below needs.
     const user = await this.usersRepository.findById(token.userId)
     if (user === null) throw new PasswordResetFailedError()
 
     // argon2, outside the transaction (§8), and only on this branch.
     const passwordHash = await this.hashProvider.hash(newPassword.value)
 
-    await this.uow(async ({ users, refreshTokens, passwordResetTokens }) => {
-      // First inside, always. `consume` is a conditional UPDATE, and losing it
-      // means a concurrent reset already burned this token — so the throw has
-      // to happen INSIDE the callback, where it aborts the transaction; a
-      // `return` would leave the password written against a spent token.
-      if (!(await passwordResetTokens.consume(token.id, now))) {
-        throw new PasswordResetFailedError()
-      }
+    await this.uow(
+      async ({ users, refreshTokens, passwordResetTokens, outboxMessages }) => {
+        // First inside, always. `consume` is a conditional UPDATE, and losing it
+        // means a concurrent reset already burned this token — so the throw has
+        // to happen INSIDE the callback, where it aborts the transaction; a
+        // `return` would leave the password written against a spent token.
+        if (!(await passwordResetTokens.consume(token.id, now))) {
+          throw new PasswordResetFailedError()
+        }
 
-      await users.updatePasswordHash(token.userId, passwordHash, now)
-      await refreshTokens.revokeAllForUser(token.userId, now)
-    })
+        await users.updatePasswordHash(token.userId, passwordHash, now)
+        await refreshTokens.revokeAllForUser(token.userId, now)
 
-    // After the commit, like every other send in this module (§8). The wiring — not
-    // this line — is what makes a failure here harmless: the composition root
-    // hands this use case a best-effort sender, because the password has
-    // already changed and a 500 would misinform.
-    await this.emailSender.send(passwordResetCompletedEmail(user.email))
+        // The notice, in the SAME transaction as the state it describes: a
+        // crash right after this still loses nothing (design §5).
+        await outboxMessages.save(
+          OutboxMessage.create({
+            id: this.idGenerator.generate(),
+            message: passwordResetCompletedEmail(user.email),
+            now,
+          }),
+        )
+      },
+    )
   }
 }

@@ -9,6 +9,7 @@ import { GoogleSignInConflictError } from '#modules/auth/errors/google-sign-in-c
 import { InvalidCredentialsError } from '#modules/auth/errors/invalid-credentials-error'
 import { InvalidGoogleIdentityError } from '#modules/auth/errors/invalid-google-identity-error'
 import { InMemoryFederatedIdentitiesRepository } from '#modules/auth/infra/in-memory/in-memory-federated-identities-repository'
+import { InMemoryOutboxMessagesRepository } from '#modules/auth/infra/in-memory/in-memory-outbox-messages-repository'
 import { InMemoryRefreshTokensRepository } from '#modules/auth/infra/in-memory/in-memory-refresh-tokens-repository'
 import { InMemoryUsersRepository } from '#modules/auth/infra/in-memory/in-memory-users-repository'
 import { googleAccountLinkedEmail } from '#modules/auth/notifications/emails'
@@ -19,11 +20,11 @@ import type {
 import type { IHashProvider } from '#modules/auth/ports/hash-provider'
 import type { ITokenSigner } from '#modules/auth/ports/token-signer'
 import { noopAuthRepos } from '#modules/auth/repositories/noop-auth-repos'
+import type { IOutboxMessagesRepository } from '#modules/auth/repositories/outbox-messages-repository'
 import type { AuthRepos, IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
 import { RefreshTokenIssuer } from '#modules/auth/services/refresh-token-issuer'
 import { SignInWithGoogleUseCase } from '#modules/auth/use-cases/sign-in-with-google'
 import { Email } from '#modules/auth/value-objects/email'
-import type { EmailMessage, IEmailSender } from '#shared/ports/email-sender'
 
 const USER_ID = '3f2a1b4c-5d6e-4f70-8192-a3b4c5d6e7f8'
 const EMAIL = 'ana@example.com'
@@ -42,7 +43,7 @@ const VERIFY = 'verify'
 const COMPARE = 'compare'
 const UOW = 'uow'
 const COMMIT = 'commit'
-const SEND_EMAIL = 'sendEmail'
+const SAVE_OUTBOX = 'saveOutbox'
 
 const DIGEST_PREFIX = 'digest:'
 const NUMERIC_CODE = '000000'
@@ -51,7 +52,7 @@ let callLog: string[]
 let identity: GoogleIdentity
 let verifyResult: () => Promise<GoogleIdentity>
 let compareResult: boolean
-let sentEmails: EmailMessage[]
+let outboxMessagesRepository: InMemoryOutboxMessagesRepository
 let usersRepository: InMemoryUsersRepository
 let federatedIdentitiesRepository: InMemoryFederatedIdentitiesRepository
 let refreshTokensRepository: InMemoryRefreshTokensRepository
@@ -92,12 +93,18 @@ const refreshTokenIssuer = new RefreshTokenIssuer(
   REFRESH_TTL_SECONDS,
 )
 
-const emailSender: IEmailSender = {
-  send: async (message) => {
-    callLog.push(SEND_EMAIL)
-    sentEmails.push(message)
+const trackedOutboxMessages = (): IOutboxMessagesRepository => ({
+  save: (message) => {
+    callLog.push(SAVE_OUTBOX)
+    return outboxMessagesRepository.save(message)
   },
-}
+  findPendingBatch: (limit) => outboxMessagesRepository.findPendingBatch(limit),
+  markDispatched: (id, at) => outboxMessagesRepository.markDispatched(id, at),
+  recordFailure: (id, at, error, maxAttempts) =>
+    outboxMessagesRepository.recordFailure(id, at, error, maxAttempts),
+  deleteDispatchedOrFailedBefore: (cutoff) =>
+    outboxMessagesRepository.deleteDispatchedOrFailedBefore(cutoff),
+})
 
 const storePasswordUser = () =>
   usersRepository.users.push(
@@ -135,7 +142,7 @@ const linkFor = (userId: string) =>
 
 beforeEach(() => {
   callLog = []
-  sentEmails = []
+  outboxMessagesRepository = new InMemoryOutboxMessagesRepository()
   generated = 0
   identity = { subject: SUBJECT, email: EMAIL }
   verifyResult = async () => {
@@ -155,6 +162,7 @@ beforeEach(() => {
       users: usersRepository,
       refreshTokens: refreshTokensRepository,
       federatedIdentities: federatedIdentitiesRepository,
+      outboxMessages: trackedOutboxMessages(),
       pendingRegistrations: {
         ...noopAuthRepos().pendingRegistrations,
         deleteAllByEmail: deleteAllByEmailSpy,
@@ -179,7 +187,6 @@ beforeEach(() => {
     hashProvider,
     idGenerator,
     clock,
-    emailSender,
   )
 })
 
@@ -245,7 +252,7 @@ describe('SignInWithGoogleUseCase — email has a password account', () => {
     expect(uowSpy).not.toHaveBeenCalled()
   })
 
-  it('links on the right password: identity + refresh token in one uow, then the warning email after commit', async () => {
+  it('links on the right password: identity + refresh token + outbox row in one uow, before the commit', async () => {
     storePasswordUser()
 
     const result = await useCase.execute({ idToken: ID_TOKEN, password: APP_PASSWORD })
@@ -255,8 +262,10 @@ describe('SignInWithGoogleUseCase — email has a password account', () => {
     expect(federatedIdentitiesRepository.rows[0]?.userId).toBe(USER_ID)
     expect(refreshTokensRepository.tokens).toHaveLength(1)
     expect(usersRepository.users).toHaveLength(1)
-    expect(sentEmails).toEqual([googleAccountLinkedEmail(Email.fromTrusted(EMAIL))])
-    expect(callLog).toEqual([VERIFY, COMPARE, UOW, COMMIT, SEND_EMAIL])
+    expect(outboxMessagesRepository.messages.map((m) => m.toEmailMessage())).toEqual([
+      googleAccountLinkedEmail(Email.fromTrusted(EMAIL)),
+    ])
+    expect(callLog).toEqual([VERIFY, COMPARE, UOW, SAVE_OUTBOX, COMMIT])
   })
 })
 

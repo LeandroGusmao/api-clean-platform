@@ -2,10 +2,6 @@ import type { Env } from '#infra/config/env'
 import type { Database } from '#infra/database/client'
 import type { TransactionRunner } from '#infra/database/transaction-runner'
 import { createUnitOfWork } from '#infra/database/unit-of-work'
-import {
-  BestEffortEmailSender,
-  type ErrorLogger,
-} from '#infra/providers/best-effort-email-sender'
 import { RandomTokenGenerator } from '#infra/providers/random-token-generator'
 import { Sha256TokenDigest } from '#infra/providers/sha256-token-digest'
 import { SmtpEmailSender } from '#infra/providers/smtp-email-sender'
@@ -47,6 +43,10 @@ import { PasswordResetIssuer } from './services/password-reset-issuer.js'
 import { RefreshTokenIssuer } from './services/refresh-token-issuer.js'
 import { ChangePasswordUseCase } from './use-cases/change-password.js'
 import { ConfirmEmailUseCase } from './use-cases/confirm-email.js'
+import {
+  DISPATCH_OUTBOX_MESSAGES_JOB,
+  DispatchOutboxMessagesUseCase,
+} from './use-cases/dispatch-outbox-messages.js'
 import { GetUserProfileUseCase } from './use-cases/get-user-profile.js'
 import { LoginUserUseCase } from './use-cases/login-user.js'
 import { LogoutUseCase } from './use-cases/logout.js'
@@ -63,6 +63,10 @@ import {
   PRUNE_EXPIRED_REFRESH_TOKENS_JOB,
   PruneExpiredRefreshTokensUseCase,
 } from './use-cases/prune-expired-refresh-tokens.js'
+import {
+  PRUNE_OUTBOX_MESSAGES_JOB,
+  PruneOutboxMessagesUseCase,
+} from './use-cases/prune-outbox-messages.js'
 import { RefreshTokenUseCase } from './use-cases/refresh-token.js'
 import { RegisterUserUseCase } from './use-cases/register-user.js'
 import { RequestEmailVerificationUseCase } from './use-cases/request-email-verification.js'
@@ -84,7 +88,6 @@ export function makeAuthContainer(
   db: Database,
   config: AuthContainerConfig,
   runner: TransactionRunner,
-  logger: ErrorLogger,
 ) {
   const {
     users: usersRepository,
@@ -92,6 +95,7 @@ export function makeAuthContainer(
     pendingRegistrations: pendingRegistrationsRepository,
     passwordResetTokens: passwordResetTokensRepository,
     federatedIdentities: federatedIdentitiesRepository,
+    outboxMessages: outboxMessagesRepository,
   } = authRepositories(db)
   const hashProvider = new Argon2HashProvider()
   const clock = new SystemClock()
@@ -132,14 +136,6 @@ export function makeAuthContainer(
     tokenDigest,
     config.PASSWORD_RESET_TTL_SECONDS,
   )
-  /**
-   * The shared best-effort wrapper: used by the password-change and
-   * password-reset notifications, where the state has already changed and a
-   * failed send must not fail the request. Everything else gets the bare
-   * sender, so an undeliverable verification code still fails loudly.
-   */
-  const bestEffortEmailSender = new BestEffortEmailSender(emailSender, logger)
-
   const pruneExpiredRefreshTokens = new PruneExpiredRefreshTokensUseCase(
     refreshTokensRepository,
     clock,
@@ -155,11 +151,23 @@ export function makeAuthContainer(
     clock,
     config.PASSWORD_RESET_TOKEN_PRUNE_RETENTION_SECONDS * MILLISECONDS_PER_SECOND,
   )
+  const dispatchOutboxMessages = new DispatchOutboxMessagesUseCase(
+    outboxMessagesRepository,
+    emailSender,
+    clock,
+    config.OUTBOX_DISPATCH_MAX_ATTEMPTS,
+    config.OUTBOX_DISPATCH_BATCH_SIZE,
+  )
+  const pruneOutboxMessages = new PruneOutboxMessagesUseCase(
+    outboxMessagesRepository,
+    clock,
+    config.OUTBOX_MESSAGE_PRUNE_RETENTION_SECONDS * MILLISECONDS_PER_SECOND,
+  )
   /**
    * What this module hands the `cron.ts` entrypoint. Each `run` re-wraps the
-   * use case's `{ rowsDeleted }` into a fresh object literal — that is what
-   * makes it a `Record<string, number>` for the runner's log line, without the
-   * use cases having to know the `CronJob` shape.
+   * use case's result into a fresh object literal — that is what makes it a
+   * `Record<string, number>` for the runner's log line, without the use cases
+   * having to know the `CronJob` shape.
    */
   const jobs: CronJob[] = [
     {
@@ -180,6 +188,20 @@ export function makeAuthContainer(
       name: PRUNE_EXPIRED_PASSWORD_RESET_TOKENS_JOB,
       run: async () => {
         const { rowsDeleted } = await pruneExpiredPasswordResetTokens.execute()
+        return { rowsDeleted }
+      },
+    },
+    {
+      name: DISPATCH_OUTBOX_MESSAGES_JOB,
+      run: async () => {
+        const { dispatched, failed } = await dispatchOutboxMessages.execute()
+        return { dispatched, failed }
+      },
+    },
+    {
+      name: PRUNE_OUTBOX_MESSAGES_JOB,
+      run: async () => {
+        const { rowsDeleted } = await pruneOutboxMessages.execute()
         return { rowsDeleted }
       },
     },
@@ -216,7 +238,6 @@ export function makeAuthContainer(
       hashProvider,
       idGenerator,
       clock,
-      bestEffortEmailSender,
     ),
     getUserProfile: new GetUserProfileUseCase(usersRepository),
     refreshToken: new RefreshTokenUseCase(
@@ -236,7 +257,7 @@ export function makeAuthContainer(
       tokenSigner,
       refreshTokenIssuer,
       clock,
-      bestEffortEmailSender,
+      idGenerator,
     ),
     confirmEmail: new ConfirmEmailUseCase(
       pendingRegistrationsRepository,
@@ -274,7 +295,7 @@ export function makeAuthContainer(
       hashProvider,
       tokenDigest,
       clock,
-      bestEffortEmailSender,
+      idGenerator,
     ),
     /**
      * Not a use case: there is nothing to orchestrate. Decision 11 keeps the

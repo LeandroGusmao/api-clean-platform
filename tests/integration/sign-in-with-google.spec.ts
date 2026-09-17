@@ -6,6 +6,7 @@ import { env } from '#infra/config/env'
 import { createDatabase, type Database } from '#infra/database/client'
 import { buildApp } from '#main/app'
 import { federatedIdentities } from '#modules/auth/infra/drizzle/schema/federated-identities'
+import { outboxMessages } from '#modules/auth/infra/drizzle/schema/outbox-messages'
 import { pendingRegistrations } from '#modules/auth/infra/drizzle/schema/pending-registrations'
 import { refreshTokens } from '#modules/auth/infra/drizzle/schema/refresh-tokens'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
@@ -35,6 +36,8 @@ const JWT_PATTERN = /^[\w-]+\.[\w-]+\.[\w-]+$/
 const CEILING = 1000
 const NO_COOLDOWN = 0
 const ONE_MESSAGE = 1
+/** The exact subject of `googleAccountLinkedEmail`; spelled out, not imported. */
+const GOOGLE_ACCOUNT_LINKED_SUBJECT = 'A Google sign-in was connected to your account'
 
 let app: FastifyInstance
 let db: Database
@@ -66,6 +69,7 @@ beforeEach(async () => {
   await db.delete(refreshTokens)
   await db.delete(federatedIdentities)
   await db.delete(pendingRegistrations)
+  await db.delete(outboxMessages)
   await db.delete(users)
   await clearMailpit()
 })
@@ -123,7 +127,7 @@ describe('POST /auth/google', () => {
     expect(response.json().error.code).toBe('GOOGLE_LINK_REQUIRES_PASSWORD')
   })
 
-  it('links to the password account when the right password is supplied, and emails a warning', async () => {
+  it('links to the password account when the right password is supplied, and enqueues a warning notice', async () => {
     await createPasswordAccount()
 
     const response = await googleSignIn({
@@ -133,7 +137,12 @@ describe('POST /auth/google', () => {
 
     expect(response.statusCode).toBe(OK)
     expect(await db.select().from(federatedIdentities)).toHaveLength(1)
-    await waitForMessageCount(ONE_MESSAGE)
+    const rows = await db
+      .select()
+      .from(outboxMessages)
+      .where(eq(outboxMessages.subject, GOOGLE_ACCOUNT_LINKED_SUBJECT))
+    expect(rows).toHaveLength(ONE_MESSAGE)
+    expect(rows[0]?.dispatchedAt).toBeNull()
   })
 
   it('answers 401 for a wrong password on the link path', async () => {
