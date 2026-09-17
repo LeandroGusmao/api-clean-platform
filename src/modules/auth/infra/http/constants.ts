@@ -50,6 +50,8 @@ export const SERVICE_UNAVAILABLE_STATUS = 503
  * make.
  */
 export const EXAMPLE_USER_ID = '0d3d5d8a-6f2e-4d2e-9f1a-6d0f9a3b5c21'
+/** A session id IS a `family_id` — see `ListActiveSessionsUseCase`. */
+export const EXAMPLE_SESSION_ID = '11112222-3333-4444-8555-666677778888'
 export const EXAMPLE_EMAIL = 'user@example.com'
 /** Satisfies the registration policy: letter, digit and non-alphanumeric. */
 export const EXAMPLE_PASSWORD = 'sup3rS3cret!'

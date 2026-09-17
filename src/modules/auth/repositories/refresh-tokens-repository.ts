@@ -39,6 +39,16 @@ export interface IRefreshTokensRepository {
   revokeAllForUser(userId: string, revokedAt: Date): Promise<void>
 
   /**
+   * One row per still-active session: `SELECT ... WHERE user_id = ? AND
+   * revoked_at IS NULL AND expires_at > ?`. No `GROUP BY` needed — rotation
+   * always revokes the row it replaces in the same write, so a family has at
+   * most one unrevoked row at any instant, and that row already IS the
+   * session's current state. Exclusive at the expiry boundary, matching
+   * `RefreshToken.isExpired`: an instant that has arrived is spent.
+   */
+  findActiveByUserId(userId: string, now: Date): Promise<RefreshToken[]>
+
+  /**
    * Full sweep for the cron. Deletes every row whose `expires_at` is at or
    * before `cutoff`; the use case passes `clock.now() - retention`, so a dead
    * row lingers one retention window and stays available for a post-mortem

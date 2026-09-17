@@ -49,6 +49,15 @@ export class InMemoryRefreshTokensRepository implements IRefreshTokensRepository
     })
   }
 
+  async findActiveByUserId(userId: string, now: Date): Promise<RefreshToken[]> {
+    return this.tokens
+      .filter(
+        (token) =>
+          token.userId === userId && token.revokedAt === null && token.expiresAt > now,
+      )
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+  }
+
   /** The entity is frozen, so "updating" means rebuilding it in place. */
   #replace(
     matches: (token: RefreshToken) => boolean,

@@ -132,6 +132,8 @@ beforeEach(() => {
         callLog.push(REVOKE_ALL_CALL)
         return refreshTokensRepository.revokeAllForUser(userId, revokedAt)
       },
+      findActiveByUserId: (userId, now) =>
+        refreshTokensRepository.findActiveByUserId(userId, now),
       deleteExpiredBefore: (cutoff) =>
         refreshTokensRepository.deleteExpiredBefore(cutoff),
     },

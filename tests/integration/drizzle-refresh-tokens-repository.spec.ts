@@ -241,6 +241,86 @@ describe('DrizzleRefreshTokensRepository', () => {
     expect(await db.select().from(refreshTokens)).toHaveLength(NO_ROWS)
   })
 
+  it('findActiveByUserId returns the live row of each family for that user', async () => {
+    await uow(async ({ refreshTokens: repo }) => {
+      await repo.save(token(FAMILY_A, HASH_A))
+      await repo.save(token(FAMILY_B, HASH_B))
+    })
+
+    const active = await uow(({ refreshTokens: repo }) =>
+      repo.findActiveByUserId(userId, NOW),
+    )
+
+    expect(active.map((each) => each.familyId).sort()).toEqual(
+      [FAMILY_A, FAMILY_B].sort(),
+    )
+  })
+
+  it('findActiveByUserId excludes a revoked row', async () => {
+    const revoked = token(FAMILY_A, HASH_A)
+    await uow(async ({ refreshTokens: repo }) => {
+      await repo.save(revoked)
+      await repo.revoke(revoked.id, LATER)
+    })
+
+    const active = await uow(({ refreshTokens: repo }) =>
+      repo.findActiveByUserId(userId, NOW),
+    )
+
+    expect(active).toHaveLength(NO_ROWS)
+  })
+
+  it('findActiveByUserId excludes an expired but never-revoked row', async () => {
+    const expired = RefreshToken.fromTrusted({
+      id: nextId(),
+      userId,
+      tokenHash: HASH_A,
+      familyId: FAMILY_A,
+      expiresAt: NOW,
+      revokedAt: null,
+      replacedBy: null,
+      createdAt: NOW,
+    })
+    await uow(({ refreshTokens: repo }) => repo.save(expired))
+
+    // Inclusive at the boundary, like `RefreshToken.isExpired`: an instant that
+    // has arrived is spent.
+    const active = await uow(({ refreshTokens: repo }) =>
+      repo.findActiveByUserId(userId, NOW),
+    )
+
+    expect(active).toHaveLength(NO_ROWS)
+  })
+
+  it("findActiveByUserId excludes another user's rows", async () => {
+    const [otherUser] = await db
+      .insert(users)
+      .values({ email: 'other@example.com', passwordHash: PASSWORD_HASH })
+      .returning()
+    if (otherUser === undefined) throw new Error(USER_MISSING_MESSAGE)
+
+    await uow(async ({ refreshTokens: repo }) => {
+      await repo.save(token(FAMILY_A, HASH_A))
+      await repo.save(
+        RefreshToken.create({
+          id: nextId(),
+          userId: otherUser.id,
+          tokenHash: HASH_B,
+          familyId: FAMILY_B,
+          now: NOW,
+          ttlSeconds: TTL_SECONDS,
+        }),
+      )
+    })
+
+    const active = await uow(({ refreshTokens: repo }) =>
+      repo.findActiveByUserId(userId, NOW),
+    )
+
+    expect(active).toHaveLength(KEPT_ONE)
+    expect(active[0]?.familyId).toBe(FAMILY_A)
+  })
+
   it('deleteExpiredBefore removes only rows expired at or before the cutoff, and counts them', async () => {
     const cutoff = new Date(NOW.getTime() - PRUNE_RETENTION_MS)
     const dead = RefreshToken.fromTrusted({

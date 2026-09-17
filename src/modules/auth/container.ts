@@ -48,6 +48,7 @@ import {
   DispatchOutboxMessagesUseCase,
 } from './use-cases/dispatch-outbox-messages.js'
 import { GetUserProfileUseCase } from './use-cases/get-user-profile.js'
+import { ListActiveSessionsUseCase } from './use-cases/list-active-sessions.js'
 import { LoginUserUseCase } from './use-cases/login-user.js'
 import { LogoutUseCase } from './use-cases/logout.js'
 import { LogoutAllUseCase } from './use-cases/logout-all.js'
@@ -239,6 +240,7 @@ export function makeAuthContainer(
       clock,
     ),
     getUserProfile: new GetUserProfileUseCase(usersRepository),
+    listActiveSessions: new ListActiveSessionsUseCase(refreshTokensRepository, clock),
     refreshToken: new RefreshTokenUseCase(
       uow,
       refreshTokenIssuer,

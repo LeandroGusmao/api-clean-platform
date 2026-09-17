@@ -20,6 +20,7 @@ export function noopAuthRepos(): AuthRepos {
       revoke: async () => {},
       revokeFamily: async () => {},
       revokeAllForUser: async () => {},
+      findActiveByUserId: async () => [],
       deleteExpiredBefore: async () => 0,
     },
     pendingRegistrations: {

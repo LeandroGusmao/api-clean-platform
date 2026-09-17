@@ -1,4 +1,4 @@
-import { and, eq, isNull, lte, sql } from 'drizzle-orm'
+import { and, desc, eq, gt, isNull, lte, sql } from 'drizzle-orm'
 import type { Database } from '#infra/database/client'
 import {
   findDriverError,
@@ -156,6 +156,22 @@ export class DrizzleRefreshTokensRepository implements IRefreshTokensRepository 
       .update(refreshTokens)
       .set({ revokedAt })
       .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)))
+  }
+
+  async findActiveByUserId(userId: string, now: Date): Promise<RefreshToken[]> {
+    const rows = await this.db
+      .select()
+      .from(refreshTokens)
+      .where(
+        and(
+          eq(refreshTokens.userId, userId),
+          isNull(refreshTokens.revokedAt),
+          gt(refreshTokens.expiresAt, now),
+        ),
+      )
+      .orderBy(desc(refreshTokens.createdAt))
+
+    return rows.map(toDomainRefreshToken)
   }
 
   async deleteExpiredBefore(cutoff: Date): Promise<number> {

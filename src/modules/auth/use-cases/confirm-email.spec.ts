@@ -132,6 +132,8 @@ function trackedRepos(): AuthRepos {
         refreshTokensRepository.revokeFamily(familyId, revokedAt),
       revokeAllForUser: (userId, revokedAt) =>
         refreshTokensRepository.revokeAllForUser(userId, revokedAt),
+      findActiveByUserId: (userId, now) =>
+        refreshTokensRepository.findActiveByUserId(userId, now),
       deleteExpiredBefore: (cutoff) =>
         refreshTokensRepository.deleteExpiredBefore(cutoff),
     },

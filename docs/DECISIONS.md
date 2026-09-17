@@ -2332,6 +2332,36 @@ variável de ambiente nova: reusa `EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS`.
 
 ---
 
+### 35 — Listar sessões ativas: sem `GROUP BY`, sem info de dispositivo, sem flag de "sessão atual"
+
+Fecha o item "Listar sessões ativas" do `TODO.md`. `GET /auth/sessions`
+(Bearer, guardado como `/me`) devolve uma entrada por família de refresh token
+com linha ainda viva.
+
+**Sem `GROUP BY`.** A rotação sempre revoga a linha que substitui na mesma
+escrita (decisão 11), então uma família tem no máximo uma linha não revogada
+a qualquer instante — e essa linha já É o estado atual da sessão. A query é
+`WHERE user_id = ? AND revoked_at IS NULL AND expires_at > ?`, plana.
+
+**Sem informação de dispositivo, de propósito.** `refresh_tokens` não tem
+`ip`/`user_agent`/`last_used_at` — isso é o item separado "Contexto de
+dispositivo em `refresh_tokens`" da auditoria de 2026-09-07 (§6, tabela da
+auditoria), que exige migration. Sem ele, a resposta é só `{ id (family_id),
+createdAt, expiresAt }`: dá pra saber **quantas** sessões existem e desde
+quando, não **qual** é qual.
+
+**Sem flag de "sessão atual".** Não é derivável só do access token: o guard
+só enxerga o `sub` do JWT, nunca o `family_id` — que nem é devolvido ao
+cliente em nenhuma resposta hoje. Marcar "essa sou eu" exigiria também ler o
+refresh token/cookie nesta rota GET, misturando os dois mecanismos de
+transporte fora do padrão do resto do módulo. Fica para quando (se) houver um
+pedido concreto.
+
+Sem migração, sem variável de ambiente nova, sem spec dedicado — mudança
+pequena o bastante para caber inteira nesta entrada.
+
+---
+
 ## 7. Pendências de manutenção
 
 - [x] `ARCHITECTURE.md` reformatado (2026-08-19) — o bloco da árvore de
