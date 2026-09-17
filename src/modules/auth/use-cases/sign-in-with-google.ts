@@ -44,8 +44,10 @@ export interface SignInWithGoogleResult {
  * write and no transaction, like `login`; a new email creates a verified
  * passwordless account, clears any pending registrations for the address, links,
  * and issues — all in one `uow`; an email that already has a PASSWORD account is
- * refused until the password proves ownership, and only then linked; a
- * federated-only account whose subject does not match is a conflict.
+ * refused until the password proves ownership, and only then linked, ending
+ * every OTHER session first, same defense in depth as `change-password.ts` and
+ * `reset-password.ts`; a federated-only account whose subject does not match is
+ * a conflict.
  *
  * argon2 runs only on the link path, and OUTSIDE the transaction (§8 of the unit
  * of work design). No decoy hash on the other branches: unlike `confirm`, the
@@ -127,6 +129,14 @@ export class SignInWithGoogleUseCase {
 
     await this.uow(async ({ federatedIdentities, refreshTokens, outboxMessages }) => {
       await federatedIdentities.save(link)
+
+      // BEFORE the insert, always — same reasoning as `change-password.ts`:
+      // `revokeAllForUser` only revokes rows where `revoked_at IS NULL`, so
+      // doing it after would revoke the session this very call just issued.
+      // Without this, a stolen password used to link Google leaves the
+      // attacker's own sessions alive after the owner is merely notified.
+      await refreshTokens.revokeAllForUser(existing.id, now)
+
       await refreshTokens.save(issued.entity)
       await outboxMessages.save(
         OutboxMessage.create({

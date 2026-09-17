@@ -3,6 +3,7 @@ import {
   FederatedIdentity,
   GOOGLE_PROVIDER,
 } from '#modules/auth/entities/federated-identity'
+import { RefreshToken } from '#modules/auth/entities/refresh-token'
 import { User } from '#modules/auth/entities/user'
 import { GoogleLinkRequiresPasswordError } from '#modules/auth/errors/google-link-requires-password-error'
 import { GoogleSignInConflictError } from '#modules/auth/errors/google-sign-in-conflict-error'
@@ -140,6 +141,16 @@ const linkFor = (userId: string) =>
     now: CREATED_AT,
   })
 
+const existingSessionFor = (userId: string) =>
+  RefreshToken.create({
+    id: 'existing-session',
+    userId,
+    tokenHash: 'digest:some-other-device-token',
+    familyId: 'existing-family',
+    now: CREATED_AT,
+    ttlSeconds: REFRESH_TTL_SECONDS,
+  })
+
 beforeEach(() => {
   callLog = []
   outboxMessagesRepository = new InMemoryOutboxMessagesRepository()
@@ -250,6 +261,19 @@ describe('SignInWithGoogleUseCase — email has a password account', () => {
     ).rejects.toBeInstanceOf(InvalidCredentialsError)
     expect(callLog).toEqual([VERIFY, COMPARE])
     expect(uowSpy).not.toHaveBeenCalled()
+  })
+
+  it('revokes every other session before issuing the fresh one', async () => {
+    storePasswordUser()
+    const stolenSession = existingSessionFor(USER_ID)
+    await refreshTokensRepository.save(stolenSession)
+
+    await useCase.execute({ idToken: ID_TOKEN, password: APP_PASSWORD })
+
+    const stored = refreshTokensRepository.tokens
+    expect(stored.find((each) => each.id === stolenSession.id)?.revokedAt).toEqual(NOW)
+    // The session this very call just issued must survive its own revocation.
+    expect(stored.find((each) => each.id !== stolenSession.id)?.revokedAt).toBeNull()
   })
 
   it('links on the right password: identity + refresh token + outbox row in one uow, before the commit', async () => {

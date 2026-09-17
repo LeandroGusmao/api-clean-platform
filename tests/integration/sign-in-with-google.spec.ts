@@ -22,6 +22,7 @@ const GOOGLE_PATH = '/auth/google'
 const REGISTER_PATH = '/auth/register'
 const LOGIN_PATH = '/auth/login'
 const CONFIRM_PATH = '/auth/email/verify'
+const REFRESH_PATH = '/auth/refresh'
 const POST = 'POST'
 
 const OK = 200
@@ -80,17 +81,22 @@ const idToken = (claims: Record<string, unknown> = {}) =>
 const googleSignIn = (payload: Record<string, unknown>) =>
   app.inject({ method: POST, url: GOOGLE_PATH, payload })
 
-/** Registers and confirms with a password, so the address has a real password account. */
-async function createPasswordAccount(): Promise<void> {
+/**
+ * Registers and confirms with a password, so the address has a real password
+ * account. Returns the session confirm opened, so a caller can prove it is
+ * still (or no longer) live after a later action.
+ */
+async function createPasswordAccount(): Promise<{ refreshToken: string }> {
   await app.inject({ method: POST, url: REGISTER_PATH, payload: { email: EMAIL } })
   await waitForMessageCount(ONE_MESSAGE)
   const code = extractVerificationCode((await latestMessage()).text)
-  await app.inject({
+  const confirmed = await app.inject({
     method: POST,
     url: CONFIRM_PATH,
     payload: { email: EMAIL, code, password: APP_PASSWORD, refreshTransport: 'body' },
   })
   await clearMailpit()
+  return { refreshToken: confirmed.json().refreshToken }
 }
 
 describe('POST /auth/google', () => {
@@ -143,6 +149,23 @@ describe('POST /auth/google', () => {
       .where(eq(outboxMessages.subject, GOOGLE_ACCOUNT_LINKED_SUBJECT))
     expect(rows).toHaveLength(ONE_MESSAGE)
     expect(rows[0]?.dispatchedAt).toBeNull()
+  })
+
+  it('revokes the session confirm opened when linking over a password account', async () => {
+    const { refreshToken } = await createPasswordAccount()
+
+    const response = await googleSignIn({
+      idToken: await idToken(),
+      password: APP_PASSWORD,
+    })
+
+    expect(response.statusCode).toBe(OK)
+    const refreshed = await app.inject({
+      method: POST,
+      url: REFRESH_PATH,
+      payload: { refreshToken },
+    })
+    expect(refreshed.statusCode).toBe(UNAUTHORIZED)
   })
 
   it('answers 401 for a wrong password on the link path', async () => {

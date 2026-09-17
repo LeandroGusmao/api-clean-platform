@@ -1,5 +1,14 @@
 # O que falta
 
+> **Fatia 19 (2026-09-17) entregou a invalidação de sessão no vínculo do
+> Google** (decisão 36). Ao ligar uma conta Google numa conta que já tinha
+> senha, `SignInWithGoogleUseCase` agora derruba toda sessão existente antes
+> de abrir a nova — mesma defesa em profundidade que `change-password` e
+> `reset-password` já tinham. O item original do `TODO.md` falava em
+> "notificar o dono na verificação", mas o aviso por e-mail já existia desde a
+> fatia 14; o que faltava era só a invalidação, e só nesta rota — as outras
+> duas (troca e recuperação de senha) já derrubavam sessão desde antes.
+>
 > **Fatia 18 (2026-09-16) entregou a listagem de sessões ativas** (decisão
 > 35). `GET /auth/sessions` devolve uma entrada por família de refresh token
 > ainda viva (`family_id`, `createdAt`, `expiresAt`) — sem `GROUP BY`, porque a
@@ -109,7 +118,7 @@ emendados junto, para não voltar a ler como coberto.
 | ~~CORS~~ | — | **já existe** em `src/infra/http/cors.ts` (lista de origens permitidas, registrado no `buildApp`). Entrou sem decisão no `DECISIONS.md` — registrar quando o primeiro front web definir a política |
 | ~~Outbox transacional~~ | — | **fechada por esta fatia.** `outbox_messages` no módulo `auth`; os três avisos pós-commit (senha alterada, senha resetada, Google vinculado) são gravados dentro da mesma transação que muda o estado; `CronJob`s de dispatch e poda. Decisão 33; spec `2026-09-15-transactional-outbox-design.md` |
 | ~~Listar sessões ativas~~ | — | **fechada pela fatia 18.** `GET /auth/sessions`, uma entrada por família ainda viva. Decisão 35 |
-| Invalidar sessões + notificar o dono na verificação | nada | defesa em profundidade que a literatura recomenda por cima da correção estrutural (§4.4 do handoff da fatia 11) |
+| ~~Invalidar sessões + notificar o dono na verificação~~ | — | **fechada pela fatia 19.** Faltava só a invalidação no vínculo do Google — troca e recuperação de senha já derrubavam sessão. Decisão 36 |
 | RBAC / permissões | decisão em aberto | acoplada à 11: role no JWT significa até 1h de latência para revogar permissão |
 | Deleção de conta | não existe | quando existir, tem que varrer os `pending_registrations` do endereço — um código vivo remanescente confirmaria uma conta nova |
 | Revogação por usuário deletado/banido | não existe deleção | a rotação é o lugar certo quando existir |
@@ -206,8 +215,14 @@ dentro da mesma transação que muda o estado. Fecha o furo de "crash entre o
 `GET /auth/sessions`, uma entrada por família ainda viva — sem informação de
 dispositivo, que é item separado da auditoria.
 
-O próximo item genérico é **invalidar sessões + notificar o dono na
-verificação**: defesa em profundidade recomendada no handoff da fatia 11.
+~~Invalidar sessões + notificar o dono na verificação~~ — **entregue pela
+fatia 19** (decisão 36). Faltava só o vínculo do Google derrubar sessão; o
+aviso por e-mail já existia, e as outras duas rotas sensíveis já derrubavam.
+
+O próximo item da tabela por ordem de urgência é **RBAC/permissões**, mas ele
+depende de uma decisão em aberto (§6) antes de virar código. Sem essa
+decisão, o próximo item genérico que não depende de nada é **deleção de
+conta**.
 
 Miúdo que ficou da fatia 14: listar provedores vinculados no `/me` — em espera
 até o front ter necessidade disso.

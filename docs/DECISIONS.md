@@ -2362,6 +2362,36 @@ pequena o bastante para caber inteira nesta entrada.
 
 ---
 
+### 36 — Invalidação de sessão no vínculo do Google, fechando a última rota sensível sem essa defesa
+
+Fecha o item "Invalidar sessões + notificar o dono na verificação" do
+`TODO.md`. O texto original vinha do §4.4 do handoff da fatia 11 — na época,
+antes da conta nascer só na confirmação e antes do login social existirem, a
+"verificação" em questão era o `confirm-email`. Hoje esse ponto não se aplica
+mais ali: uma confirmação sempre cria uma conta nova, e não existe sessão
+anterior pra derrubar.
+
+**Reinterpretação, verificada no código, não suposta:** das três rotas que
+mudam algo sensível numa conta já existente, duas já tinham a defesa —
+`change-password.ts` e `reset-password.ts` já chamavam
+`refreshTokens.revokeAllForUser` e já mandavam aviso por e-mail (fatia 16,
+outbox). A terceira, `SignInWithGoogleUseCase` no ramo que vincula Google a
+uma conta que já tinha senha, já mandava o aviso (`googleAccountLinkedEmail`,
+decisão 31) mas nunca derrubava as sessões existentes. Era a única porta sem
+essa segunda trava — se uma senha vazada fosse usada pra plugar um Google
+como porta dos fundos, o dono era avisado, mas o invasor continuava logado
+pelas sessões que já tinha.
+
+**O que entrou:** uma chamada a `refreshTokens.revokeAllForUser(existing.id,
+now)` dentro da mesma transação que salva o vínculo, na mesma ordem que
+`change-password.ts` já usa e pela mesma razão — ANTES de salvar a sessão
+nova, porque `revokeAllForUser` só derruba linhas com `revoked_at IS NULL` e,
+feito depois, derrubaria a sessão que a própria chamada acabou de abrir.
+
+Sem migração, sem variável de ambiente nova, sem spec dedicado.
+
+---
+
 ## 7. Pendências de manutenção
 
 - [x] `ARCHITECTURE.md` reformatado (2026-08-19) — o bloco da árvore de
