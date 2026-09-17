@@ -119,7 +119,6 @@ emendados junto, para não voltar a ler como coberto.
 | ~~Outbox transacional~~ | — | **fechada por esta fatia.** `outbox_messages` no módulo `auth`; os três avisos pós-commit (senha alterada, senha resetada, Google vinculado) são gravados dentro da mesma transação que muda o estado; `CronJob`s de dispatch e poda. Decisão 33; spec `2026-09-15-transactional-outbox-design.md` |
 | ~~Listar sessões ativas~~ | — | **fechada pela fatia 18.** `GET /auth/sessions`, uma entrada por família ainda viva. Decisão 35 |
 | ~~Invalidar sessões + notificar o dono na verificação~~ | — | **fechada pela fatia 19.** Faltava só a invalidação no vínculo do Google — troca e recuperação de senha já derrubavam sessão. Decisão 36 |
-| RBAC / permissões | decisão em aberto | acoplada à 11: role no JWT significa até 1h de latência para revogar permissão |
 | Deleção de conta | não existe | quando existir, tem que varrer os `pending_registrations` do endereço — um código vivo remanescente confirmaria uma conta nova |
 | Revogação por usuário deletado/banido | não existe deleção | a rotação é o lugar certo quando existir |
 
@@ -190,6 +189,14 @@ permanentemente não-resgatável.
 **Colisão de nome de tabela entre módulos.** Arquitetural, não só do `auth`.
 `DECISIONS.md` §6. **Multi-tenancy** idem.
 
+**RBAC / permissões.** Decisão tomada de **não** entrar no boilerplate:
+reclassificada em 2026-09-17 de "decisão de arquitetura pendente" para
+"escopo de produto", pelo mesmo argumento que fechou o outbox genérico —
+sem um segundo consumidor real não há como validar a forma certa, e "quem
+pode fazer o quê" varia por produto muito mais do que "como não vazar
+sessão". Gatilho para reabrir: o primeiro app derivado que precisar de
+acesso diferenciado por usuário. `DECISIONS.md` §6.
+
 ## O que eu faria a seguir
 
 **Se o alvo tratar dado sensível, a ordem muda**, e a auditoria de 2026-09-07
@@ -219,10 +226,12 @@ dispositivo, que é item separado da auditoria.
 fatia 19** (decisão 36). Faltava só o vínculo do Google derrubar sessão; o
 aviso por e-mail já existia, e as outras duas rotas sensíveis já derrubavam.
 
-O próximo item da tabela por ordem de urgência é **RBAC/permissões**, mas ele
-depende de uma decisão em aberto (§6) antes de virar código. Sem essa
-decisão, o próximo item genérico que não depende de nada é **deleção de
-conta**.
+**RBAC/permissões saiu da tabela em 2026-09-17** — não é mais decisão de
+arquitetura pendente, é escopo de produto, adiado de propósito (mesmo
+argumento do outbox genérico). Ver "Perguntas registradas, não pendências"
+abaixo e `DECISIONS.md` §6.
+
+O próximo item genérico é **deleção de conta**.
 
 Miúdo que ficou da fatia 14: listar provedores vinculados no `/me` — em espera
 até o front ter necessidade disso.

@@ -2185,8 +2185,6 @@ bloqueavam (lint de fronteira, build e path alias, mappers) viraram as decisões
   são mil baldes), e o balde por e-mail que o deteria é vetor de DoS contra a
   vítima. Desenho e alternativas recusadas em
   [`specs/2026-09-02-rate-limiting-design.md`](superpowers/specs/2026-09-02-rate-limiting-design.md).
-- **RBAC / permissões** — **acoplada à decisão 11**: se roles forem para dentro
-  do JWT, mudança de permissão só vale no próximo refresh (janela de 1h).
 - ~~**A janela de graça permite bifurcar uma família sem detecção.**~~
   **RESOLVIDA em 2026-09-01**, pela saída 3 abaixo, com a exigência de
   single-flight escrita na decisão 11. O registro do problema fica porque as
@@ -2265,6 +2263,23 @@ bloqueavam (lint de fronteira, build e path alias, mappers) viraram as decisões
   Ver também a ressalva de formato de erro na decisão 13: o endpoint de token do
   OAuth tem corpo de erro mandatório pela RFC 6749 e fica fora da convenção
   deste projeto.
+- **RBAC / permissões — decisão tomada de NÃO entrar no boilerplate.**
+  Reclassificada em 2026-09-17: não é decisão de arquitetura pendente, é
+  escopo de produto — pelo mesmo motivo que fechou a discussão do outbox
+  genérico (§2, decisão 33): sem um segundo consumidor real, não há como
+  validar a forma certa, e "quem pode fazer o quê" varia por produto de um
+  jeito que "como não vazar sessão" não varia. Um papel único (`admin`/`user`)
+  seria simples demais para servir de verdade; papéis com permissões
+  associadas seria decisão tomada sem produto nenhum para validar contra.
+  **Gatilho para reabrir:** o primeiro app derivado que precisar de acesso
+  diferenciado por usuário — e a decisão certa então depende do que ESSE
+  produto precisa (papel único? por recurso? por organização?), não do que
+  este documento adivinhar hoje.
+  Continua valendo o registro do trade-off, para quando a decisão for
+  retomada: se o papel for para dentro do JWT (decisão 11), mudança de
+  permissão só vale no próximo refresh — janela de até 1h, a mesma latência
+  de revogação que a decisão 11 já aceitou para autenticação, agora
+  valendo também para autorização.
 - Multi-tenancy
 
 ---
