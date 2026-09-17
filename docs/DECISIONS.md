@@ -2297,6 +2297,41 @@ Desenho completo em
 
 ---
 
+### 34 — Throttle de `confirm` por e-mail: o cooldown de reenvio passa a valer também sobre pending esgotado
+
+Fecha o item "Throttle de `confirm` por e-mail" do `TODO.md`. Sem isso, esgotar
+as cinco tentativas de um `pending_registration` liberava a criação de outro na
+hora: o cooldown de 60s (`EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS`) só se
+aplicava a um pending que ainda passasse em `isUsable` (que exige `attempts <
+maxAttempts`), então um atacante nunca precisava esperar — bastava esgotar e
+chamar `register` de novo. Distribuído em vários IPs, o teto por endereço da
+decisão de rate limiting (§6) não segurava isso.
+
+**Rejeitado: contador de falhas por e-mail com bloqueio.** É a saída óbvia,
+mas reproduz o padrão já descartado em §6 para o rate limiting do login — um
+balde por e-mail que bloqueia dá a quem só conhece o endereço da vítima um
+jeito de trancá-la de fora, só que aqui travando o cadastro em vez do login.
+
+**O que entrou:** o cooldown de `RegisterUserUseCase` passa a olhar o pending
+mais recente da fila (`findUnconsumedByEmail`, mais recente primeiro), sem
+filtrar por `isUsable`. Esgotado ou não, um código pedido há menos de 60s
+ainda segura um pedido novo. Isso limita qualquer atacante a cinco chutes por
+e-mail a cada 60s, **de qualquer IP** — sem bloqueio novo: o pior caso para o
+dono legítimo é o mesmo que já existia ao clicar "reenviar" duas vezes
+seguidas.
+
+**Custo aceito:** um atacante que já sabe o e-mail da vítima ainda consegue
+atrasar a confirmação dela em até 60s por rodada — não é bloqueio indefinido,
+é o mesmo atraso que o cooldown já impunha ao dono legítimo antes desta fatia.
+
+O parâmetro `maxAttempts` do construtor de `RegisterUserUseCase` foi removido
+por ter ficado sem uso; `RequestEmailVerificationUseCase` (o endpoint de
+reenvio explícito, que só reemite sobre um pending ainda usável e nunca cria
+linha nova) continua precisando do seu, sem mudança. Sem migração, sem
+variável de ambiente nova: reusa `EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS`.
+
+---
+
 ## 7. Pendências de manutenção
 
 - [x] `ARCHITECTURE.md` reformatado (2026-08-19) — o bloco da árvore de

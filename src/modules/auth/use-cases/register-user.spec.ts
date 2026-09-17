@@ -90,7 +90,6 @@ function buildUseCase(): RegisterUserUseCase {
     clock,
     idGenerator,
     RESEND_COOLDOWN_MS,
-    MAX_ATTEMPTS,
     TTL_SECONDS,
   )
 }
@@ -228,13 +227,26 @@ describe('RegisterUserUseCase', () => {
     expect(callLog).toEqual([PRUNE, PENDING_SAVE, EMAIL_SEND])
   })
 
-  it('a pending that has exhausted its attempts does not hold the cooldown', async () => {
+  it('holds the cooldown even after the pending has exhausted its attempts', async () => {
     storePending({ ageMs: INSIDE_COOLDOWN_AGE_MS, attempts: MAX_ATTEMPTS })
 
     await useCase.execute({ email: EMAIL })
 
-    // The stale pending is not `isUsable`, so the cooldown branch is skipped.
+    // Otherwise an attacker spread across many IPs mints a fresh five-guess
+    // budget on demand, the instant the previous one is spent.
+    expect(sent).toHaveLength(0)
+    expect(pendingRepo.rows).toHaveLength(1)
+    expect(callLog).toEqual([])
+  })
+
+  it('issues a fresh pending once an exhausted one leaves the cooldown', async () => {
+    storePending({ ageMs: OUTSIDE_COOLDOWN_AGE_MS, attempts: MAX_ATTEMPTS })
+
+    await useCase.execute({ email: EMAIL })
+
     expect(sent).toHaveLength(1)
+    expect(pendingRepo.rows).toHaveLength(2)
+    expect(callLog).toEqual([PRUNE, PENDING_SAVE, EMAIL_SEND])
   })
 
   it('answers the same way whether the address is free or already pending', async () => {

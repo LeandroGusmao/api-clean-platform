@@ -1,5 +1,14 @@
 # O que falta
 
+> **Fatia 17 (2026-09-16) entregou o throttle de `confirm` por e-mail**
+> (decisão 34). O cooldown de reenvio de 60s (`RegisterUserUseCase`) passou a
+> valer também sobre um pending com as tentativas esgotadas, não só sobre um
+> ainda usável — fechando a brecha que deixava um atacante distribuído em
+> vários IPs mintar orçamento de tentativas novo na hora, sem esperar nada.
+> Ficou de fora, de propósito, um contador de falhas por e-mail com bloqueio:
+> reproduziria o padrão já descartado no `DECISIONS.md` §6 para o login, que
+> deixaria qualquer um travar o cadastro de uma vítima só sabendo o endereço.
+>
 > **Fatia 16 (2026-09-16) entregou o outbox transacional** (decisão 33).
 > `outbox_messages` no módulo `auth`; os três avisos pós-commit (senha alterada,
 > senha resetada, Google vinculado) são gravados dentro da mesma transação que
@@ -88,7 +97,7 @@ emendados junto, para não voltar a ler como coberto.
 |---|---|---|
 | ~~Poda de tokens expirados~~ | — | **fechada pela fatia 13.** `cron.ts` one-shot + registry de jobs por módulo; três use-cases de poda com janela de retenção por tabela varrem `refresh_tokens`, `pending_registrations` e `password_reset_tokens`. Decisão 30; spec `2026-09-07-token-pruning-cron-design.md` |
 | ~~Login social / OAuth (Google)~~ | — | **fechado pela fatia 14** (client-driven `POST /auth/google`, decisão 31). Listar provedores vinculados no `/me` fica em espera até o front precisar. Descartados: fluxo redirect/BFF (o front já lida com o redirect), desvincular provedor, definir a primeira senha numa conta só-Google, restrição de domínio `hd` (produto é global, não B2B/Workspace) |
-| Throttle de `confirm` por e-mail | nada | um anônimo pode manter um endereço não-confirmável queimando o teto de cinco tentativas do código a cada cooldown — o teto por IP não segura. Conserto: throttle por conta/e-mail |
+| ~~Throttle de `confirm` por e-mail~~ | — | **fechada pela fatia 17.** O cooldown de reenvio de 60s passou a valer também sobre pending esgotado, não só sobre um ainda usável. Decisão 34 |
 | ~~CORS~~ | — | **já existe** em `src/infra/http/cors.ts` (lista de origens permitidas, registrado no `buildApp`). Entrou sem decisão no `DECISIONS.md` — registrar quando o primeiro front web definir a política |
 | ~~Outbox transacional~~ | — | **fechada por esta fatia.** `outbox_messages` no módulo `auth`; os três avisos pós-commit (senha alterada, senha resetada, Google vinculado) são gravados dentro da mesma transação que muda o estado; `CronJob`s de dispatch e poda. Decisão 33; spec `2026-09-15-transactional-outbox-design.md` |
 | Listar sessões ativas | nada | cai quase de graça agora que há `family_id` |
@@ -182,9 +191,11 @@ O `auth` agora tem identidade federada: cadastro, verificação, login por senha
 dentro da mesma transação que muda o estado. Fecha o furo de "crash entre o
 `COMMIT` e o envio SMTP perde o e-mail em silêncio".
 
-O próximo item genérico é o **throttle de `confirm` por e-mail**: um anônimo
-pode manter um endereço não-confirmável queimando o teto de tentativas a cada
-cooldown — o teto por IP não segura. Conserto: throttle por conta/e-mail.
+~~Throttle de `confirm` por e-mail~~ — **entregue pela fatia 17** (decisão
+34). O cooldown de reenvio passou a valer também sobre pending esgotado.
+
+O próximo item genérico é **listar sessões ativas**: cai quase de graça agora
+que há `family_id` em `refresh_tokens`.
 
 Miúdo que ficou da fatia 14: listar provedores vinculados no `/me` — em espera
 até o front ter necessidade disso.

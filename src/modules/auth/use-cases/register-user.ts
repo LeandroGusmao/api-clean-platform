@@ -51,7 +51,6 @@ export class RegisterUserUseCase {
     private readonly clock: IClock,
     private readonly idGenerator: IIdGenerator,
     private readonly resendCooldownMs: number,
-    private readonly maxAttempts: number,
     private readonly ttlSeconds: number,
   ) {}
 
@@ -81,10 +80,15 @@ export class RegisterUserUseCase {
     }
 
     const pendings = await this.pendingRegistrations.findUnconsumedByEmail(email)
-    const mostRecentUsable = pendings.find((each) => each.isUsable(this.maxAttempts, now))
+
+    // Most recent first (repository contract), and NOT filtered by `isUsable`:
+    // an exhausted pending must hold the cooldown exactly like a live one, or
+    // burning its five guesses is a free ticket to a fresh five-guess budget —
+    // the gap a distributed attacker uses to outrun the per-IP limiter.
+    const [mostRecent] = pendings
     if (
-      mostRecentUsable !== undefined &&
-      now.getTime() - mostRecentUsable.codeIssuedAt.getTime() < this.resendCooldownMs
+      mostRecent !== undefined &&
+      now.getTime() - mostRecent.codeIssuedAt.getTime() < this.resendCooldownMs
     ) {
       // Registering again inside the cooldown IS resending — it must not put a
       // second email in the address's inbox, and it must not mint fresh attempt

@@ -216,7 +216,6 @@ export function makeAuthContainer(
       clock,
       idGenerator,
       config.EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS * MILLISECONDS_PER_SECOND,
-      config.EMAIL_VERIFICATION_MAX_ATTEMPTS,
       config.EMAIL_VERIFICATION_TTL_SECONDS,
     ),
     loginUser: new LoginUserUseCase(
