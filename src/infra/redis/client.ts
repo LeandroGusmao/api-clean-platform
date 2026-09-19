@@ -23,6 +23,9 @@ export interface RedisLogger {
 const RECONNECT_STEP_MS = 50
 const RECONNECT_MAX_DELAY_MS = 500
 
+/** A command in flight when the connection drops is not re-sent after the reconnection. */
+const NO_COMMAND_RETRIES = 0
+
 const CONNECTION_READY_MESSAGE = 'redis connection ready'
 const CONNECTION_LOST_MESSAGE = 'redis connection lost'
 const CLIENT_ENDED_STATUS = 'end'
@@ -41,7 +44,7 @@ export function createRedis(env: RedisEnv, log: RedisLogger): Redis {
   const redis = new Redis(env.REDIS_URL, {
     lazyConnect: true,
     enableOfflineQueue: false,
-    maxRetriesPerRequest: 0,
+    maxRetriesPerRequest: NO_COMMAND_RETRIES,
     connectTimeout: env.REDIS_CONNECT_TIMEOUT_MS,
     commandTimeout: env.REDIS_COMMAND_TIMEOUT_MS,
     retryStrategy: (attempt) =>

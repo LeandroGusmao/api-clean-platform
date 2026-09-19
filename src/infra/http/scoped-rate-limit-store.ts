@@ -9,6 +9,10 @@ import { type RateLimitRedis, RedisRateLimitStore } from './redis-rate-limit-sto
 const RATE_LIMIT_KEY_PREFIX = 'api-clean-platform:rate-limit:'
 const KEY_SEPARATOR = ':'
 
+/** The plugin's two optional behaviours for the in-process counter, neither enabled anywhere. */
+const CONTINUE_EXCEEDING = false
+const EXPONENTIAL_BACKOFF = false
+
 /**
  * What the plugin really passes to `child`: the route's merged options, with
  * the route itself under `routeInfo`. Its typings say `RouteOptions`, which the
@@ -33,8 +37,7 @@ export function createScopedRateLimitStore(
   redis: RateLimitRedis,
 ): FastifyRateLimitStoreCtor {
   return class ScopedRateLimitStore implements FastifyRateLimitStore {
-    /** Neither `continueExceeding` nor `exponentialBackoff` is enabled anywhere. */
-    private readonly perProcess = new LocalStore(false, false)
+    private readonly perProcess = new LocalStore(CONTINUE_EXCEEDING, EXPONENTIAL_BACKOFF)
 
     incr(...args: Parameters<FastifyRateLimitStore['incr']>): void {
       this.perProcess.incr(...args)
