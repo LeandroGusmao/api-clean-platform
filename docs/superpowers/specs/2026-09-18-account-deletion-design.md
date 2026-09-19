@@ -204,10 +204,24 @@ terceira. O `delete` vem primeiro por legibilidade, não por invariante.
 ## 7. Custos aceitos
 
 1. **O access token sobrevive à conta, até 1h.** É a latência de revogação que
-   a decisão 11 já aceitou e que o `logout-all` já documenta. Depois do delete,
-   um request com aquele token passa pelo guard e morre no primeiro use case que
-   procurar a linha — `/me` responde 404, que é exatamente o teste que
-   `me.spec.ts` já cobre para "conta apagada com token ainda válido".
+   a decisão 11 já aceitou e que o `logout-all` já documenta: o refresh é uma
+   linha e morre com a cascata, mas o access é assinatura verificada em
+   memória, sem consulta — não existe lugar onde apagá-lo antes de `exp`.
+
+   O que ele consegue fazer nessa janela, rota protegida por rota protegida:
+
+   | Rota | Resposta com a conta já apagada |
+   |---|---|
+   | `GET /auth/me` | 404 `USER_NOT_FOUND` |
+   | `POST /auth/password` | 404 `USER_NOT_FOUND` |
+   | `DELETE /auth/me` | 404 `USER_NOT_FOUND` |
+   | `POST /auth/logout-all` | 204, revogando conjunto vazio |
+   | `GET /auth/sessions` | 200 `[]` — a cascata já levou as famílias |
+
+   Nenhuma vaza dado nem muda estado: **o token sobrevive, o que ele poderia
+   fazer não.** O caminho já existia antes desta fatia — apagar a linha direto
+   no banco o alcançava — e `me.spec.ts` já o cobre no teste "answers 404 when
+   the account was deleted while the token was still valid".
 2. **Não há janela de arrependimento.** Apagou, foi. Um produto derivado que
    queira 30 dias de carência precisa de soft delete e de um job de expurgo, e
    isso muda o desenho — está registrado aqui para não parecer esquecimento.
