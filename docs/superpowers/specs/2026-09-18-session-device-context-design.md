@@ -194,12 +194,15 @@ lugar e pelo mesmo motivo: transforma uma `FastifyRequest` em um valor simples,
 e é o único ponto onde isso acontece.
 
 ```
-buildDeviceContext(request): { ip: string; label: string }
+buildDeviceContext(request): { ip: string | null; label: string }
 ```
 
-- `ip` — delega a `clientIpKey`, que já valida e normaliza. Um valor inválido
-  vira o sentinel `UNPARSEABLE_CLIENT_IP_KEY` que já existe, em vez de gravar
-  texto escolhido pelo atacante numa coluna que será exibida de volta.
+- `ip` — delega a `parsedClientIp`, que valida e normaliza com a **mesma**
+  validação do rate limit, e devolve `null` quando o endereço não parseia. O
+  sentinel `UNPARSEABLE_CLIENT_IP_KEY` fica só no rate limit, onde significa
+  "um balde compartilhado" e ninguém o lê: gravado numa coluna e devolvido ao
+  dono da conta, ele se lê como se fosse um host. O que os dois caminhos
+  compartilham é a recusa em guardar texto escolhido pelo atacante.
 - `label` — `bowser` sobre o header `user-agent`. Header ausente, vazio ou
   irreconhecível produz um rótulo único e nomeado por constante, não `null`:
   `null` é reservado para "a linha é anterior à fatia" (§4.4).
@@ -346,7 +349,7 @@ TDD, por unidade:
 
 - **`device-context.spec.ts`** — header ausente, header vazio, string
   irreconhecível, string acima do limite de largura, UA de Chrome/Android e de
-  Safari/iOS; IP inválido caindo no sentinel.
+  Safari/iOS; IP inválido virando `null`.
 - **`refresh-token.spec.ts` (entidade)** — os três campos sobrevivem a
   `create`/`fromTrusted`; `sessionStartedAt` é clonado na entrada e na saída.
 - **`refresh-token-issuer.spec.ts`** — o contexto chega à entidade intacto.

@@ -50,8 +50,8 @@ export const refreshTokens = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
     /**
      * The request that created THIS row, so a rotation records where the client
-     * is now. Null only on a row older than the column: an address that does
-     * not parse becomes the shared sentinel, never null.
+     * is now. Null on a row older than the column, and also when the address
+     * did not parse — `parsedClientIp` refuses to store attacker-chosen text.
      */
     ip: text('ip'),
     /**

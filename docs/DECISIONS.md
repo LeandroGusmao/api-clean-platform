@@ -2496,6 +2496,17 @@ duas escritas onde a documentação da classe afirma que faz uma, arrastando
 poda, `logout-all` e deleção junto. Migrar depois é barato: `ip`, rótulo e
 início já estarão nas linhas, então o backfill tem de onde ler.
 
+**O endereço que não parseia vira `null`, não o sentinel do rate limit.**
+`client-ip.ts` passou a expor duas saídas sobre a **mesma** validação:
+`clientIpKey`, que devolve `UNPARSEABLE_CLIENT_IP_KEY` e é o que o limiter
+consome — colapsar endereços forjados num balde só é o que impede o atacante de
+abrir baldes infinitos —, e `parsedClientIp`, que devolve `null` e é o que a
+sessão grava. O sentinel significa "um balde compartilhado", e esse significado
+não sobrevive a ser gravado numa coluna e devolvido ao dono da conta, onde ele
+se lê como um host. Manter o sentinel no banco também acoplaria a resposta de
+`/auth/sessions` a uma constante que pertence ao rate limit: mudá-la ali — uma
+decisão legítima de quem conta requisições — quebraria a tradução em silêncio.
+
 **`iss` e `aud` são obrigatórios, sem default.** Um default derrotaria o
 propósito: os dois apps derivados subiriam com o mesmo carimbo e um token de
 um continuaria valendo no outro.
