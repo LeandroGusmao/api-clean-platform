@@ -20,6 +20,11 @@ const OTHER_FAMILY_TOKEN_ID = 'other-family-token'
 /** Unused by this suite; required only to satisfy `ITokenGenerator`. */
 const NUMERIC_CODE = '000000'
 
+const ORIGINAL_IP = '203.0.113.7'
+const ROTATION_IP = '198.51.100.42'
+const DEVICE_LABEL = 'Chrome on Android'
+const SESSION_STARTED_AT = new Date('2026-08-01T09:00:00.000Z')
+
 const NOW = new Date('2026-08-31T12:00:00.000Z')
 const MILLISECONDS_PER_SECOND = 1000
 const TTL_SECONDS = 3600
@@ -77,6 +82,7 @@ const store = (props: {
   replacedBy?: string
   expiresAt?: Date
   familyId?: string
+  sessionStartedAt?: Date | null
 }) =>
   repository.tokens.push(
     RefreshToken.fromTrusted({
@@ -88,6 +94,12 @@ const store = (props: {
       revokedAt: props.revokedAt ?? null,
       replacedBy: props.replacedBy ?? null,
       createdAt: NOW,
+      ip: ORIGINAL_IP,
+      deviceLabel: DEVICE_LABEL,
+      sessionStartedAt:
+        props.sessionStartedAt === undefined
+          ? SESSION_STARTED_AT
+          : props.sessionStartedAt,
     }),
   )
 
@@ -102,10 +114,13 @@ const storeSuccessor = () =>
       revokedAt: null,
       replacedBy: null,
       createdAt: NOW,
+      ip: ORIGINAL_IP,
+      deviceLabel: DEVICE_LABEL,
+      sessionStartedAt: SESSION_STARTED_AT,
     }),
   )
 
-const refresh = () => useCase.execute({ refreshToken: CURRENT_TOKEN })
+const refresh = () => useCase.execute({ refreshToken: CURRENT_TOKEN, ip: ROTATION_IP })
 
 beforeEach(() => {
   clockReading = NOW
@@ -143,15 +158,36 @@ describe('RefreshTokenUseCase — rotation', () => {
 
     expect(repository.tokens[1]?.tokenHash).toBe(digestOf(result.refreshToken))
   })
+
+  it('takes the address from the current request and inherits the rest', async () => {
+    store({})
+
+    await refresh()
+
+    const successor = repository.tokens[1]
+    expect(successor?.ip).toBe(ROTATION_IP)
+    expect(successor?.deviceLabel).toBe(DEVICE_LABEL)
+    expect(successor?.sessionStartedAt).toEqual(SESSION_STARTED_AT)
+  })
+
+  it('adopts the replaced row createdAt when the start predates the column', async () => {
+    store({ sessionStartedAt: null })
+
+    await refresh()
+
+    // Later than the true start, and stable from here on — better than a
+    // session that can never report one.
+    expect(repository.tokens[1]?.sessionStartedAt).toEqual(NOW)
+  })
 })
 
 describe('RefreshTokenUseCase — refusals', () => {
   it('refuses a token it has never seen, revoking nothing', async () => {
     store({})
 
-    await expect(useCase.execute({ refreshToken: UNKNOWN_TOKEN })).rejects.toBeInstanceOf(
-      InvalidRefreshTokenError,
-    )
+    await expect(
+      useCase.execute({ refreshToken: UNKNOWN_TOKEN, ip: ROTATION_IP }),
+    ).rejects.toBeInstanceOf(InvalidRefreshTokenError)
 
     expect(repository.tokens[0]?.revokedAt).toBeNull()
   })
@@ -175,6 +211,18 @@ describe('RefreshTokenUseCase — grace window', () => {
 
     expect(result.refreshToken).not.toBe(CURRENT_TOKEN)
     expect(repository.tokens[1]?.familyId).toBe(FAMILY_ID)
+  })
+
+  it('inherits the same way inside the window', async () => {
+    store({ revokedAt: NOW, replacedBy: SUCCESSOR_ID })
+    clockReading = at(GRACE_WINDOW_MS)
+
+    await refresh()
+
+    const successor = repository.tokens[1]
+    expect(successor?.ip).toBe(ROTATION_IP)
+    expect(successor?.deviceLabel).toBe(DEVICE_LABEL)
+    expect(successor?.sessionStartedAt).toEqual(SESSION_STARTED_AT)
   })
 
   it('does NOT move revokedAt, so the window cannot slide', async () => {
@@ -227,7 +275,7 @@ describe('RefreshTokenUseCase — grace window', () => {
     await refresh()
 
     await expect(
-      useCase.execute({ refreshToken: 'successor-token' }),
+      useCase.execute({ refreshToken: 'successor-token', ip: ROTATION_IP }),
     ).rejects.toBeInstanceOf(RefreshTokenReusedError)
 
     expect(repository.tokens.every((token) => token.revokedAt !== null)).toBe(true)
@@ -288,6 +336,9 @@ describe('RefreshTokenUseCase — grace window', () => {
         familyId: OTHER_FAMILY_ID,
         now: NOW,
         ttlSeconds: TTL_SECONDS,
+        ip: ORIGINAL_IP,
+        deviceLabel: DEVICE_LABEL,
+        sessionStartedAt: SESSION_STARTED_AT,
       }),
     )
     clockReading = at(GRACE_WINDOW_MS + ONE_MILLISECOND)
@@ -345,9 +396,9 @@ describe('RefreshTokenUseCase — grace window', () => {
   })
 
   it('writes nothing at all when the token is unknown', async () => {
-    await expect(useCase.execute({ refreshToken: UNKNOWN_TOKEN })).rejects.toBeInstanceOf(
-      InvalidRefreshTokenError,
-    )
+    await expect(
+      useCase.execute({ refreshToken: UNKNOWN_TOKEN, ip: ROTATION_IP }),
+    ).rejects.toBeInstanceOf(InvalidRefreshTokenError)
 
     expect(repository.tokens).toHaveLength(NO_TOKENS)
   })

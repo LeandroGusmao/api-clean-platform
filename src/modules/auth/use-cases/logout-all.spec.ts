@@ -17,6 +17,9 @@ const STRANGER_ID = 'stranger'
 const NOW = new Date('2026-08-31T12:00:00.000Z')
 const LATER = new Date('2026-08-31T12:05:00.000Z')
 const TTL_SECONDS = 3600
+const IP = '203.0.113.7'
+const DEVICE_LABEL = 'Chrome on Android'
+const SESSION_STARTED_AT = new Date('2026-08-01T09:00:00.000Z')
 
 let repository: InMemoryRefreshTokensRepository
 let useCase: LogoutAllUseCase
@@ -36,6 +39,9 @@ const store = (id: string, userId: string, familyId: string) =>
       familyId,
       now: NOW,
       ttlSeconds: TTL_SECONDS,
+      ip: IP,
+      deviceLabel: DEVICE_LABEL,
+      sessionStartedAt: SESSION_STARTED_AT,
     }),
   )
 

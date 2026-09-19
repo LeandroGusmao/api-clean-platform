@@ -14,6 +14,9 @@ const LATER = new Date('2026-09-16T12:00:05.000Z')
 
 const NO_SESSIONS = 0
 const TWO_SESSIONS = 2
+const IP = '203.0.113.7'
+const DEVICE_LABEL = 'Chrome on Android'
+const SESSION_STARTED_AT = new Date('2026-08-01T09:00:00.000Z')
 
 let sequence = 0
 const nextId = () => {
@@ -33,6 +36,9 @@ const activeToken = (familyId: string, userId: string = USER_ID) =>
     familyId,
     now: NOW,
     ttlSeconds: TTL_SECONDS,
+    ip: IP,
+    deviceLabel: DEVICE_LABEL,
+    sessionStartedAt: SESSION_STARTED_AT,
   })
 
 beforeEach(() => {
