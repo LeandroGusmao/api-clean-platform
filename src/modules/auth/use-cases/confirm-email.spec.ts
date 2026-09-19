@@ -237,7 +237,15 @@ function storeUsablePending({
 }
 
 const confirm = (overrides: Partial<ConfirmEmailCommand> = {}) =>
-  useCase.execute({ email: EMAIL, code: CODE, password: PASSWORD, ...overrides })
+  useCase.execute({
+    email: EMAIL,
+    code: CODE,
+    password: PASSWORD,
+    device: DEVICE,
+    ...overrides,
+  })
+
+const DEVICE = { ip: '203.0.113.7', label: 'Chrome on Android' } as const
 
 const storedUser = () => {
   const [user] = usersRepository.users
@@ -303,6 +311,19 @@ describe('ConfirmEmailUseCase', () => {
       })
     },
   )
+
+  it('records the device context on the session it opens', async () => {
+    storeUsablePending()
+
+    await confirm()
+
+    const [stored] = refreshTokensRepository.tokens
+
+    expect(stored?.ip).toBe(DEVICE.ip)
+    expect(stored?.deviceLabel).toBe(DEVICE.label)
+    // The family is being born, so this confirmation IS the start.
+    expect(stored?.sessionStartedAt).toEqual(NOW)
+  })
 
   it('creates the verified user with THIS request password, opens a session, consumes the pending — one transaction', async () => {
     storeUsablePending()

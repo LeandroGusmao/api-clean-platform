@@ -5,7 +5,10 @@ import type { IHashProvider } from '#modules/auth/ports/hash-provider'
 import type { ITokenSigner } from '#modules/auth/ports/token-signer'
 import type { IPendingRegistrationsRepository } from '#modules/auth/repositories/pending-registrations-repository'
 import type { IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
-import type { RefreshTokenIssuer } from '#modules/auth/services/refresh-token-issuer'
+import type {
+  RefreshTokenIssuer,
+  SessionDevice,
+} from '#modules/auth/services/refresh-token-issuer'
 import { Email } from '#modules/auth/value-objects/email'
 import { Password } from '#modules/auth/value-objects/password'
 import type { IClock } from '#shared/ports/clock'
@@ -17,6 +20,8 @@ export interface ConfirmEmailCommand {
   email: string
   code: string
   password: string
+  /** Resolved at the edge by `buildDeviceContext`. */
+  device: SessionDevice
 }
 
 export interface ConfirmEmailResult {
@@ -106,6 +111,12 @@ export class ConfirmEmailUseCase {
       user.id,
       this.refreshTokenIssuer.newFamilyId(),
       now,
+      {
+        ip: command.device.ip,
+        deviceLabel: command.device.label,
+        // The family is being born, so this IS the start.
+        sessionStartedAt: now,
+      },
     )
 
     await this.uow(async ({ users, pendingRegistrations, refreshTokens }) => {

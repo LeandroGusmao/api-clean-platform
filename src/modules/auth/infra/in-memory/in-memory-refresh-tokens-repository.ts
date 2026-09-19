@@ -75,6 +75,9 @@ export class InMemoryRefreshTokensRepository implements IRefreshTokensRepository
         revokedAt: changes.revokedAt,
         replacedBy: changes.replacedBy ?? token.replacedBy,
         createdAt: token.createdAt,
+        ip: token.ip,
+        deviceLabel: token.deviceLabel,
+        sessionStartedAt: token.sessionStartedAt,
       })
     })
   }

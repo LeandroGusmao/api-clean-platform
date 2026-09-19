@@ -4,6 +4,16 @@ import type { ITokenDigest } from '#shared/ports/token-digest'
 import type { ITokenGenerator } from '#shared/ports/token-generator'
 
 /**
+ * The client opening a session, as the edge resolved it. Carried on the command
+ * of every use case that starts a family, so none of them has to reach for a
+ * request object the pure layer must not see.
+ */
+export interface SessionDevice {
+  ip: string
+  label: string
+}
+
+/**
  * Already resolved by the caller, so the issuer never has to tell a fresh
  * family apart from a rotation: opening a session builds it from the request,
  * rotation inherits it from the row being replaced.

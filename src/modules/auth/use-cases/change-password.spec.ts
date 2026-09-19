@@ -23,6 +23,7 @@ const EMAIL = 'joao@example.com'
 
 const CURRENT_PASSWORD = 'sup3r-s3cr3t!'
 const NEW_PASSWORD = 'ev3n-b3tter!'
+const DEVICE = { ip: '203.0.113.7', label: 'Chrome on Android' } as const
 const WRONG_PASSWORD = 'n0t-the-one!'
 const WEAK_PASSWORD = 'short'
 
@@ -207,6 +208,7 @@ const change = (overrides: Partial<Parameters<typeof useCase.execute>[0]> = {}) 
     userId: USER_ID,
     currentPassword: CURRENT_PASSWORD,
     newPassword: NEW_PASSWORD,
+    device: DEVICE,
     ...overrides,
   })
 
@@ -273,6 +275,17 @@ describe('ChangePasswordUseCase', () => {
     await change()
 
     expect(issuedToken()?.revokedAt).toBeNull()
+  })
+
+  it('records the device context on the session it re-opens', async () => {
+    storeUser(CURRENT_HASH)
+
+    await change()
+
+    expect(issuedToken()?.ip).toBe(DEVICE.ip)
+    expect(issuedToken()?.deviceLabel).toBe(DEVICE.label)
+    // The old family died with the password, so this IS a new session.
+    expect(issuedToken()?.sessionStartedAt).toEqual(NOW)
   })
 
   it('rejects a wrong current password and writes nothing', async () => {
@@ -391,6 +404,7 @@ describe('ChangePasswordUseCase', () => {
       userId: USER_ID,
       currentPassword: CURRENT_PASSWORD,
       newPassword: NEW_PASSWORD,
+      device: DEVICE,
     })
 
     expect(storedUser()?.updatedAt).toEqual(issuedToken()?.createdAt)

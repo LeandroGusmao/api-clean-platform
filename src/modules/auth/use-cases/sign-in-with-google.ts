@@ -15,12 +15,21 @@ import type { IFederatedIdentitiesRepository } from '#modules/auth/repositories/
 import type { IRefreshTokensRepository } from '#modules/auth/repositories/refresh-tokens-repository'
 import type { IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
 import type { IUsersRepository } from '#modules/auth/repositories/users-repository'
-import type { RefreshTokenIssuer } from '#modules/auth/services/refresh-token-issuer'
+import type {
+  IssuedSessionContext,
+  RefreshTokenIssuer,
+  SessionDevice,
+} from '#modules/auth/services/refresh-token-issuer'
 import { Email } from '#modules/auth/value-objects/email'
 import type { IClock } from '#shared/ports/clock'
 import type { IIdGenerator } from '#shared/ports/id-generator'
 
 /** Raw, untrusted input. */
+/** Every branch here opens a NEW family, so the sign-in itself is the start. */
+function sessionContextFor(device: SessionDevice, now: Date): IssuedSessionContext {
+  return { ip: device.ip, deviceLabel: device.label, sessionStartedAt: now }
+}
+
 export interface SignInWithGoogleCommand {
   idToken: string
   /**
@@ -29,6 +38,8 @@ export interface SignInWithGoogleCommand {
    * with an `undefined` value when the client omits it.
    */
   password?: string | undefined
+  /** Resolved at the edge by `buildDeviceContext`. */
+  device: SessionDevice
 }
 
 export interface SignInWithGoogleResult {
@@ -87,13 +98,13 @@ export class SignInWithGoogleUseCase {
       // Fast path: one write, no transaction, exactly like `login`.
       const user = await this.usersRepository.findById(linked.userId)
       if (user === null) throw new GoogleSignInConflictError()
-      return this.#issueSession(user.id, now)
+      return this.#issueSession(user.id, now, command.device)
     }
 
     const existing = await this.usersRepository.findByEmail(email)
 
     if (existing === null) {
-      return this.#createAccountAndLink(email, identity.subject, now)
+      return this.#createAccountAndLink(email, identity.subject, now, command.device)
     }
 
     if (existing.passwordHash === null) {
@@ -125,6 +136,7 @@ export class SignInWithGoogleUseCase {
       existing.id,
       this.refreshTokenIssuer.newFamilyId(),
       now,
+      sessionContextFor(command.device, now),
     )
 
     await this.uow(async ({ federatedIdentities, refreshTokens, outboxMessages }) => {
@@ -157,6 +169,7 @@ export class SignInWithGoogleUseCase {
     email: Email,
     subject: string,
     now: Date,
+    device: SessionDevice,
   ): Promise<SignInWithGoogleResult> {
     const user = User.createFederated({ id: this.idGenerator.generate(), email, now })
     const link = FederatedIdentity.create({
@@ -171,6 +184,7 @@ export class SignInWithGoogleUseCase {
       user.id,
       this.refreshTokenIssuer.newFamilyId(),
       now,
+      sessionContextFor(device, now),
     )
 
     await this.uow(
@@ -192,11 +206,16 @@ export class SignInWithGoogleUseCase {
     }
   }
 
-  async #issueSession(userId: string, now: Date): Promise<SignInWithGoogleResult> {
+  async #issueSession(
+    userId: string,
+    now: Date,
+    device: SessionDevice,
+  ): Promise<SignInWithGoogleResult> {
     const issued = this.refreshTokenIssuer.issue(
       userId,
       this.refreshTokenIssuer.newFamilyId(),
       now,
+      sessionContextFor(device, now),
     )
     await this.refreshTokensRepository.save(issued.entity)
 

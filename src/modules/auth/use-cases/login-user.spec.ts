@@ -13,6 +13,7 @@ import { Email } from '#modules/auth/value-objects/email'
 const EMAIL = 'joao@example.com'
 const PASSWORD = 'sup3r-s3cr3t!'
 const WRONG_PASSWORD = 'wr0ng-p4ssword!'
+const DEVICE = { ip: '203.0.113.7', label: 'Chrome on Android' } as const
 const USER_ID = '3f2a1b4c-5d6e-4f70-8192-a3b4c5d6e7f8'
 const DUMMY_HASH = 'dummy-hash'
 const ACCESS_TOKEN = 'signed.access.token'
@@ -96,7 +97,11 @@ function makeAccountUnverified(): void {
 
 describe('LoginUserUseCase', () => {
   it('returns an access token for valid credentials', async () => {
-    const result = await useCase.execute({ email: EMAIL, password: PASSWORD })
+    const result = await useCase.execute({
+      email: EMAIL,
+      password: PASSWORD,
+      device: DEVICE,
+    })
 
     // Exact shape, not just the fields we care about: an extra key here would
     // mean something leaked into the response — the entity, or the digest.
@@ -109,7 +114,7 @@ describe('LoginUserUseCase', () => {
   it('signs the token with the user id as the subject', async () => {
     const sign = vi.spyOn(tokenSigner, 'sign')
 
-    await useCase.execute({ email: EMAIL, password: PASSWORD })
+    await useCase.execute({ email: EMAIL, password: PASSWORD, device: DEVICE })
 
     expect(sign).toHaveBeenCalledWith({ sub: USER_ID })
   })
@@ -118,6 +123,7 @@ describe('LoginUserUseCase', () => {
     const result = await useCase.execute({
       email: 'JOAO@EXAMPLE.COM',
       password: PASSWORD,
+      device: DEVICE,
     })
 
     expect(result.accessToken).toBe(ACCESS_TOKEN)
@@ -125,7 +131,7 @@ describe('LoginUserUseCase', () => {
 
   it('rejects a wrong password', async () => {
     await expect(
-      useCase.execute({ email: EMAIL, password: WRONG_PASSWORD }),
+      useCase.execute({ email: EMAIL, password: WRONG_PASSWORD, device: DEVICE }),
     ).rejects.toBeInstanceOf(InvalidCredentialsError)
   })
 
@@ -133,7 +139,11 @@ describe('LoginUserUseCase', () => {
     // Same class, same code, same message: the two failures must be
     // indistinguishable from outside.
     await expect(
-      useCase.execute({ email: 'ninguem@example.com', password: PASSWORD }),
+      useCase.execute({
+        email: 'ninguem@example.com',
+        password: PASSWORD,
+        device: DEVICE,
+      }),
     ).rejects.toBeInstanceOf(InvalidCredentialsError)
   })
 
@@ -145,7 +155,11 @@ describe('LoginUserUseCase', () => {
     const compare = vi.spyOn(hashProvider, 'compare')
 
     await expect(
-      useCase.execute({ email: 'ninguem@example.com', password: PASSWORD }),
+      useCase.execute({
+        email: 'ninguem@example.com',
+        password: PASSWORD,
+        device: DEVICE,
+      }),
     ).rejects.toBeInstanceOf(InvalidCredentialsError)
 
     expect(compare).toHaveBeenCalledWith(PASSWORD, DUMMY_HASH)
@@ -155,14 +169,18 @@ describe('LoginUserUseCase', () => {
     const sign = vi.spyOn(tokenSigner, 'sign')
 
     await expect(
-      useCase.execute({ email: EMAIL, password: WRONG_PASSWORD }),
+      useCase.execute({ email: EMAIL, password: WRONG_PASSWORD, device: DEVICE }),
     ).rejects.toBeInstanceOf(InvalidCredentialsError)
 
     expect(sign).not.toHaveBeenCalled()
   })
 
   it('issues a refresh token alongside the access token', async () => {
-    const result = await useCase.execute({ email: EMAIL, password: PASSWORD })
+    const result = await useCase.execute({
+      email: EMAIL,
+      password: PASSWORD,
+      device: DEVICE,
+    })
 
     expect(result.accessToken).toBe(ACCESS_TOKEN)
     expect(result.refreshToken.length).toBeGreaterThan(0)
@@ -171,7 +189,11 @@ describe('LoginUserUseCase', () => {
   it('persists the DIGEST of the refresh token, never the token itself', async () => {
     // The single most important assertion in this file. A stored plaintext
     // token is a stored password.
-    const { refreshToken } = await useCase.execute({ email: EMAIL, password: PASSWORD })
+    const { refreshToken } = await useCase.execute({
+      email: EMAIL,
+      password: PASSWORD,
+      device: DEVICE,
+    })
 
     const [stored] = refreshTokensRepository.tokens
 
@@ -179,11 +201,22 @@ describe('LoginUserUseCase', () => {
     expect(stored?.tokenHash).not.toBe(refreshToken)
   })
 
+  it('records the device context of the request that logged in', async () => {
+    await useCase.execute({ email: EMAIL, password: PASSWORD, device: DEVICE })
+
+    const [stored] = refreshTokensRepository.tokens
+
+    expect(stored?.ip).toBe(DEVICE.ip)
+    expect(stored?.deviceLabel).toBe(DEVICE.label)
+    // The family is being born, so this login IS the start of the session.
+    expect(stored?.sessionStartedAt).toEqual(NOW)
+  })
+
   it('starts a NEW family on every login', async () => {
     // One chain per device. Sharing a family would make logging out on the
     // phone log the tablet out too.
-    await useCase.execute({ email: EMAIL, password: PASSWORD })
-    await useCase.execute({ email: EMAIL, password: PASSWORD })
+    await useCase.execute({ email: EMAIL, password: PASSWORD, device: DEVICE })
+    await useCase.execute({ email: EMAIL, password: PASSWORD, device: DEVICE })
 
     const [first, second] = refreshTokensRepository.tokens
 
@@ -191,7 +224,7 @@ describe('LoginUserUseCase', () => {
   })
 
   it('takes expiresAt from the injected clock, not from the wall clock', async () => {
-    await useCase.execute({ email: EMAIL, password: PASSWORD })
+    await useCase.execute({ email: EMAIL, password: PASSWORD, device: DEVICE })
 
     const [stored] = refreshTokensRepository.tokens
 
@@ -202,7 +235,7 @@ describe('LoginUserUseCase', () => {
 
   it('stores no refresh token when the credentials are wrong', async () => {
     await expect(
-      useCase.execute({ email: EMAIL, password: WRONG_PASSWORD }),
+      useCase.execute({ email: EMAIL, password: WRONG_PASSWORD, device: DEVICE }),
     ).rejects.toBeInstanceOf(InvalidCredentialsError)
 
     expect(refreshTokensRepository.tokens).toHaveLength(0)
@@ -212,7 +245,7 @@ describe('LoginUserUseCase', () => {
     makeAccountUnverified()
 
     await expect(
-      useCase.execute({ email: EMAIL, password: PASSWORD }),
+      useCase.execute({ email: EMAIL, password: PASSWORD, device: DEVICE }),
     ).rejects.toBeInstanceOf(EmailNotVerifiedError)
   })
 
@@ -225,12 +258,16 @@ describe('LoginUserUseCase', () => {
     makeAccountUnverified()
 
     await expect(
-      useCase.execute({ email: EMAIL, password: WRONG_PASSWORD }),
+      useCase.execute({ email: EMAIL, password: WRONG_PASSWORD, device: DEVICE }),
     ).rejects.toBeInstanceOf(InvalidCredentialsError)
   })
 
   it('issues a session for a verified account', async () => {
-    const result = await useCase.execute({ email: EMAIL, password: PASSWORD })
+    const result = await useCase.execute({
+      email: EMAIL,
+      password: PASSWORD,
+      device: DEVICE,
+    })
 
     expect(result.accessToken).toBe(ACCESS_TOKEN)
   })
@@ -249,7 +286,7 @@ describe('LoginUserUseCase', () => {
     })
 
     await expect(
-      useCase.execute({ email: EMAIL, password: PASSWORD }),
+      useCase.execute({ email: EMAIL, password: PASSWORD, device: DEVICE }),
     ).rejects.toBeInstanceOf(InvalidCredentialsError)
   })
 })
