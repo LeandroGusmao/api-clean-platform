@@ -11,6 +11,8 @@ const INTEGRATION_GLOBAL_SETUP = './tests/integration/setup/migrate-test-databas
 const NODE_ENV_TEST = 'test'
 const TEST_JWT_SECRET = 'an-integration-test-secret-32-chars'
 const TEST_GOOGLE_CLIENT_ID = 'integration-test-google-client-id'
+const TEST_JWT_ISSUER = 'api-clean-platform-test'
+const TEST_JWT_AUDIENCE = 'api-clean-platform-test'
 
 /**
  * No `resolve.conditions` here on purpose: Vite already asks for the
@@ -53,6 +55,10 @@ export default defineConfig({
       // Same story: required with no default (decision 14), so the integration
       // project cannot boot without it.
       GOOGLE_CLIENT_ID: TEST_GOOGLE_CLIENT_ID,
+      // Required with no default for the same reason as JWT_SECRET above: they
+      // carry no default precisely so two deployments cannot share one.
+      JWT_ISSUER: TEST_JWT_ISSUER,
+      JWT_AUDIENCE: TEST_JWT_AUDIENCE,
     },
   },
 })

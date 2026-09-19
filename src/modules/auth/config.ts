@@ -10,6 +10,9 @@ export const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 3600
  */
 const MIN_JWT_SECRET_LENGTH = 32
 
+/** Presence, not policy: an empty `iss` would verify against an empty `iss`. */
+const MIN_CLAIM_LENGTH = 1
+
 /** 60 days — decision 11. Sliding: every rotation issues a fresh window. */
 export const DEFAULT_REFRESH_TOKEN_TTL_SECONDS = 5_184_000
 
@@ -179,6 +182,14 @@ export const DEFAULT_GOOGLE_SIGN_IN_RATE_LIMIT_WINDOW_SECONDS = 60
  */
 export const authEnvSchema = z.object({
   JWT_SECRET: z.string().min(MIN_JWT_SECRET_LENGTH),
+  /**
+   * The `iss` and `aud` claims. Required with NO default, and that IS the
+   * point: a shared default would stamp two deployments identically, so a
+   * token minted by one would keep verifying in the other — the very thing
+   * these claims exist to prevent.
+   */
+  JWT_ISSUER: z.string().min(MIN_CLAIM_LENGTH),
+  JWT_AUDIENCE: z.string().min(MIN_CLAIM_LENGTH),
   /**
    * The OAuth client id from Google Cloud Console. Public, not a secret:
    * ID-token verification is public-key crypto. Required, no default, like
