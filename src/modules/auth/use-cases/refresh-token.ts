@@ -1,6 +1,8 @@
+import { OutboxMessage } from '#modules/auth/entities/outbox-message'
 import type { RefreshToken } from '#modules/auth/entities/refresh-token'
 import { InvalidRefreshTokenError } from '#modules/auth/errors/invalid-refresh-token-error'
 import { RefreshTokenReusedError } from '#modules/auth/errors/refresh-token-reused-error'
+import { reuseDetectedEmail } from '#modules/auth/notifications/emails'
 import type { ITokenSigner } from '#modules/auth/ports/token-signer'
 import type { IRefreshTokensRepository } from '#modules/auth/repositories/refresh-tokens-repository'
 import type { IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
@@ -10,6 +12,7 @@ import type {
   RefreshTokenIssuer,
 } from '#modules/auth/services/refresh-token-issuer'
 import type { IClock } from '#shared/ports/clock'
+import type { IIdGenerator } from '#shared/ports/id-generator'
 import type { ITokenDigest } from '#shared/ports/token-digest'
 
 /**
@@ -56,7 +59,8 @@ const REUSE_DETECTED: RotationOutcome = { reused: true }
 /**
  * Rotates a refresh token (decision 11): the presented token is spent, a
  * successor is issued in the same family, and a token presented after it was
- * already spent revokes the entire family.
+ * already spent revokes the entire family. The owner's notice is written in the
+ * same transaction as that revocation (decision 41).
  *
  * Receives the unit of work and NO repository directly — the rule of §9 of the
  * unit of work design, which neither the compiler nor the linter can enforce:
@@ -71,6 +75,7 @@ export class RefreshTokenUseCase {
     private readonly tokenSigner: ITokenSigner,
     private readonly tokenDigest: ITokenDigest,
     private readonly clock: IClock,
+    private readonly idGenerator: IIdGenerator,
     private readonly graceWindowMs: number,
   ) {}
 
@@ -82,7 +87,9 @@ export class RefreshTokenUseCase {
     // against whichever attempt happened to win.
     const now = this.clock.now()
 
-    const outcome: RotationOutcome = await this.uow(async ({ refreshTokens }) => {
+    const outcome: RotationOutcome = await this.uow(async (repos) => {
+      const { refreshTokens, users, outboxMessages } = repos
+
       // The row lock is what makes reuse detection possible at all: without it
       // two simultaneous refreshes of the same token both read it as active,
       // both rotate, and nothing is ever detected.
@@ -105,7 +112,32 @@ export class RefreshTokenUseCase {
           supersededId !== null && current.isWithinGraceWindow(now, this.graceWindowMs)
 
         if (!withinGrace) {
-          await refreshTokens.revokeFamily(current.familyId, now)
+          const revoked = await refreshTokens.revokeFamily(current.familyId, now)
+
+          // Only the call that actually killed the family warns the owner. The
+          // spent token stays spent forever, so every replay lands in this
+          // branch and finds nothing left to revoke: warning on those would let
+          // whoever holds an old token flood the owner's inbox.
+          if (revoked > 0) {
+            const owner = await users.findById(current.userId)
+
+            // A `refresh_tokens` row always has an owner (the cascade removes
+            // the tokens with the account), so `null` is a type guard, not a
+            // case. It must not throw: that would roll back the revocation.
+            if (owner !== null) {
+              await outboxMessages.save(
+                OutboxMessage.create({
+                  id: this.idGenerator.generate(),
+                  message: reuseDetectedEmail(owner.email, {
+                    deviceLabel: current.deviceLabel,
+                    sessionStartedAt: current.sessionStartedAt ?? current.createdAt,
+                    ip: command.ip,
+                  }),
+                  now,
+                }),
+              )
+            }
+          }
 
           // RETURNED, not thrown, and this is the whole point: throwing here
           // would roll the transaction back and undo the revocation just made.

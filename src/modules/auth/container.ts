@@ -249,6 +249,7 @@ export function makeAuthContainer(
       tokenSigner,
       tokenDigest,
       clock,
+      idGenerator,
       config.REFRESH_TOKEN_GRACE_WINDOW_SECONDS * MILLISECONDS_PER_SECOND,
     ),
     logout: new LogoutUseCase(uow, tokenDigest, clock),

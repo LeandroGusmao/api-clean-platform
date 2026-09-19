@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { RefreshToken } from '#modules/auth/entities/refresh-token'
+import { User } from '#modules/auth/entities/user'
 import { InvalidRefreshTokenError } from '#modules/auth/errors/invalid-refresh-token-error'
 import { RefreshTokenReusedError } from '#modules/auth/errors/refresh-token-reused-error'
+import { InMemoryOutboxMessagesRepository } from '#modules/auth/infra/in-memory/in-memory-outbox-messages-repository'
 import { InMemoryRefreshTokensRepository } from '#modules/auth/infra/in-memory/in-memory-refresh-tokens-repository'
+import { InMemoryUsersRepository } from '#modules/auth/infra/in-memory/in-memory-users-repository'
 import { noopAuthRepos } from '#modules/auth/repositories/noop-auth-repos'
 import type { AuthRepos, IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
 import { RefreshTokenIssuer } from '#modules/auth/services/refresh-token-issuer'
 import { RefreshTokenUseCase } from '#modules/auth/use-cases/refresh-token'
+import { Email } from '#modules/auth/value-objects/email'
 
 const USER_ID = '3f2a1b4c-5d6e-4f70-8192-a3b4c5d6e7f8'
 const FAMILY_ID = '11112222-3333-4444-8555-666677778888'
@@ -32,6 +36,10 @@ const TTL_MS = TTL_SECONDS * MILLISECONDS_PER_SECOND
 const GRACE_WINDOW_MS = 30_000
 const ONE_MILLISECOND = 1
 const NO_TOKENS = 0
+const OWNER_EMAIL = 'joao@example.com'
+const NOTICE_ID_PREFIX = 'notice-'
+const NO_MESSAGES = 0
+const ONE_MESSAGE = 1
 
 const digestOf = (value: string) => `digest:${value}`
 const at = (offsetMs: number) => new Date(NOW.getTime() + offsetMs)
@@ -47,11 +55,15 @@ const makeUow =
     work(repos)
 
 let repository: InMemoryRefreshTokensRepository
+let usersRepository: InMemoryUsersRepository
+let outboxMessages: InMemoryOutboxMessagesRepository
 let useCase: RefreshTokenUseCase
 let clockReading: Date
 
 const build = () => {
   repository = new InMemoryRefreshTokensRepository()
+  usersRepository = new InMemoryUsersRepository()
+  outboxMessages = new InMemoryOutboxMessagesRepository()
 
   // Counted rather than random, so every assertion below is deterministic.
   let generated = 0
@@ -68,11 +80,17 @@ const build = () => {
   )
 
   useCase = new RefreshTokenUseCase(
-    makeUow({ ...noopAuthRepos(), refreshTokens: repository }),
+    makeUow({
+      ...noopAuthRepos(),
+      refreshTokens: repository,
+      users: usersRepository,
+      outboxMessages,
+    }),
     issuer,
     { sign: async () => ACCESS_TOKEN, verify: async () => ({ sub: USER_ID }) },
     { hash: digestOf },
     { now: () => clockReading },
+    { generate: () => `${NOTICE_ID_PREFIX}${nextValue()}` },
     GRACE_WINDOW_MS,
   )
 }
@@ -82,6 +100,7 @@ const store = (props: {
   replacedBy?: string
   expiresAt?: Date
   familyId?: string
+  deviceLabel?: string | null
   sessionStartedAt?: Date | null
 }) =>
   repository.tokens.push(
@@ -95,7 +114,7 @@ const store = (props: {
       replacedBy: props.replacedBy ?? null,
       createdAt: NOW,
       ip: ORIGINAL_IP,
-      deviceLabel: DEVICE_LABEL,
+      deviceLabel: props.deviceLabel === undefined ? DEVICE_LABEL : props.deviceLabel,
       sessionStartedAt:
         props.sessionStartedAt === undefined
           ? SESSION_STARTED_AT
@@ -381,6 +400,7 @@ describe('RefreshTokenUseCase — grace window', () => {
       { sign: async () => ACCESS_TOKEN, verify: async () => ({ sub: USER_ID }) },
       { hash: digestOf },
       { now: () => clockReading },
+      { generate: () => 'id-notice' },
       GRACE_WINDOW_MS,
     )
 
@@ -401,5 +421,93 @@ describe('RefreshTokenUseCase — grace window', () => {
     ).rejects.toBeInstanceOf(InvalidRefreshTokenError)
 
     expect(repository.tokens).toHaveLength(NO_TOKENS)
+  })
+})
+
+const storeOwner = () =>
+  usersRepository.users.push(
+    User.fromTrusted({
+      id: USER_ID,
+      email: Email.fromTrusted(OWNER_EMAIL),
+      passwordHash: 'irrelevant-hash',
+      emailVerifiedAt: null,
+      createdAt: NOW,
+      updatedAt: NOW,
+    }),
+  )
+
+const PAST_GRACE = GRACE_WINDOW_MS + ONE_MILLISECOND
+
+describe('RefreshTokenUseCase — reuse notice', () => {
+  it('queues ONE notice for the owner naming the session and the request address', async () => {
+    storeOwner()
+    store({ revokedAt: NOW, replacedBy: SUCCESSOR_ID })
+    storeSuccessor()
+    clockReading = at(PAST_GRACE)
+
+    await expect(refresh()).rejects.toBeInstanceOf(RefreshTokenReusedError)
+
+    expect(outboxMessages.messages).toHaveLength(ONE_MESSAGE)
+    const [notice] = outboxMessages.messages
+    expect(notice?.to).toBe(OWNER_EMAIL)
+    expect(notice?.text).toContain(DEVICE_LABEL)
+    expect(notice?.text).toContain(SESSION_STARTED_AT.toISOString())
+    // The address that PRESENTED the token, not the one stored on the row.
+    expect(notice?.text).toContain(ROTATION_IP)
+    expect(notice?.text).not.toContain(ORIGINAL_IP)
+  })
+
+  it('queues nothing when the same spent token is replayed against a dead family', async () => {
+    storeOwner()
+    store({ revokedAt: NOW, replacedBy: SUCCESSOR_ID })
+    storeSuccessor()
+    clockReading = at(PAST_GRACE)
+
+    await expect(refresh()).rejects.toBeInstanceOf(RefreshTokenReusedError)
+    await expect(refresh()).rejects.toBeInstanceOf(RefreshTokenReusedError)
+
+    expect(outboxMessages.messages).toHaveLength(ONE_MESSAGE)
+  })
+
+  it('queues nothing for a token revoked by logout, where nothing was left to revoke', async () => {
+    storeOwner()
+    store({ revokedAt: NOW })
+    clockReading = at(ONE_MILLISECOND)
+
+    await expect(refresh()).rejects.toBeInstanceOf(RefreshTokenReusedError)
+
+    expect(outboxMessages.messages).toHaveLength(NO_MESSAGES)
+  })
+
+  it('queues nothing inside the grace window, where the family is not revoked', async () => {
+    storeOwner()
+    store({ revokedAt: NOW, replacedBy: SUCCESSOR_ID })
+    storeSuccessor()
+    clockReading = at(ONE_MILLISECOND)
+
+    await refresh()
+
+    expect(outboxMessages.messages).toHaveLength(NO_MESSAGES)
+  })
+
+  it('adopts the row createdAt for a start that predates the column, and copes with no label or address', async () => {
+    storeOwner()
+    store({
+      revokedAt: NOW,
+      replacedBy: SUCCESSOR_ID,
+      sessionStartedAt: null,
+      deviceLabel: null,
+    })
+    storeSuccessor()
+    clockReading = at(PAST_GRACE)
+
+    await expect(
+      useCase.execute({ refreshToken: CURRENT_TOKEN, ip: null }),
+    ).rejects.toBeInstanceOf(RefreshTokenReusedError)
+
+    const [notice] = outboxMessages.messages
+    expect(notice?.text).toContain(NOW.toISOString())
+    expect(notice?.text).toContain('an unknown device')
+    expect(notice?.text).toContain('an unrecognized address')
   })
 })
