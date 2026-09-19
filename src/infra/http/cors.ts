@@ -14,6 +14,13 @@ const LOCAL_ALLOWED_ORIGINS = [
 ]
 
 /**
+ * The plugin's default is `GET,HEAD,POST`, which makes the browser refuse the
+ * preflight of any other verb. `DELETE` is here for `DELETE /me`; add a verb
+ * only when a route actually uses it.
+ */
+const ALLOWED_METHODS = ['GET', 'HEAD', 'POST', 'DELETE']
+
+/**
  * Cross-origin access for the browser front-end.
  *
  * `credentials: true` because the auth flow rides on a cookie, and a cookie is
@@ -29,5 +36,6 @@ export async function registerCors(app: FastifyInstance): Promise<void> {
   await app.register(cors, {
     origin: LOCAL_ALLOWED_ORIGINS,
     credentials: true,
+    methods: ALLOWED_METHODS,
   })
 }

@@ -26,6 +26,21 @@ describe('registerCors', () => {
     await app.close()
   })
 
+  it('lets the browser send a DELETE by listing it in the preflight answer', async () => {
+    const app = buildServer(TEST_ENV)
+    await registerCors(app)
+    app.delete('/ping', async () => ({ ok: true }))
+
+    const response = await app.inject({
+      method: 'OPTIONS',
+      url: '/ping',
+      headers: { origin: ALLOWED_ORIGIN, 'access-control-request-method': 'DELETE' },
+    })
+
+    expect(response.headers['access-control-allow-methods']).toContain('DELETE')
+    await app.close()
+  })
+
   it('never echoes an origin outside the allow-list back to the caller', async () => {
     const app = buildServer(TEST_ENV)
     await registerCors(app)
