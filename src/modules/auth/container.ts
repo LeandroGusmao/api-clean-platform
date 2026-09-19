@@ -43,6 +43,7 @@ import { PasswordResetIssuer } from './services/password-reset-issuer.js'
 import { RefreshTokenIssuer } from './services/refresh-token-issuer.js'
 import { ChangePasswordUseCase } from './use-cases/change-password.js'
 import { ConfirmEmailUseCase } from './use-cases/confirm-email.js'
+import { DeleteAccountUseCase } from './use-cases/delete-account.js'
 import {
   DISPATCH_OUTBOX_MESSAGES_JOB,
   DispatchOutboxMessagesUseCase,
@@ -251,6 +252,13 @@ export function makeAuthContainer(
     ),
     logout: new LogoutUseCase(uow, tokenDigest, clock),
     logoutAll: new LogoutAllUseCase(uow, clock),
+    deleteAccount: new DeleteAccountUseCase(
+      usersRepository,
+      uow,
+      hashProvider,
+      clock,
+      idGenerator,
+    ),
     changePassword: new ChangePasswordUseCase(
       usersRepository,
       uow,
@@ -368,6 +376,15 @@ export function makeAuthContainer(
       max: config.PASSWORD_CHANGE_RATE_LIMIT_MAX_REQUESTS,
       timeWindow:
         config.PASSWORD_CHANGE_RATE_LIMIT_WINDOW_SECONDS * MILLISECONDS_PER_SECOND,
+    },
+    /**
+     * The deletion route declares its own ceiling, like the password change:
+     * a request here carries a password guess.
+     */
+    accountDeleteRateLimit: {
+      max: config.ACCOUNT_DELETE_RATE_LIMIT_MAX_REQUESTS,
+      timeWindow:
+        config.ACCOUNT_DELETE_RATE_LIMIT_WINDOW_SECONDS * MILLISECONDS_PER_SECOND,
     },
     /**
      * `forgot` declares its own ceiling, like `register`: an anonymous request

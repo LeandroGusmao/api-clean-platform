@@ -53,6 +53,17 @@ export const DEFAULT_PASSWORD_CHANGE_RATE_LIMIT_MAX_REQUESTS = 10
 export const DEFAULT_PASSWORD_CHANGE_RATE_LIMIT_WINDOW_SECONDS = 60
 
 /**
+ * A request here carries a password guess, like login and the password change.
+ * Its own pair, not a shared one, for the reason those two document: a field
+ * named for one route and used by another is a comment that lies.
+ *
+ * The vector it closes is narrower than the password change's, and worse: a
+ * stolen access token escalated into an account that no longer exists.
+ */
+export const DEFAULT_ACCOUNT_DELETE_RATE_LIMIT_MAX_REQUESTS = 10
+export const DEFAULT_ACCOUNT_DELETE_RATE_LIMIT_WINDOW_SECONDS = 60
+
+/**
  * 15 minutes. Short because the code is only six digits: what makes 10^6
  * acceptable is not entropy, it is the TTL, the attempt cap and the resend
  * cooldown together. Lengthen any one of them and the other two have to answer
@@ -231,6 +242,18 @@ export const authEnvSchema = z.object({
     .int()
     .positive()
     .default(DEFAULT_PASSWORD_CHANGE_RATE_LIMIT_WINDOW_SECONDS),
+  // `.positive()` for the reason every ceiling here carries it: zero would
+  // refuse every deletion, and rejecting zero is what rejects an empty value.
+  ACCOUNT_DELETE_RATE_LIMIT_MAX_REQUESTS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_ACCOUNT_DELETE_RATE_LIMIT_MAX_REQUESTS),
+  ACCOUNT_DELETE_RATE_LIMIT_WINDOW_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_ACCOUNT_DELETE_RATE_LIMIT_WINDOW_SECONDS),
   // `.positive()` for the same reason as every TTL above: a value of zero would
   // expire the code before it could ever be used, and rejecting zero is what
   // rejects an empty value.

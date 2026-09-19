@@ -2,6 +2,7 @@ import type { FastifyPluginAsync, preHandlerHookHandler } from 'fastify'
 import type { AuthContainer } from '#modules/auth/container'
 import { changePasswordRoute } from './endpoints/change-password.js'
 import { confirmEmailRoute } from './endpoints/confirm-email.js'
+import { deleteAccountRoute } from './endpoints/delete-account.js'
 import { forgotPasswordRoute } from './endpoints/forgot-password.js'
 import { listSessionsRoute } from './endpoints/list-sessions.js'
 import { loginRoute } from './endpoints/login.js'
@@ -39,4 +40,5 @@ export const authRoutes: FastifyPluginAsync<{
   await app.register(changePasswordRoute, { container, guard })
   await app.register(meRoute, { container, guard })
   await app.register(listSessionsRoute, { container, guard })
+  await app.register(deleteAccountRoute, { container, guard })
 }
