@@ -21,6 +21,12 @@ export const outboxMessages = pgTable(
     lastError: text('last_error'),
     dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
     failedAt: timestamp('failed_at', { withTimezone: true }),
+    /**
+     * Set when a dispatch run picks the message up: it is not offered to another
+     * run until this instant has passed (decision 40). Null until first claimed.
+     * No default, like every other time column — the instant comes from `IClock`.
+     */
+    claimedUntil: timestamp('claimed_until', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   },
   (table) => [

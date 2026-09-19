@@ -14,6 +14,7 @@ const NOT_NULL_VIOLATION = '23502'
 
 const ROW_ID = '6f1e2d3c-4b5a-4c6d-8e9f-0a1b2c3d4e5f'
 const CREATED_AT = new Date('2026-09-15T00:00:00.000Z')
+const CLAIMED_UNTIL = new Date('2026-09-15T00:02:00.000Z')
 const ZERO_ATTEMPTS = 0
 const ONE_INDEX = 1
 
@@ -43,7 +44,7 @@ const row = (overrides: Partial<typeof outboxMessages.$inferInsert> = {}) => ({
 })
 
 describe('outbox_messages table', () => {
-  it('stores a row with every column, dispatchedAt/failedAt/lastError null by default input', async () => {
+  it('stores a row with every column, dispatchedAt/failedAt/lastError/claimedUntil null by default input', async () => {
     await db.insert(outboxMessages).values(row())
 
     const [stored] = await db.select().from(outboxMessages)
@@ -56,7 +57,16 @@ describe('outbox_messages table', () => {
     expect(stored?.lastError).toBeNull()
     expect(stored?.dispatchedAt).toBeNull()
     expect(stored?.failedAt).toBeNull()
+    expect(stored?.claimedUntil).toBeNull()
     expect(stored?.createdAt).toEqual(CREATED_AT)
+  })
+
+  it('stores the instant a claim expires', async () => {
+    await db.insert(outboxMessages).values(row({ claimedUntil: CLAIMED_UNTIL }))
+
+    const [stored] = await db.select().from(outboxMessages)
+
+    expect(stored?.claimedUntil).toEqual(CLAIMED_UNTIL)
   })
 
   it('rejects an insert without attempts, proving there is no default', async () => {

@@ -3,9 +3,13 @@ import type { outboxMessages } from './schema/outbox-messages.js'
 
 type OutboxMessageRow = typeof outboxMessages.$inferSelect
 
+/**
+ * The claim is not part of the insert: a message is born unclaimed, and only
+ * `claimNext` ever writes the column, so the database stores NULL.
+ */
 export function toPersistenceOutboxMessage(
   message: OutboxMessage,
-): Omit<OutboxMessageRow, 'id'> & { id: string } {
+): Omit<OutboxMessageRow, 'id' | 'claimedUntil'> & { id: string } {
   return {
     id: message.id,
     to: message.to,
