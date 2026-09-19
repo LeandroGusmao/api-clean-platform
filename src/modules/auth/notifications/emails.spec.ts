@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  accountDeletedEmail,
   googleAccountLinkedEmail,
   passwordResetCompletedEmail,
   passwordResetEmail,
@@ -38,5 +39,15 @@ describe('googleAccountLinkedEmail', () => {
     expect(message.to).toBe(TO.value)
     expect(message.text.toLowerCase()).toContain('google')
     expect(message.text.toLowerCase()).toContain('reset your password')
+  })
+})
+
+describe('accountDeletedEmail', () => {
+  it('addresses the owner and says the account is gone for good', () => {
+    const message = accountDeletedEmail(TO)
+
+    expect(message.to).toBe(TO.value)
+    expect(message.text.toLowerCase()).toContain('deleted')
+    expect(message.text.toLowerCase()).toContain('cannot be undone')
   })
 })

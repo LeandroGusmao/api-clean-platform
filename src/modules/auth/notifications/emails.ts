@@ -9,6 +9,7 @@ const PASSWORD_CHANGED_SUBJECT = 'Your password was changed'
 const PASSWORD_RESET_SUBJECT = 'Reset your password'
 const PASSWORD_RESET_COMPLETED_SUBJECT = 'Your password was reset'
 const GOOGLE_ACCOUNT_LINKED_SUBJECT = 'A Google sign-in was connected to your account'
+const ACCOUNT_DELETED_SUBJECT = 'Your account was deleted'
 
 /**
  * Pure functions rather than bodies inlined in the use cases: this is the one
@@ -118,5 +119,22 @@ export function googleAccountLinkedEmail(to: Email): EmailMessage {
       'Sign in with Google was just connected to your account.\n\n' +
       'If this was not you, reset your password immediately — whoever ' +
       'connected it can then sign in without your password.',
+  }
+}
+
+/**
+ * The last message this address receives from the app. Sent for the same
+ * reason `passwordChangedEmail` is: if a stolen session asked for the
+ * deletion, this is the owner's only chance to find out.
+ */
+export function accountDeletedEmail(to: Email): EmailMessage {
+  return {
+    to: to.value,
+    subject: ACCOUNT_DELETED_SUBJECT,
+    text:
+      'Your account and every session tied to it were just deleted.\n\n' +
+      'This cannot be undone — nothing is kept, and signing up again with ' +
+      'this address starts a brand new account.\n\n' +
+      'If this was not you, someone had access to your account.',
   }
 }
