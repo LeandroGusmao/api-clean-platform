@@ -4,6 +4,17 @@ import type { ITokenDigest } from '#shared/ports/token-digest'
 import type { ITokenGenerator } from '#shared/ports/token-generator'
 
 /**
+ * Already resolved by the caller, so the issuer never has to tell a fresh
+ * family apart from a rotation: opening a session builds it from the request,
+ * rotation inherits it from the row being replaced.
+ */
+export interface IssuedSessionContext {
+  ip: string | null
+  deviceLabel: string | null
+  sessionStartedAt: Date | null
+}
+
+/**
  * The plaintext token and the row that remembers it. The plaintext exists only
  * long enough to reach the client — nothing persists it, and the server can
  * never reproduce it, which is why the grace window issues a NEW pair instead
@@ -31,7 +42,12 @@ export class RefreshTokenIssuer {
     private readonly ttlSeconds: number,
   ) {}
 
-  issue(userId: string, familyId: string, now: Date): IssuedRefreshToken {
+  issue(
+    userId: string,
+    familyId: string,
+    now: Date,
+    context: IssuedSessionContext,
+  ): IssuedRefreshToken {
     const token = this.tokenGenerator.opaque()
 
     return {
@@ -43,6 +59,9 @@ export class RefreshTokenIssuer {
         familyId,
         now,
         ttlSeconds: this.ttlSeconds,
+        ip: context.ip,
+        deviceLabel: context.deviceLabel,
+        sessionStartedAt: context.sessionStartedAt,
       }),
     }
   }
