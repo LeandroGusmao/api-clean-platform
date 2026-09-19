@@ -830,8 +830,11 @@ ISO da camada pura faria ela servir HTTP especificamente, deixando os entrypoint
 de worker e cron (decisão 10) fazendo parse de volta.
 
 Os endpoints checados por `/health` vivem em `infra/health/checks/`, um arquivo
-por dependência. O endpoint só agrega e traduz para HTTP — quando entrar Redis
-ou uma API externa, cria-se o arquivo irmão em vez de crescer o handler.
+por dependência. O endpoint só agrega e traduz para HTTP: `redis-check.ts` é o
+irmão de `database-check.ts`, e uma API externa ganharia o seu em vez de
+crescer o handler. Só o banco decide o status — o Redis é reportado, mas uma
+sonda vermelha por causa dele tiraria de circulação até as rotas que nunca o
+tocam.
 
 ---
 

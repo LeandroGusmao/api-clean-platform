@@ -2518,6 +2518,72 @@ número é a latência real de revogação do `logout-all`. Custo aceito: o
 Desenho completo em
 [`2026-09-18-session-device-context-design.md`](superpowers/specs/2026-09-18-session-device-context-design.md).
 
+### 39 — Rate limit compartilhado no Redis, por rota, com fail-closed
+
+Fecha o item #1 de "Pendências do boilerplate". O contador do limitador vivia
+na memória de cada processo, então com N réplicas o teto efetivo de qualquer
+rota era N× o configurado. O balanceador já reparte as requisições entre as
+réplicas, então um único endereço recebia N baldes sem tentar nada. E como a §6
+recusou o bloqueio por conta, o teto por endereço e o custo do argon2 são as
+duas únicas defesas contra chute de senha: multiplicar uma delas por N cortava
+metade do que sobrava.
+
+**A divisão.** Rota que **declara o próprio teto** (`config.rateLimit`) conta no
+Redis, compartilhado entre as réplicas. Rota sem teto próprio segue no teto
+global de 300/min, **em memória, por réplica**. O plugin já faz essa separação:
+chama `store.child()` só para as rotas com configuração própria, e é por esse
+método que o Redis entra. Nenhum módulo recebe o cliente Redis. Hoje são nove
+rotas, todas do `auth`; uma rota de produto que um dia declarar um teto
+apertado entra no Redis sem tocar no store.
+
+**Fail-closed.** Com o Redis fora, essas rotas respondem **503 com
+`Retry-After`** (`RateLimitStoreUnavailableError`, uma `TransientError`) e as
+demais seguem no ar. A escolha é de segurança: numa rota que carrega palpite de
+senha, degradar para "sem teto" é o pior lugar, e sem teto cada tentativa custa
+um argon2 (7,3 ms, 19 MB), o que expõe a CPU além das senhas. O erro nasce com
+`securityEvent = true`: sem isso o handler devolve o 503 sem uma linha de log, e
+um controle que parou de controlar passaria por tráfego comum.
+
+**A premissa que sustenta o fail-closed, dita claramente:** o Redis é operado
+por quem opera o app, e cai só em manutenção programada. Ela reabre a decisão
+quando um app derivado (a) roda num ambiente em que o Redis não é confiável, ou
+(b) exige disponibilidade de login acima da proteção contra chute. A saída é
+fail-open por rota, com alerta — nunca desligar o teto em silêncio.
+
+**Store nosso, não o `RedisStore` do plugin.** O erro do Redis precisa virar
+`TransientError`, o `RedisStore` não é exportado (o pacote não tem `exports`) e
+traz recursos que o projeto não usa. O incremento e a expiração rodam num único
+script Lua, atômico: em dois comandos, uma queda entre `INCR` e `PEXPIRE`
+deixaria a chave sem validade e aquele endereço bloqueado para sempre.
+
+**O cliente falha rápido.** `ioredis` com fila offline desligada e
+`commandTimeout`. Medido na versão 6.0.0: com as opções padrão, um comando
+contra um Redis fora do ar ficou pendurado por mais de 12 s; com a fila
+desligada, falha em 0 ms. Sem isso o "recusar" viraria requisição pendurada.
+
+**`/health` mostra o Redis e não decide o 503.** Se decidisse, o orquestrador
+tiraria todas as réplicas de circulação e a API inteira cairia, inclusive as
+rotas que nunca tocam o Redis.
+
+**Custos aceitos.**
+
+1. O teto global é N×: 300/min com três réplicas são 900/min. Ele é uma rede de
+   segurança grossa, não a defesa contra chute.
+2. As nove rotas caem juntas quando o Redis cai: login, cadastro, confirmação e
+   reenvio de e-mail, esquecer e redefinir senha, trocar senha, deletar conta e
+   Google.
+3. Um `warn` por requisição recusada durante a queda: ruído aceito em troca de a
+   queda ser visível.
+4. Importação de um arquivo interno do plugin (`LocalStore`), com o pacote em
+   versão exata; um spec quebra se ele sumir.
+5. Uma ida de rede a mais nessas nove rotas: 0,20 ms em loopback.
+6. O endereço do cliente fica no Redis pelo tempo da janela — dado pessoal, com
+   validade de segundos.
+7. Todo entrypoint valida o mesmo env: o `cron` e o seed passam a exigir
+   `REDIS_URL` mesmo sem usar o Redis.
+
+Spec: [`specs/2026-09-19-shared-rate-limit-store-design.md`](superpowers/specs/2026-09-19-shared-rate-limit-store-design.md).
+
 ---
 
 ## 7. Pendências de manutenção

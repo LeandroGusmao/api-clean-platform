@@ -63,11 +63,19 @@ uma linha de log — a falha silenciosa que o fail-closed existe para evitar.
 O pacote declara só `main`. `@fastify/rate-limit/store/LocalStore.js` resolve,
 mas não é API pública (§11.4).
 
-### 3.4 — A medir na implementação, não assumido
+### 3.4 — O cliente só falha rápido se for configurado para isso
 
-O comportamento padrão do `ioredis` sem cliente conectado (fila de espera e
-retentativas) **não foi medido**. A spec parte do que se sabe da biblioteca e o
-plano tem uma tarefa que mede antes de fixar os números da §6.
+Medido com `ioredis` 6.0.0 contra Redis 8.10.1:
+
+| Situação | Opções padrão | Fila offline desligada + `commandTimeout` |
+|---|---|---|
+| Porta sem ninguém ouvindo | comando pendurado por mais de 12 s | falha em 0 ms |
+| Conexão viva, servidor travado (`CLIENT PAUSE`) | — | falha em 251 ms, com `commandTimeout` de 250 |
+| Servidor derrubado por 4 s e religado | — | responde 101 ms depois de o servidor responder ao `PING`, com a reconexão limitada a 500 ms |
+
+O script Lua da §5 devolveu `[1, 1000]` e `[2, 1000]`, reiniciou a janela depois
+de ela expirar, e deu validade a uma chave que a tinha perdido. A ida ao Redis
+custa 0,20 ms em loopback.
 
 ## 4. Decisões
 
@@ -100,7 +108,7 @@ em `store`:
 
 - `incr` (rotas **sem** teto próprio) delega ao `LocalStore` do plugin.
 - `child(params)` (rotas **com** teto próprio) devolve um store de Redis cujo
-  prefixo de chave é `<prefixo>:<método>:<url>-`, para o balde ser por rota,
+  prefixo de chave é `<prefixo><método>:<url>:`, para o balde ser por rota,
   como no store em memória de hoje.
 - O store de Redis executa um único script:
 
@@ -133,8 +141,8 @@ continua subindo um servidor sem Redis. O tipo estreito `RateLimitEnv`
 | Variável | Default | Nota |
 |---|---|---|
 | `REDIS_URL` | nenhum (obrigatória) | Sem default, como `DATABASE_URL`: dois deploys não devem compartilhar um Redis por acidente |
-| `REDIS_CONNECT_TIMEOUT_MS` | 1000 (inicial) | Valor a confirmar na medição da §3.4 |
-| `REDIS_COMMAND_TIMEOUT_MS` | 250 (inicial) | Idem. Precisa ser bem menor que o timeout de requisição, senão o fail-closed vira requisição pendurada |
+| `REDIS_CONNECT_TIMEOUT_MS` | 1000 | Limita só a conexão; um comando não espera por ela (§3.4) |
+| `REDIS_COMMAND_TIMEOUT_MS` | 250 | Dispara em 251 ms (§3.4). Precisa ser bem menor que o timeout de requisição, senão o fail-closed vira requisição pendurada |
 
 O cliente sobe com a fila de comandos offline **desligada**: comando sem
 conexão falha na hora em vez de esperar, e é isso que faz a recusa ser rápida.
@@ -208,6 +216,8 @@ fail-closed nas rotas sensíveis, em vez de recusar subir.
    app derivado num ambiente onde o Redis não seja confiável, ou que exija
    disponibilidade de login acima da proteção contra chute: aí a opção é
    fail-open por rota, com alerta.
+8. **Todo entrypoint valida o mesmo env**: o `cron` e o seed passam a exigir
+   `REDIS_URL` mesmo sem usar o Redis.
 
 ## 12. Emendas de documentação
 
@@ -216,7 +226,8 @@ fail-closed nas rotas sensíveis, em vez de recusar subir.
 - [`2026-09-02-rate-limiting-design.md`](2026-09-02-rate-limiting-design.md)
   §10.2: o store por processo passa a valer só para o teto global.
 - `rate-limit.ts`: remover o parágrafo "The store is in-process".
-- `STRUCTURE.md`: os arquivos novos da §5.
+- [`ARCHITECTURE.md`](../../../ARCHITECTURE.md) §7: o check de Redis, que a frase
+  sobre `infra/health/checks/` já previa.
 
 ## 13. Próxima fatia
 

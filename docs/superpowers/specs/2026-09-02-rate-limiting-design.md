@@ -376,6 +376,10 @@ Não é defeito da biblioteca — é o que store em memória significa. Um app
 derivado que suba três pods herda isso, e é mais uma razão para o limite que
 importa viver na borda.
 
+> **Emendado pela fatia 22 (decisão 39).** O store por processo vale agora só
+> para o teto global. As rotas que declaram o próprio teto contam num Redis
+> compartilhado, e o "N× o configurado" deixou de valer para elas.
+
 ### 10.3 — `TRUST_PROXY` assume que o proxy mais externo sanea o header
 
 O código não consegue verificar isso. A regra é: **o proxy que o cliente alcança

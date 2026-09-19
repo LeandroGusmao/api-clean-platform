@@ -5,6 +5,14 @@
 > este arquivo quer saber o que fazer, não o que já foi feito. O critério da
 > separação está na própria seção.
 >
+> **Fatia 22 (2026-09-19) entregou o store de rate limit compartilhado no
+> Redis** (decisão 39). Fecha o item #1 de "Pendências do boilerplate". As rotas
+> que **declaram o próprio teto** (as nove do `auth`) passam a contar num Redis
+> comum às réplicas e a recusar com 503 quando ele cai; o teto global de 300/min
+> continua em memória, por réplica, e não depende do Redis. A premissa que
+> sustenta o fail-closed — Redis operado por quem opera o app — está na decisão,
+> junto do que a reabre.
+>
 > **Fatia 21 (2026-09-19) entregou o contexto de dispositivo na sessão, os
 > claims `iss`/`aud`, o `helmet` e o TTL de 900s** (decisão 38). É a primeira
 > fatia puxada pela auditoria de 2026-09-07 em vez da lista genérica — hoje
@@ -105,7 +113,7 @@ cumprir o que ele mesmo promete** assim que sai de uma instância só.
 
 | # | Item | Depende de | Nota |
 |---|---|---|---|
-| 1 | **Store do rate limit é in-process** | decisão: store compartilhado ou teto de borda | o contador vive na memória do processo, então com N réplicas o teto real do login é N × 10/min — e nenhuma réplica faz nada errado. Não tem relação com dado sensível: quebra na segunda instância de qualquer app. O comentário de [`rate-limit.ts`](../src/infra/http/rate-limit.ts) já registra o fato; falta a saída |
+| 1 | ~~Store do rate limit é in-process~~ | — | **fechado pela fatia 22.** Rota com teto próprio conta num Redis compartilhado e recusa com 503 quando ele cai; o teto global segue em memória, por réplica. Decisão 39 |
 | 2 | **Dispatch do outbox sem trava** | nada | `findPendingBatch` é um `SELECT` comum, sem `FOR UPDATE SKIP LOCKED` e sem coluna de posse. Duas execuções que se sobreponham leem as mesmas linhas e **mandam o mesmo e-mail duas vezes**. Está como custo aceito na §7 da [spec do outbox](superpowers/specs/2026-09-15-transactional-outbox-design.md) — **e era só lá**, num arquivo que ninguém abre para escolher a próxima fatia |
 | 3 | **Notificar o dono quando a detecção de reuso dispara** | nada (o log foi fechado em 2026-09-08) | troca e recuperação de senha já mandam e-mail; roubo de sessão detectado não manda nada — e é a única defesa que sobra quando o atacante já tem a sessão. A fatia 21 melhorou o que dá para dizer: o aviso pode nomear aparelho e endereço |
 | 4 | **Sessão sem teto absoluto** | decisão de produto nunca tomada | os 60 dias são deslizantes, então quem der refresh toda semana nunca reautentica. Rotação e detecção de reuso cobrem roubo, então não é furo — mas **não decidir também é decidir**, e a não-decisão viaja para todo app derivado. A saída usual é um `max_lifetime` por família, com idle timeout junto |
@@ -274,11 +282,11 @@ acesso diferenciado por usuário. `DECISIONS.md` §6.
 2026-09-19 justamente para que a próxima fatia seja escolhível **sem** decidir
 antes qual app vem primeiro — os sete itens valem para qualquer um deles.
 
-Os dois primeiros têm natureza diferente dos outros cinco. **Store do rate
-limit** e **dispatch do outbox sem trava** não são features ausentes: são
-promessas que o boilerplate faz e deixa de cumprir na segunda instância. Um app
-de alimentação rodando dois contêineres sofre os dois, e dado sensível não entra
-na conta.
+~~Store do rate limit~~ — **fechado pela fatia 22** (decisão 39). O #2,
+**dispatch do outbox sem trava**, tem natureza diferente dos outros cinco: não é
+feature ausente, é uma promessa que o boilerplate faz e deixa de cumprir na
+segunda instância. Um app de alimentação rodando dois contêineres sofre o
+problema, e dado sensível não entra na conta.
 
 **Se o alvo tratar dado sensível, entra a ordem da auditoria de 2026-09-07 por
 cima desta**: ~~(1) log de evento de segurança~~ fechado em 2026-09-08;
