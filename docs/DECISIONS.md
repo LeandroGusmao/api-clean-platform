@@ -2584,6 +2584,62 @@ rotas que nunca tocam o Redis.
 
 Spec: [`specs/2026-09-19-shared-rate-limit-store-design.md`](superpowers/specs/2026-09-19-shared-rate-limit-store-design.md).
 
+### 40 — Dispatch do outbox com etiqueta por mensagem
+
+Fecha o item #2 de "Pendências do boilerplate". O `findPendingBatch` era um
+`SELECT` comum e o `markDispatched` só rodava depois do `send`: duas execuções
+que se sobrepusessem liam as mesmas linhas e mandavam o mesmo e-mail duas vezes.
+A janela era a duração da execução inteira. A spec do outbox aceitou isso
+apoiada em "one-shot agendado pela plataforma não sobrepõe execução", premissa
+que depende de onde o app roda, e isso ainda não está decidido.
+
+**Medido de ponta a ponta:** três processos `cron` concorrentes sobre 100
+mensagens, com SMTP de verdade (Mailpit), entregaram **300 e-mails** com o
+código antigo e **100** com o novo.
+
+**O desenho.** Cada mensagem ganha `claimed_until`. `claimNext(now, leaseUntil)`
+é uma instrução única (`UPDATE … WHERE id = (SELECT … LIMIT 1 FOR UPDATE SKIP
+LOCKED) RETURNING`) que pega a mais antiga pendente e sem etiqueta vigente e a
+etiqueta. É uma mensagem por vez, então a etiqueta só precisa cobrir um envio, e
+uma execução que some prende no máximo uma mensagem. Se o processo morre, a
+etiqueta vence e outra execução assume. O padrão é de 120 s
+(`OUTBOX_DISPATCH_LEASE_SECONDS`).
+
+**Falha mantém a etiqueta.** Uma mensagem cujo envio falhou só é oferecida de
+novo quando a etiqueta vence: soltá-la a devolveria ao mesmo laço na hora (é a
+mais antiga) e gastaria as tentativas em segundos. O prazo da etiqueta vira o
+intervalo entre tentativas; com o padrão e 5 tentativas, uma mensagem que sempre
+falha desiste em cerca de 8 minutos.
+
+**Timeouts no SMTP.** A etiqueta só é confiável se o envio tem limite. O
+transporte não configurava nenhum (padrões do nodemailer: 2 min para conectar,
+30 s para a saudação, 10 min de inatividade no socket) e passou a ter 10 s, 10 s
+e 30 s. Medido: as opções cortam um servidor mudo em exatamente o configurado.
+Vale também para os caminhos de requisição, que deixam de ficar presos por até
+10 minutos num SMTP pendurado.
+
+**Rejeitado.** *Lock consultivo do Postgres por execução:* serializaria as
+execuções sem coluna nova, mas quebra atrás de um pooler em modo transação e um
+envio pendurado bloquearia todas as seguintes. *`FOR UPDATE SKIP LOCKED` numa
+transação que engloba o envio:* segura uma conexão parada durante o SMTP, e o
+`DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS` mataria a transação de um envio lento
+(§8 do desenho da unit of work: sem I/O externo em transação). *Etiquetar um
+lote inteiro:* a etiqueta teria de durar cem envios ou venceria no meio.
+
+**Custos aceitos.**
+
+1. Uma execução que morre entre o `send` e o `markDispatched` reenvia depois do
+   prazo: inerente a e-mail. A decisão elimina a duplicata por concorrência, não
+   a por queda.
+2. O timeout corta uma conexão parada, não um servidor que responde devagar a
+   cada comando; nesse caso a etiqueta pode vencer com o envio em curso.
+3. A etiqueta compara relógios de réplicas diferentes; um desvio de segundos é
+   irrelevante frente a 120 s.
+4. Uma mensagem que derruba o processo antes do `recordFailure` nunca soma
+   tentativas. Igual a antes.
+
+Spec: [`specs/2026-09-19-outbox-dispatch-lease-design.md`](superpowers/specs/2026-09-19-outbox-dispatch-lease-design.md).
+
 ---
 
 ## 7. Pendências de manutenção

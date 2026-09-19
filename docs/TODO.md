@@ -5,6 +5,14 @@
 > este arquivo quer saber o que fazer, não o que já foi feito. O critério da
 > separação está na própria seção.
 >
+> **Fatia 23 (2026-09-19) entregou o dispatch do outbox com etiqueta por
+> mensagem** (decisão 40). Fecha o item #2 de "Pendências do boilerplate". Cada
+> mensagem é pega com um prazo (`claimed_until`) antes de ser enviada, então
+> execuções que se sobreponham trabalham em mensagens diferentes: três
+> `cron.ts` concorrentes sobre 100 mensagens entregavam 300 e-mails e agora
+> entregam 100. Não é "exatamente uma vez": uma queda entre o envio e o registro
+> ainda reenvia. O SMTP ganhou timeouts explícitos, que a etiqueta exige.
+>
 > **Fatia 22 (2026-09-19) entregou o store de rate limit compartilhado no
 > Redis** (decisão 39). Fecha o item #1 de "Pendências do boilerplate". As rotas
 > que **declaram o próprio teto** (as nove do `auth`) passam a contar num Redis
@@ -114,7 +122,7 @@ cumprir o que ele mesmo promete** assim que sai de uma instância só.
 | # | Item | Depende de | Nota |
 |---|---|---|---|
 | 1 | ~~Store do rate limit é in-process~~ | — | **fechado pela fatia 22.** Rota com teto próprio conta num Redis compartilhado e recusa com 503 quando ele cai; o teto global segue em memória, por réplica. Decisão 39 |
-| 2 | **Dispatch do outbox sem trava** | nada | `findPendingBatch` é um `SELECT` comum, sem `FOR UPDATE SKIP LOCKED` e sem coluna de posse. Duas execuções que se sobreponham leem as mesmas linhas e **mandam o mesmo e-mail duas vezes**. Está como custo aceito na §7 da [spec do outbox](superpowers/specs/2026-09-15-transactional-outbox-design.md) — **e era só lá**, num arquivo que ninguém abre para escolher a próxima fatia |
+| 2 | ~~Dispatch do outbox sem trava~~ | — | **fechado pela fatia 23.** Cada mensagem é pega com uma etiqueta de prazo (`claimed_until`) por uma instrução única com `FOR UPDATE SKIP LOCKED`; execuções concorrentes trabalham em mensagens diferentes. Decisão 40 |
 | 3 | **Notificar o dono quando a detecção de reuso dispara** | nada (o log foi fechado em 2026-09-08) | troca e recuperação de senha já mandam e-mail; roubo de sessão detectado não manda nada — e é a única defesa que sobra quando o atacante já tem a sessão. A fatia 21 melhorou o que dá para dizer: o aviso pode nomear aparelho e endereço |
 | 4 | **Sessão sem teto absoluto** | decisão de produto nunca tomada | os 60 dias são deslizantes, então quem der refresh toda semana nunca reautentica. Rotação e detecção de reuso cobrem roubo, então não é furo — mas **não decidir também é decidir**, e a não-decisão viaja para todo app derivado. A saída usual é um `max_lifetime` por família, com idle timeout junto |
 | 5 | Checagem de senha vazada | decisão: API externa (HIBP) ou lista embarcada | o piso é 8 caracteres e não há blocklist. Como o lockout foi recusado, o custo do argon2 e a qualidade da senha são as duas únicas defesas contra força bruta — e uma delas está no piso |
@@ -282,11 +290,10 @@ acesso diferenciado por usuário. `DECISIONS.md` §6.
 2026-09-19 justamente para que a próxima fatia seja escolhível **sem** decidir
 antes qual app vem primeiro — os sete itens valem para qualquer um deles.
 
-~~Store do rate limit~~ — **fechado pela fatia 22** (decisão 39). O #2,
-**dispatch do outbox sem trava**, tem natureza diferente dos outros cinco: não é
-feature ausente, é uma promessa que o boilerplate faz e deixa de cumprir na
-segunda instância. Um app de alimentação rodando dois contêineres sofre o
-problema, e dado sensível não entra na conta.
+~~Store do rate limit~~ — **fechado pela fatia 22** (decisão 39).
+~~Dispatch do outbox sem trava~~ — **fechado pela fatia 23** (decisão 40). O
+próximo é o #3, **notificar o dono quando a detecção de reuso dispara**, o
+primeiro consumidor natural de um aviso que precisa sair uma vez só.
 
 **Se o alvo tratar dado sensível, entra a ordem da auditoria de 2026-09-07 por
 cima desta**: ~~(1) log de evento de segurança~~ fechado em 2026-09-08;

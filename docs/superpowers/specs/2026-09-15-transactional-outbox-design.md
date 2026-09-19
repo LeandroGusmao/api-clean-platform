@@ -285,6 +285,11 @@ outbox-dispatch job returns its own counters").
   fecharia isso, mas é complexidade real para um risco baixo (a janela é a
   duração de um `execute()`) e sem custo caso aconteça. Mesma aceitação que o
   "sem lock de instância" da poda (§8 da spec da fatia 13).
+
+  > **Emendado pela fatia 23 (decisão 40).** Deixou de ser custo aceito: cada
+  > mensagem é pega com uma etiqueta de prazo (`claimNext`), então execuções
+  > concorrentes trabalham em mensagens diferentes. O laço do §6 descreve o
+  > desenho original, com `findPendingBatch`, e fica como registro.
 - **`outboxMessages.save` falhando dentro do `uow`** reverte a transação
   inteira — a senha não muda, a sessão não é revogada, nada é enviado. Correto:
   mesmo "um fato, ou tudo ou nada" que já rege os outros repositórios ali
@@ -368,11 +373,13 @@ outras tabelas/jobs não foram tocados.
   **Deixou de ser só custo aceito em 2026-09-19:** virou o item #2 de
   "Pendências do boilerplate" no [`TODO.md`](../../TODO.md), porque atinge todo
   app derivado e estava registrado apenas aqui.
+  **Fechado pela fatia 23 (decisão 40).**
 - **`DELETE` sem batching na poda**, mesmo custo aceito da fatia 13 — volume de
   boilerplate não justifica `LIMIT` em laço agora.
 - **Sem lock de instância** no dispatch nem na poda — mesmo raciocínio da
   fatia 13: one-shot agendado pela plataforma não sobrepõe execução; um
-  agendador que sobreponha é problema do agendador.
+  agendador que sobreponha é problema do agendador. **A parte do dispatch foi
+  fechada pela fatia 23**; a da poda segue valendo (idempotente).
 - **`accountAlreadyExistsEmail` fora do outbox** (§1) — sem escrita
   transacional a correlacionar, não há buraco de atomicidade ali para este
   desenho fechar.
