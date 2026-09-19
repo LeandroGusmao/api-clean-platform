@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import type { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
+import { buildDeviceContext } from '#infra/http/device-context'
 import { errorResponseSchema } from '#infra/http/errors/error-response'
 import type { AuthContainer } from '#modules/auth/container'
 import { InvalidRefreshTokenError } from '#modules/auth/errors/invalid-refresh-token-error'
@@ -75,6 +76,7 @@ export const refreshRoute: FastifyPluginAsync<{ container: AuthContainer }> = as
 
       const { accessToken, refreshToken } = await container.refreshToken.execute({
         refreshToken: presented,
+        ip: buildDeviceContext(request).ip,
       })
 
       if (request.body.refreshToken === undefined) {
