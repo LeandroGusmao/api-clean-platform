@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config'
 import { TEST_DATABASE_URL } from './tests/integration/setup/test-database-url.js'
+import { TEST_REDIS_URL } from './tests/integration/setup/test-redis-url.js'
 
 const UNIT_PROJECT = 'unit'
 const UNIT_INCLUDE = 'src/**/*.spec.ts'
@@ -48,6 +49,7 @@ export default defineConfig({
     env: {
       NODE_ENV: NODE_ENV_TEST,
       DATABASE_URL: TEST_DATABASE_URL,
+      REDIS_URL: TEST_REDIS_URL,
       // Not configuration: a test fixture, like TEST_DATABASE_URL. `env.ts`
       // exits the process on an invalid environment, so without this the whole
       // integration project fails to boot rather than failing a test.

@@ -13,6 +13,8 @@ import {
   DEFAULT_PORT,
   DEFAULT_RATE_LIMIT_MAX_REQUESTS,
   DEFAULT_RATE_LIMIT_WINDOW_SECONDS,
+  DEFAULT_REDIS_COMMAND_TIMEOUT_MS,
+  DEFAULT_REDIS_CONNECT_TIMEOUT_MS,
   NODE_ENV_DEVELOPMENT,
   parseEnv,
 } from '#infra/config/env'
@@ -53,6 +55,7 @@ import {
 } from '#modules/auth/config'
 
 const VALID_DATABASE_URL = 'postgres://user:pass@localhost:5432/app'
+const VALID_REDIS_URL = 'redis://localhost:6379'
 const VALID_JWT_SECRET = 'a-test-secret-with-at-least-32-chars'
 const VALID_GOOGLE_CLIENT_ID = 'client.apps.googleusercontent.com'
 const VALID_JWT_ISSUER = 'api-clean-platform'
@@ -62,6 +65,7 @@ describe('parseEnv', () => {
   it('rejects an empty PORT instead of coercing it to zero', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
+      REDIS_URL: VALID_REDIS_URL,
       JWT_SECRET: VALID_JWT_SECRET,
       JWT_ISSUER: VALID_JWT_ISSUER,
       JWT_AUDIENCE: VALID_JWT_AUDIENCE,
@@ -81,7 +85,10 @@ describe('parseEnv', () => {
   // New: proves the module's schema actually reached the merge. Without this,
   // dropping the `.extend()` line would leave every other case green.
   it('rejects a missing JWT_SECRET', () => {
-    const result = parseEnv({ DATABASE_URL: VALID_DATABASE_URL })
+    const result = parseEnv({
+      DATABASE_URL: VALID_DATABASE_URL,
+      REDIS_URL: VALID_REDIS_URL,
+    })
 
     expect(result.success).toBe(false)
   })
@@ -91,6 +98,7 @@ describe('parseEnv', () => {
     // and a token from one would keep verifying in the other.
     const complete: Record<string, string> = {
       DATABASE_URL: VALID_DATABASE_URL,
+      REDIS_URL: VALID_REDIS_URL,
       JWT_SECRET: VALID_JWT_SECRET,
       GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       JWT_ISSUER: VALID_JWT_ISSUER,
@@ -104,6 +112,7 @@ describe('parseEnv', () => {
   it('applies defaults when only the required variables are provided', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
+      REDIS_URL: VALID_REDIS_URL,
       JWT_SECRET: VALID_JWT_SECRET,
       JWT_ISSUER: VALID_JWT_ISSUER,
       JWT_AUDIENCE: VALID_JWT_AUDIENCE,
@@ -118,6 +127,7 @@ describe('parseEnv', () => {
       PORT: DEFAULT_PORT,
       LOG_LEVEL: DEFAULT_LOG_LEVEL,
       DATABASE_URL: VALID_DATABASE_URL,
+      REDIS_URL: VALID_REDIS_URL,
       JWT_SECRET: VALID_JWT_SECRET,
       JWT_ISSUER: VALID_JWT_ISSUER,
       JWT_AUDIENCE: VALID_JWT_AUDIENCE,
@@ -178,6 +188,8 @@ describe('parseEnv', () => {
       DATABASE_LOCK_TIMEOUT_MS: DEFAULT_DATABASE_LOCK_TIMEOUT_MS,
       DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS:
         DEFAULT_DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS,
+      REDIS_CONNECT_TIMEOUT_MS: DEFAULT_REDIS_CONNECT_TIMEOUT_MS,
+      REDIS_COMMAND_TIMEOUT_MS: DEFAULT_REDIS_COMMAND_TIMEOUT_MS,
       MAIL_HOST: DEFAULT_MAIL_HOST,
       MAIL_PORT: DEFAULT_MAIL_PORT,
       MAIL_SECURE: false,
@@ -190,6 +202,42 @@ describe('parseEnv', () => {
     })
   })
 
+  it('rejects a missing REDIS_URL', () => {
+    // No default on purpose, like DATABASE_URL: a shared one would point two
+    // deployments at the same Redis, and they would count each other's requests.
+    const result = parseEnv({
+      DATABASE_URL: VALID_DATABASE_URL,
+      JWT_SECRET: VALID_JWT_SECRET,
+      JWT_ISSUER: VALID_JWT_ISSUER,
+      JWT_AUDIENCE: VALID_JWT_AUDIENCE,
+      GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  // `.positive()`, as for `PORT`: there is no legitimate zero, because a timeout
+  // that bounds nothing defeats the fail-fast — and an empty value coerces to
+  // zero, so rejecting zero is also what rejects a blanked `.env` line.
+  it.each(['REDIS_CONNECT_TIMEOUT_MS', 'REDIS_COMMAND_TIMEOUT_MS'])(
+    'rejects an empty or zero %s',
+    (name) => {
+      for (const value of ['', '0']) {
+        const result = parseEnv({
+          DATABASE_URL: VALID_DATABASE_URL,
+          REDIS_URL: VALID_REDIS_URL,
+          JWT_SECRET: VALID_JWT_SECRET,
+          JWT_ISSUER: VALID_JWT_ISSUER,
+          JWT_AUDIENCE: VALID_JWT_AUDIENCE,
+          GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
+          [name]: value,
+        })
+
+        expect(result.success).toBe(false)
+      }
+    },
+  )
+
   // The three Postgres timeouts read `0` as DISABLED, so an empty value must
   // not reach the schema as a number. `PORT` is protected by `.positive()`
   // rejecting the coerced zero; these accept zero on purpose, so emptiness has
@@ -198,6 +246,7 @@ describe('parseEnv', () => {
   it('rejects an empty database timeout instead of silently deferring', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
+      REDIS_URL: VALID_REDIS_URL,
       JWT_SECRET: VALID_JWT_SECRET,
       JWT_ISSUER: VALID_JWT_ISSUER,
       JWT_AUDIENCE: VALID_JWT_AUDIENCE,
@@ -215,6 +264,7 @@ describe('parseEnv', () => {
   it('accepts an explicit zero, which defers to the server setting', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
+      REDIS_URL: VALID_REDIS_URL,
       JWT_SECRET: VALID_JWT_SECRET,
       JWT_ISSUER: VALID_JWT_ISSUER,
       JWT_AUDIENCE: VALID_JWT_AUDIENCE,
@@ -229,6 +279,7 @@ describe('parseEnv', () => {
   it('rejects a negative database timeout', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
+      REDIS_URL: VALID_REDIS_URL,
       JWT_SECRET: VALID_JWT_SECRET,
       JWT_ISSUER: VALID_JWT_ISSUER,
       JWT_AUDIENCE: VALID_JWT_AUDIENCE,
@@ -245,6 +296,7 @@ describe('parseEnv', () => {
   it('rejects a pool size of zero', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
+      REDIS_URL: VALID_REDIS_URL,
       JWT_SECRET: VALID_JWT_SECRET,
       JWT_ISSUER: VALID_JWT_ISSUER,
       JWT_AUDIENCE: VALID_JWT_AUDIENCE,
@@ -261,6 +313,7 @@ describe('parseEnv', () => {
   it('refuses TRUST_PROXY=true, which trusts a client-written header', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
+      REDIS_URL: VALID_REDIS_URL,
       JWT_SECRET: VALID_JWT_SECRET,
       JWT_ISSUER: VALID_JWT_ISSUER,
       JWT_AUDIENCE: VALID_JWT_AUDIENCE,
@@ -277,6 +330,7 @@ describe('parseEnv', () => {
   it('refuses a hop count, which Fastify accepts and then ignores', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
+      REDIS_URL: VALID_REDIS_URL,
       JWT_SECRET: VALID_JWT_SECRET,
       JWT_ISSUER: VALID_JWT_ISSUER,
       JWT_AUDIENCE: VALID_JWT_AUDIENCE,
@@ -295,6 +349,7 @@ describe('parseEnv', () => {
     (value) => {
       const result = parseEnv({
         DATABASE_URL: VALID_DATABASE_URL,
+        REDIS_URL: VALID_REDIS_URL,
         JWT_SECRET: VALID_JWT_SECRET,
         JWT_ISSUER: VALID_JWT_ISSUER,
         JWT_AUDIENCE: VALID_JWT_AUDIENCE,
@@ -310,6 +365,7 @@ describe('parseEnv', () => {
   it('keeps a trusted network list as the string Fastify parses', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
+      REDIS_URL: VALID_REDIS_URL,
       JWT_SECRET: VALID_JWT_SECRET,
       JWT_ISSUER: VALID_JWT_ISSUER,
       JWT_AUDIENCE: VALID_JWT_AUDIENCE,
@@ -341,6 +397,7 @@ describe('mail configuration in production', () => {
   it('refuses to boot without an explicit sender address', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
+      REDIS_URL: VALID_REDIS_URL,
       JWT_SECRET: VALID_JWT_SECRET,
       JWT_ISSUER: VALID_JWT_ISSUER,
       JWT_AUDIENCE: VALID_JWT_AUDIENCE,
@@ -354,6 +411,7 @@ describe('mail configuration in production', () => {
   it('refuses to boot with STARTTLS disabled, which would send codes in the clear', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
+      REDIS_URL: VALID_REDIS_URL,
       JWT_SECRET: VALID_JWT_SECRET,
       JWT_ISSUER: VALID_JWT_ISSUER,
       JWT_AUDIENCE: VALID_JWT_AUDIENCE,
@@ -371,6 +429,7 @@ describe('mail configuration in production', () => {
   it('boots when every mail setting is explicit and STARTTLS is required', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
+      REDIS_URL: VALID_REDIS_URL,
       JWT_SECRET: VALID_JWT_SECRET,
       JWT_ISSUER: VALID_JWT_ISSUER,
       JWT_AUDIENCE: VALID_JWT_AUDIENCE,
@@ -397,6 +456,7 @@ describe('MAIL_USER and MAIL_PASSWORD must travel together', () => {
   it('rejects MAIL_USER without MAIL_PASSWORD', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
+      REDIS_URL: VALID_REDIS_URL,
       JWT_SECRET: VALID_JWT_SECRET,
       JWT_ISSUER: VALID_JWT_ISSUER,
       JWT_AUDIENCE: VALID_JWT_AUDIENCE,
@@ -410,6 +470,7 @@ describe('MAIL_USER and MAIL_PASSWORD must travel together', () => {
   it('rejects MAIL_PASSWORD without MAIL_USER', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
+      REDIS_URL: VALID_REDIS_URL,
       JWT_SECRET: VALID_JWT_SECRET,
       JWT_ISSUER: VALID_JWT_ISSUER,
       JWT_AUDIENCE: VALID_JWT_AUDIENCE,
@@ -423,6 +484,7 @@ describe('MAIL_USER and MAIL_PASSWORD must travel together', () => {
   it('accepts both present together', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
+      REDIS_URL: VALID_REDIS_URL,
       JWT_SECRET: VALID_JWT_SECRET,
       JWT_ISSUER: VALID_JWT_ISSUER,
       JWT_AUDIENCE: VALID_JWT_AUDIENCE,
@@ -437,6 +499,7 @@ describe('MAIL_USER and MAIL_PASSWORD must travel together', () => {
   it('accepts both absent together', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
+      REDIS_URL: VALID_REDIS_URL,
       JWT_SECRET: VALID_JWT_SECRET,
       JWT_ISSUER: VALID_JWT_ISSUER,
       JWT_AUDIENCE: VALID_JWT_AUDIENCE,

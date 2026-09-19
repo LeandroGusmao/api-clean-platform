@@ -52,6 +52,46 @@ services:
       retries: 5
       start_period: 10s
 
+  # Backs the rate limit of every route that declares its own ceiling. A counter
+  # lives for one window, so nothing here is worth keeping: no snapshots, no
+  # volume, and a restart is a clean slate.
+  redis:
+    # Pinned exact — bump deliberately, same convention as our npm deps.
+    image: redis:8.10.1-alpine3.23
+    container_name: api-clean-platform-redis
+    restart: unless-stopped
+    # Bind to localhost only — never expose the dev Redis to the LAN.
+    ports:
+      - '127.0.0.1:6379:6379'
+    command: ['redis-server', '--save', '', '--appendonly', 'no']
+    tmpfs:
+      - /data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # Ephemeral Redis for the integration suite, on its own port so it never shares
+  # counters with the dev instance: the suite flushes it freely.
+  redis-test:
+    # Pinned exact — bump deliberately, same convention as our npm deps.
+    image: redis:8.10.1-alpine3.23
+    container_name: api-clean-platform-redis-test
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:6380:6379'
+    command: ['redis-server', '--save', '', '--appendonly', 'no']
+    tmpfs:
+      - /data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
   # Local SMTP catcher. Captures every outgoing message — verification codes
   # included — instead of delivering it, and exposes an HTTP API the integration
   # suite reads the code back from. The same SmtpEmailSender adapter talks to

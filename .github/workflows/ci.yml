@@ -57,6 +57,19 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      # Same image as docker-compose.yml's `redis-test`, on port 6380: the test
+      # Redis URL is a literal constant in tests/integration/setup/test-redis-url.ts,
+      # so CI has to reproduce it exactly.
+      redis:
+        image: redis:8.10.1-alpine3.23
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       # Actions are pinned by commit SHA: a tag is a movable pointer and
       # Actions has no lockfile, so the tag is the only reference there is.
@@ -99,6 +112,7 @@ jobs:
           NODE_ENV: production
           PORT: 3000
           DATABASE_URL: postgres://api_clean_platform:api_clean_platform_local_dev@127.0.0.1:5433/api_clean_platform_test
+          REDIS_URL: redis://127.0.0.1:6380
           JWT_SECRET: a-ci-secret-with-at-least-32-characters
           # Required at boot with no default, like JWT_SECRET (decision 14).
           # Any non-empty value lets the process start; this step never

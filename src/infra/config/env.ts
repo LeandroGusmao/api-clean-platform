@@ -30,6 +30,16 @@ export const DEFAULT_DATABASE_LOCK_TIMEOUT_MS = 5_000
 /** The net against a hung callback holding a connection AND its locks forever. */
 export const DEFAULT_DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS = 10_000
 
+/**
+ * Redis backs the routes that declare their own rate limit ceiling, and those
+ * routes refuse while it is down (decision 39). These bound how long a request
+ * waits on it: a command that is not answered quickly must fail, not queue.
+ * The command timeout is far above a healthy round trip and far below any
+ * request timeout.
+ */
+export const DEFAULT_REDIS_CONNECT_TIMEOUT_MS = 1_000
+export const DEFAULT_REDIS_COMMAND_TIMEOUT_MS = 250
+
 const EMPTY_TIMEOUT_MESSAGE =
   "must not be empty; set it to 0 to leave the server's own setting in effect"
 
@@ -192,6 +202,21 @@ const coreEnvSchema = z.object({
   DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS: timeoutMs(
     DEFAULT_DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS,
   ),
+  // No default, like `DATABASE_URL`: two deployments must not share a Redis by
+  // accident and count each other's requests.
+  REDIS_URL: z.url(),
+  // `.positive()`, as for `PORT`: no legitimate zero, and rejecting zero is what
+  // rejects an empty value.
+  REDIS_CONNECT_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_REDIS_CONNECT_TIMEOUT_MS),
+  REDIS_COMMAND_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_REDIS_COMMAND_TIMEOUT_MS),
   // `.optional()` and NOT `.default(...)`: the production refinement below
   // needs to tell "the operator set this" from "Zod filled it in", and after a
   // `.default()` the parsed value is never `undefined` — that distinction would
