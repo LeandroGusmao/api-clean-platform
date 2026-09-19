@@ -11,15 +11,19 @@ const HEALTH_PATH = '/health'
 const GET_METHOD = 'GET'
 const OK_STATUS_CODE = 200
 const SERVICE_UNAVAILABLE_STATUS_CODE = 503
-const OK_BODY = { status: 'ok', database: 'up' }
+const OK_BODY = { status: 'ok', database: 'up', redis: 'up' }
 
 const CONTENT_TYPE_OPTIONS_HEADER = 'x-content-type-options'
 const NO_SNIFF = 'nosniff'
-const DOWN_BODY = { status: 'error', database: 'down' }
+const DOWN_BODY = { status: 'error', database: 'down', redis: 'up' }
 
 // Port 1 is never a Postgres: the connection is refused, which is a real
 // failure rather than a stubbed one.
 const UNREACHABLE_DATABASE_URL = 'postgres://user:pass@127.0.0.1:1/nowhere'
+
+// Same idea for Redis: the connection is refused, a real failure.
+const UNREACHABLE_REDIS_URL = 'redis://127.0.0.1:1'
+const REDIS_DOWN_BODY = { status: 'ok', database: 'up', redis: 'down' }
 
 /** Low enough that a probe polling every few seconds would trip it at once. */
 const CEILING_A_PROBE_WOULD_TRIP = 2
@@ -69,6 +73,18 @@ describe('GET /health', () => {
 
     expect(response.statusCode).toBe(SERVICE_UNAVAILABLE_STATUS_CODE)
     expect(response.json()).toEqual(DOWN_BODY)
+  })
+
+  // A red probe would take every replica out of rotation, routes that never
+  // touch Redis included. Redis is reported, and never decides the status.
+  it('stays 200 and reports redis down when only Redis is unreachable', async () => {
+    const response = await injectHealth({
+      ...env,
+      REDIS_URL: UNREACHABLE_REDIS_URL,
+    })
+
+    expect(response.statusCode).toBe(OK_STATUS_CODE)
+    expect(response.json()).toEqual(REDIS_DOWN_BODY)
   })
 
   /**

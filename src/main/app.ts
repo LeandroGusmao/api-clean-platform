@@ -10,10 +10,13 @@ import { registerOpenApi } from '#infra/http/openapi'
 import { registerRateLimit } from '#infra/http/rate-limit'
 import { type BuildServerOptions, buildServer } from '#infra/http/server'
 import { createLogger } from '#infra/observability/logger'
+import { closeRedis, connectRedis, createRedis } from '#infra/redis/client'
 import { authRoutes } from '#modules/auth/infra/http/routes'
 import { makeContainer } from './container.js'
 
 const AUTH_PREFIX = '/auth'
+const REDIS_UNREACHABLE_AT_STARTUP_MESSAGE =
+  'redis unreachable at startup; routes with their own rate limit answer 503 until it connects'
 
 /**
  * Composes the whole application — instance, dependencies, docs and routes —
@@ -38,6 +41,16 @@ export async function buildApp(
   // Makes `app.close()` the single teardown: callers never end the pool by hand.
   app.addHook('onClose', () => pool.end())
 
+  const redis = createRedis(env, logger)
+  app.addHook('onClose', () => closeRedis(redis))
+  // The process starts even when Redis is down: the routes that count in it
+  // refuse (decision 39) and the rest serve, and the client keeps reconnecting.
+  // Refusing to boot would turn a Redis maintenance window into an outage of the
+  // whole API.
+  if (!(await connectRedis(redis))) {
+    logger.warn(REDIS_UNREACHABLE_AT_STARTUP_MESSAGE)
+  }
+
   // Global infra: the auth module never registers a transport plugin of its
   // own. Unlike `registerOpenApi` below, the position is NOT load-bearing —
   // verified that `request.cookies` works even when the plugin is registered
@@ -54,13 +67,13 @@ export async function buildApp(
   // Before any route, because the ceiling has to cover everything registered
   // after it. It counts requests and not failed logins — that half is the
   // edge's job, deliberately (see the slice's design §10.1).
-  await registerRateLimit(app, env)
+  await registerRateLimit(app, env, redis)
 
   // Must come before any route: `@fastify/swagger` only documents what is
   // registered after it.
   await registerOpenApi(app, env)
 
-  await app.register(healthRoute, { db })
+  await app.register(healthRoute, { db, redis })
 
   // The graph is built here, not in `http.ts`: `buildApp` is the composition
   // root the suites exercise, so anything wired here reaches the tests too.

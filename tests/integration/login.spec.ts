@@ -8,6 +8,7 @@ import { DEFAULT_REFRESH_TOKEN_TTL_SECONDS } from '#modules/auth/config'
 import { refreshTokens } from '#modules/auth/infra/drizzle/schema/refresh-tokens'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
 import { arrangeAccount } from './setup/arrange-account.js'
+import { flushRedis } from './setup/redis.js'
 
 // Spelled out rather than imported from the endpoint: these values ARE the wire
 // contract. Importing them would make the assertions tautological.
@@ -270,6 +271,9 @@ describe('POST /auth/login', () => {
   })
 
   it('answers 429 in the envelope once the login ceiling is passed', async () => {
+    // The cases above spent attempts against this same Redis key.
+    await flushRedis()
+
     const throttled = await buildApp({
       ...env,
       LOGIN_RATE_LIMIT_MAX_REQUESTS: CEILING_UNDER_TEST,

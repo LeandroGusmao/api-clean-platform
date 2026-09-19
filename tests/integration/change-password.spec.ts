@@ -10,6 +10,7 @@ import { outboxMessages } from '#modules/auth/infra/drizzle/schema/outbox-messag
 import { refreshTokens } from '#modules/auth/infra/drizzle/schema/refresh-tokens'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
 import { arrangeAccount } from './setup/arrange-account.js'
+import { flushRedis } from './setup/redis.js'
 
 // Spelled out rather than imported: these values ARE the wire contract, and
 // importing them would make the assertions tautological.
@@ -283,6 +284,9 @@ describe('POST /auth/password', () => {
   })
 
   it('answers 429 in the envelope once this route ceiling is passed', async () => {
+    // The cases above spent attempts against this same Redis key.
+    await flushRedis()
+
     // Its OWN ceiling, not the global one: this is the control that closes
     // stolen access token -> password changed -> account taken.
     // Only this route's ceiling is lowered. The session comes from the main

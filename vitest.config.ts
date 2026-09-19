@@ -8,6 +8,7 @@ const UNIT_INCLUDE = 'src/**/*.spec.ts'
 const INTEGRATION_PROJECT = 'integration'
 const INTEGRATION_INCLUDE = 'tests/integration/**/*.spec.ts'
 const INTEGRATION_GLOBAL_SETUP = './tests/integration/setup/migrate-test-database.ts'
+const INTEGRATION_SETUP_FILE = './tests/integration/setup/flush-redis-before-file.ts'
 
 const NODE_ENV_TEST = 'test'
 const TEST_JWT_SECRET = 'an-integration-test-secret-32-chars'
@@ -38,6 +39,7 @@ export default defineConfig({
           // Migrations run before the suite: the test database is tmpfs, so it
           // is empty after every container restart.
           globalSetup: [INTEGRATION_GLOBAL_SETUP],
+          setupFiles: [INTEGRATION_SETUP_FILE],
           // Every integration file shares the same Postgres, so they run
           // serially — parallel files would step on each other's state.
           fileParallelism: false,
