@@ -5,10 +5,13 @@ export interface IOutboxMessagesRepository {
   save(message: OutboxMessage): Promise<void>
 
   /**
-   * `WHERE dispatched_at IS NULL AND failed_at IS NULL ORDER BY created_at
-   * LIMIT ?`. FIFO: the order a notice was promised is the order it goes out.
+   * Picks the oldest message that is pending and not currently claimed, sets its
+   * claim to expire at `leaseUntil`, and returns it — or null when there is
+   * none. A claim whose `claimed_until <= now` no longer counts. One statement,
+   * so two concurrent callers never receive the same message (decision 40).
+   * FIFO: the order a notice was promised is the order it goes out.
    */
-  findPendingBatch(limit: number): Promise<OutboxMessage[]>
+  claimNext(now: Date, leaseUntil: Date): Promise<OutboxMessage | null>
 
   /** `UPDATE ... SET dispatched_at = ? WHERE id = ?`. */
   markDispatched(id: string, at: Date): Promise<void>

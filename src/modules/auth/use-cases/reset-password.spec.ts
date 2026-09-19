@@ -155,7 +155,7 @@ beforeEach(() => {
         callLog.push(SAVE_OUTBOX_CALL)
         return outboxMessagesRepository.save(message)
       },
-      findPendingBatch: (limit) => outboxMessagesRepository.findPendingBatch(limit),
+      claimNext: (now, leaseUntil) => outboxMessagesRepository.claimNext(now, leaseUntil),
       markDispatched: (id, at) => outboxMessagesRepository.markDispatched(id, at),
       recordFailure: (id, at, error, maxAttempts) =>
         outboxMessagesRepository.recordFailure(id, at, error, maxAttempts),

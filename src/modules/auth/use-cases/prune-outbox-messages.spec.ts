@@ -53,7 +53,9 @@ describe('PruneOutboxMessagesUseCase', () => {
     const result = await useCase.execute()
 
     expect(result).toEqual({ rowsDeleted: NONE })
-    expect(await repository.findPendingBatch(ONE)).toHaveLength(ONE)
+    expect(repository.messages.map((stored) => stored.id)).toEqual([
+      'ancient-but-pending',
+    ])
   })
 
   it('deletes a row whose settlement is exactly on the retention cutoff', async () => {

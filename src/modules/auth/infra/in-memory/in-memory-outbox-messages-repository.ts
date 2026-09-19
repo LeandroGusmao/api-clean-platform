@@ -5,20 +5,26 @@ const ONE_INCREMENT = 1
 
 /**
  * In-memory adapter, for the unit tests of the use cases (decision 09). Models
- * no row lock: only the dispatch job ever writes to a given row, one at a time.
+ * the claim (`claimNext`), not row locks: the tests are sequential, and a run
+ * that overlaps another is simulated by interleaving `await`s.
  */
 export class InMemoryOutboxMessagesRepository implements IOutboxMessagesRepository {
   readonly messages: OutboxMessage[] = []
+  /** Beside the messages, because the entity does not carry its claim. */
+  readonly #claimedUntil = new Map<string, Date>()
 
   async save(message: OutboxMessage): Promise<void> {
     this.messages.push(message)
   }
 
-  async findPendingBatch(limit: number): Promise<OutboxMessage[]> {
-    return [...this.messages]
-      .filter((message) => message.dispatchedAt === null && message.failedAt === null)
+  async claimNext(now: Date, leaseUntil: Date): Promise<OutboxMessage | null> {
+    const [next] = this.messages
+      .filter((message) => this.#isClaimable(message, now))
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-      .slice(0, limit)
+    if (next === undefined) return null
+
+    this.#claimedUntil.set(next.id, leaseUntil)
+    return next
   }
 
   async markDispatched(id: string, at: Date): Promise<void> {
@@ -53,6 +59,12 @@ export class InMemoryOutboxMessagesRepository implements IOutboxMessagesReposito
     this.messages.length = 0
     this.messages.push(...survivors)
     return deleted
+  }
+
+  #isClaimable(message: OutboxMessage, now: Date): boolean {
+    if (message.dispatchedAt !== null || message.failedAt !== null) return false
+    const claimedUntil = this.#claimedUntil.get(message.id)
+    return claimedUntil === undefined || claimedUntil <= now
   }
 
   /** The entity is frozen, so "updating" means rebuilding it in place. */

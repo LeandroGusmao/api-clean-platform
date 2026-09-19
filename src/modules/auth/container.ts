@@ -159,6 +159,7 @@ export function makeAuthContainer(
     clock,
     config.OUTBOX_DISPATCH_MAX_ATTEMPTS,
     config.OUTBOX_DISPATCH_BATCH_SIZE,
+    config.OUTBOX_DISPATCH_LEASE_SECONDS * MILLISECONDS_PER_SECOND,
   )
   const pruneOutboxMessages = new PruneOutboxMessagesUseCase(
     outboxMessagesRepository,

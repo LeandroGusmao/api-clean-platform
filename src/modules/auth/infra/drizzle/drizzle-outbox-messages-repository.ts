@@ -15,6 +15,9 @@ const NO_ROW_AFFECTED = 0
 /** One row increment for attempts counter. */
 const ONE_INCREMENT = 1
 
+/** One message per claim, so the lease only has to cover one send (decision 40). */
+const ONE_MESSAGE_PER_CLAIM = 1
+
 /**
  * Drizzle adapter for OutboxMessagesRepository, wrapping the transactional
  * database operations that are specific to this persistence layer.
@@ -30,16 +33,35 @@ export class DrizzleOutboxMessagesRepository implements IOutboxMessagesRepositor
     }
   }
 
-  async findPendingBatch(limit: number): Promise<OutboxMessage[]> {
+  async claimNext(now: Date, leaseUntil: Date): Promise<OutboxMessage | null> {
     try {
-      const rows = await this.db
-        .select()
+      // `SKIP LOCKED` is what keeps two callers from waiting on, or receiving,
+      // the same row; the whole thing is ONE statement, so no transaction stays
+      // open while the caller sends.
+      const next = this.db
+        .select({ id: outboxMessages.id })
         .from(outboxMessages)
-        .where(and(isNull(outboxMessages.dispatchedAt), isNull(outboxMessages.failedAt)))
+        .where(
+          and(
+            isNull(outboxMessages.dispatchedAt),
+            isNull(outboxMessages.failedAt),
+            or(
+              isNull(outboxMessages.claimedUntil),
+              lte(outboxMessages.claimedUntil, now),
+            ),
+          ),
+        )
         .orderBy(outboxMessages.createdAt)
-        .limit(limit)
+        .limit(ONE_MESSAGE_PER_CLAIM)
+        .for('update', { skipLocked: true })
 
-      return rows.map(toDomainOutboxMessage)
+      const [row] = await this.db
+        .update(outboxMessages)
+        .set({ claimedUntil: leaseUntil })
+        .where(eq(outboxMessages.id, next))
+        .returning()
+
+      return row === undefined ? null : toDomainOutboxMessage(row)
     } catch (error) {
       throw toPersistenceError(error)
     }
