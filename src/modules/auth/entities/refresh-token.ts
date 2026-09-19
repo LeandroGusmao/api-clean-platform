@@ -24,6 +24,12 @@ export interface CreateRefreshTokenProps {
   /** Supplied by `IClock`, never by `new Date()` — R7. */
   now: Date
   ttlSeconds: number
+  /** The request that created this row. Null only on a row older than the column. */
+  ip: string | null
+  /** Names the device, not the request, so rotation inherits it. */
+  deviceLabel: string | null
+  /** When the family opened. Rotation inherits it, having discarded the row that knew it. */
+  sessionStartedAt: Date | null
 }
 
 /** The complete state of an already-persisted token. See `User.fromTrusted`. */
@@ -36,6 +42,9 @@ export interface TrustedRefreshTokenProps {
   revokedAt: Date | null
   replacedBy: string | null
   createdAt: Date
+  ip: string | null
+  deviceLabel: string | null
+  sessionStartedAt: Date | null
 }
 
 /**
@@ -58,6 +67,9 @@ export class RefreshToken {
   readonly #revokedAt: Date | null
   readonly #replacedBy: string | null
   readonly #createdAt: Date
+  readonly #ip: string | null
+  readonly #deviceLabel: string | null
+  readonly #sessionStartedAt: Date | null
 
   private constructor(props: TrustedRefreshTokenProps) {
     this.#id = props.id
@@ -68,6 +80,9 @@ export class RefreshToken {
     this.#revokedAt = cloneNullableDate(props.revokedAt)
     this.#replacedBy = props.replacedBy
     this.#createdAt = cloneDate(props.createdAt)
+    this.#ip = props.ip
+    this.#deviceLabel = props.deviceLabel
+    this.#sessionStartedAt = cloneNullableDate(props.sessionStartedAt)
     Object.freeze(this)
   }
 
@@ -92,6 +107,9 @@ export class RefreshToken {
       revokedAt: null,
       replacedBy: null,
       createdAt: props.now,
+      ip: props.ip,
+      deviceLabel: props.deviceLabel,
+      sessionStartedAt: props.sessionStartedAt,
     })
   }
 
@@ -155,5 +173,17 @@ export class RefreshToken {
 
   get createdAt(): Date {
     return cloneDate(this.#createdAt)
+  }
+
+  get ip(): string | null {
+    return this.#ip
+  }
+
+  get deviceLabel(): string | null {
+    return this.#deviceLabel
+  }
+
+  get sessionStartedAt(): Date | null {
+    return cloneNullableDate(this.#sessionStartedAt)
   }
 }

@@ -15,6 +15,10 @@ const GRACE_WINDOW_MS = 30_000
 const ONE_MILLISECOND = 1
 const AN_OLD_YEAR = 1970
 
+const IP = '203.0.113.7'
+const DEVICE_LABEL = 'Chrome on Android'
+const SESSION_STARTED_AT = new Date('2026-08-01T09:00:00.000Z')
+
 const at = (offsetMs: number) => new Date(NOW.getTime() + offsetMs)
 
 const active = () =>
@@ -25,6 +29,9 @@ const active = () =>
     familyId: FAMILY_ID,
     now: NOW,
     ttlSeconds: TTL_SECONDS,
+    ip: IP,
+    deviceLabel: DEVICE_LABEL,
+    sessionStartedAt: SESSION_STARTED_AT,
   })
 
 const revoked = (revokedAt: Date, replacedBy: string | null) =>
@@ -37,6 +44,9 @@ const revoked = (revokedAt: Date, replacedBy: string | null) =>
     revokedAt,
     replacedBy,
     createdAt: NOW,
+    ip: IP,
+    deviceLabel: DEVICE_LABEL,
+    sessionStartedAt: SESSION_STARTED_AT,
   })
 
 describe('RefreshToken.create', () => {
@@ -100,6 +110,34 @@ describe('RefreshToken.isWithinGraceWindow', () => {
   })
 })
 
+describe('RefreshToken device context', () => {
+  it('carries the supplied context', () => {
+    const token = active()
+
+    expect(token.ip).toBe(IP)
+    expect(token.deviceLabel).toBe(DEVICE_LABEL)
+    expect(token.sessionStartedAt).toEqual(SESSION_STARTED_AT)
+  })
+
+  it('accepts a fully absent context, for a row older than the columns', () => {
+    const token = RefreshToken.create({
+      id: TOKEN_ID,
+      userId: USER_ID,
+      tokenHash: TOKEN_HASH,
+      familyId: FAMILY_ID,
+      now: NOW,
+      ttlSeconds: TTL_SECONDS,
+      ip: null,
+      deviceLabel: null,
+      sessionStartedAt: null,
+    })
+
+    expect(token.ip).toBeNull()
+    expect(token.deviceLabel).toBeNull()
+    expect(token.sessionStartedAt).toBeNull()
+  })
+})
+
 describe('RefreshToken immutability', () => {
   it('does not let a caller mutate its dates through a getter', () => {
     // `Object.freeze` is shallow: it locks the bindings, not the Date objects
@@ -109,5 +147,13 @@ describe('RefreshToken immutability', () => {
     token.expiresAt.setFullYear(AN_OLD_YEAR)
 
     expect(token.expiresAt).toEqual(at(TTL_MS))
+  })
+
+  it('does not let a caller mutate the session start through a getter', () => {
+    const token = active()
+
+    token.sessionStartedAt?.setFullYear(AN_OLD_YEAR)
+
+    expect(token.sessionStartedAt).toEqual(SESSION_STARTED_AT)
   })
 })

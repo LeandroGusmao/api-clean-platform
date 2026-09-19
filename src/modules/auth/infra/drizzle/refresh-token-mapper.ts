@@ -17,6 +17,9 @@ export const toPersistenceRefreshToken = (token: RefreshToken): NewRefreshTokenR
   revokedAt: token.revokedAt,
   replacedBy: token.replacedBy,
   createdAt: token.createdAt,
+  ip: token.ip,
+  deviceLabel: token.deviceLabel,
+  sessionStartedAt: token.sessionStartedAt,
 })
 
 /** Row to entity. Rehydrates rather than validates — see `RefreshToken.fromTrusted`. */
@@ -30,4 +33,7 @@ export const toDomainRefreshToken = (row: RefreshTokenRow): RefreshToken =>
     revokedAt: row.revokedAt,
     replacedBy: row.replacedBy,
     createdAt: row.createdAt,
+    ip: row.ip,
+    deviceLabel: row.deviceLabel,
+    sessionStartedAt: row.sessionStartedAt,
   })
