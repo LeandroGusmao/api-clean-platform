@@ -1,5 +1,13 @@
 # O que falta
 
+> **Fatia 20 (2026-09-18) entregou a deleção de conta** (decisão 37).
+> `DELETE /auth/me` com hard delete da linha de `users`; a cascata que o schema
+> já declarava leva `refresh_tokens`, `federated_identities` e
+> `password_reset_tokens`, e os pendentes do endereço são varridos
+> explicitamente porque aquela tabela não tem FK. **Fecha junto "Revogação por
+> usuário deletado/banido"**, sem código próprio. Sem soft delete e sem tabela
+> de auditoria — ver decisão 37.
+>
 > **Fatia 19 (2026-09-17) entregou a invalidação de sessão no vínculo do
 > Google** (decisão 36). Ao ligar uma conta Google numa conta que já tinha
 > senha, `SignInWithGoogleUseCase` agora derruba toda sessão existente antes
@@ -119,8 +127,8 @@ emendados junto, para não voltar a ler como coberto.
 | ~~Outbox transacional~~ | — | **fechada por esta fatia.** `outbox_messages` no módulo `auth`; os três avisos pós-commit (senha alterada, senha resetada, Google vinculado) são gravados dentro da mesma transação que muda o estado; `CronJob`s de dispatch e poda. Decisão 33; spec `2026-09-15-transactional-outbox-design.md` |
 | ~~Listar sessões ativas~~ | — | **fechada pela fatia 18.** `GET /auth/sessions`, uma entrada por família ainda viva. Decisão 35 |
 | ~~Invalidar sessões + notificar o dono na verificação~~ | — | **fechada pela fatia 19.** Faltava só a invalidação no vínculo do Google — troca e recuperação de senha já derrubavam sessão. Decisão 36 |
-| Deleção de conta | não existe | quando existir, tem que varrer os `pending_registrations` do endereço — um código vivo remanescente confirmaria uma conta nova |
-| Revogação por usuário deletado/banido | não existe deleção | a rotação é o lugar certo quando existir |
+| ~~Deleção de conta~~ | — | **fechada pela fatia 20.** `DELETE /auth/me`, hard delete apoiado na cascata; varre os `pending_registrations` do endereço. Decisão 37 |
+| ~~Revogação por usuário deletado/banido~~ | — | **fechada pela fatia 20**, sem código próprio: a cascata apaga os `refresh_tokens` junto com a conta |
 
 ## Auditoria de 2026-09-07 — o que falta para dado sensível
 
@@ -141,7 +149,7 @@ qual os itens estão avaliados, e é o mesmo cenário que a §6 do
 | Contexto de dispositivo em `refresh_tokens` | nada | sem `ip`, `user_agent` e `last_used_at`, "listar sessões ativas" (abaixo) mostra só UUID opaco e o dono não consegue responder "fui eu?". Migration de graça enquanto não há usuário; depois é backfill sem dado para preencher |
 | Notificar o dono quando a detecção de reuso dispara | o log do furo acima | troca e recuperação de senha já mandam e-mail; roubo de sessão detectado não manda nada — e é a única defesa que sobra quando o atacante já tem a sessão |
 | `iss` / `aud` / `kid` no JWT | nada | sem `kid` não há rotação de `JWT_SECRET` com janela de duas chaves: trocar o segredo desloga todo mundo de uma vez. Em app financeiro rotação de chave é rotina, não incidente |
-| Trilha de auditoria | nada | não existe tabela nem evento de login, troca de senha ou revogação. É o que a LGPD art. 37 cobra, e o que decide disputa depois |
+| Trilha de auditoria | nada | não existe tabela nem evento de login, troca de senha ou revogação. É o que a LGPD art. 37 cobra, e o que decide disputa depois — e a **deleção de conta** (fatia 20) é um dos eventos que ela deve capturar quando for retomada |
 | Checagem de senha vazada | nada | o piso é 8 caracteres e não há blocklist. Como o lockout foi recusado, o custo do argon2 e a qualidade da senha são as duas únicas defesas contra força bruta — e uma delas está no piso |
 | Custo do argon2 acima do mínimo | máquina alvo | 7,3 ms / 19 MB é o **mínimo** recomendado pela OWASP; o comentário do adapter já registra que tunar é "hardening, once there is a target machine" |
 | Step-up / reautenticação | decisão em aberto | o access token não carrega `auth_time` nem `amr`, então operação de valor alto não tem em que se apoiar. Sentar o claim agora é barato; depois é migração de token |
@@ -231,7 +239,12 @@ arquitetura pendente, é escopo de produto, adiado de propósito (mesmo
 argumento do outbox genérico). Ver "Perguntas registradas, não pendências"
 abaixo e `DECISIONS.md` §6.
 
-O próximo item genérico é **deleção de conta**.
+~~Deleção de conta~~ — **entregue pela fatia 20** (decisão 37), e com ela
+~~revogação por usuário deletado~~, que a cascata resolve sem código próprio.
+
+A tabela genérica fica sem item desbloqueado. O que resta são os achados da
+auditoria de 2026-09-07, que sobem de prioridade pelo gatilho de dado
+sensível, e o miúdo da fatia 14 — listar provedores vinculados no `/me`.
 
 Miúdo que ficou da fatia 14: listar provedores vinculados no `/me` — em espera
 até o front ter necessidade disso.

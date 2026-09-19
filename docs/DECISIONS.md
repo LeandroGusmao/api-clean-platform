@@ -2407,6 +2407,43 @@ Sem migração, sem variável de ambiente nova, sem spec dedicado.
 
 ---
 
+### 37 — Deleção de conta: hard delete, apoiado na cascata que o schema já declara
+
+`DELETE /auth/me` apaga a linha de `users` de verdade. As FKs com
+`onDelete: 'cascade'` — escritas antes desta fatia — levam junto
+`refresh_tokens`, `federated_identities` e `password_reset_tokens`, e é isso
+que **fecha também o item "Revogação por usuário deletado/banido"** sem código
+próprio: um refresh de conta apagada não acha linha e já responde 401.
+
+**Hard delete, não soft delete.** O schema já assumia isso: cascata só dispara
+quando a linha-pai some, e com soft delete as três tabelas ficariam com linhas
+vivas — inclusive refresh tokens rotacionando — apontando para uma conta que o
+app considera morta.
+
+**Sem tabela de eventos de auditoria.** A trilha de auditoria já é pendência
+adiada, com gatilho próprio, desde a auditoria de 2026-09-07. Criar uma tabela
+agora só para a deleção resolveria esse problema maior pela metade e para um
+evento só — o mesmo erro que a decisão 33 e a reclassificação do RBAC
+evitaram. Quando o gatilho disparar, a deleção é um dos eventos a capturar.
+
+**Duas escritas explícitas, porque a cascata não as alcança.**
+`pending_registrations` é indexada por e-mail e não tem FK (um pendente nasce
+antes de existir conta): um irmão não consumido sobreviveria e confirmaria uma
+conta NOVA no mesmo endereço. Varrido com `deleteAllByEmail`, que já existia
+desde a fatia 14. O aviso de deleção também não tem FK, e é isso que o deixa
+sobreviver à conta que ele descreve — gravado no outbox na mesma transação.
+
+**Confirmação em um passo, com a senha atual.** Molde de `change-password.ts`,
+não o de recuperação de senha: um segundo passo não torna a ação reversível, só
+a atrasa, e custaria tabela, TTL e cooldown novos repetindo infra existente.
+Conta só-Google apaga com a sessão válida — não tem senha a reapresentar, e a
+fatia que define a primeira senha numa conta federada segue fora do roteiro.
+
+Desenho completo em
+[`2026-09-18-account-deletion-design.md`](superpowers/specs/2026-09-18-account-deletion-design.md).
+
+---
+
 ## 7. Pendências de manutenção
 
 - [x] `ARCHITECTURE.md` reformatado (2026-08-19) — o bloco da árvore de
