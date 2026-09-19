@@ -10,6 +10,13 @@ export interface ActiveSessionResult {
   id: string
   createdAt: Date
   expiresAt: Date
+  ip: string | null
+  deviceLabel: string | null
+  /**
+   * Never null, unlike the column: a session older than it reports its own
+   * `createdAt`, so no client has to render "session without a start".
+   */
+  startedAt: Date
 }
 
 /**
@@ -37,6 +44,9 @@ export class ListActiveSessionsUseCase {
       id: token.familyId,
       createdAt: token.createdAt,
       expiresAt: token.expiresAt,
+      ip: token.ip,
+      deviceLabel: token.deviceLabel,
+      startedAt: token.sessionStartedAt ?? token.createdAt,
     }))
   }
 }

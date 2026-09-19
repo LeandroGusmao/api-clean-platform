@@ -67,7 +67,33 @@ describe('ListActiveSessionsUseCase', () => {
       id: FAMILY_A,
       createdAt: NOW,
       expiresAt: new Date(NOW.getTime() + TTL_SECONDS * 1000),
+      ip: IP,
+      deviceLabel: DEVICE_LABEL,
+      startedAt: SESSION_STARTED_AT,
     })
+  })
+
+  it('falls back to createdAt for a session older than the columns', async () => {
+    await refreshTokensRepository.save(
+      RefreshToken.create({
+        id: nextId(),
+        userId: USER_ID,
+        tokenHash: nextId(),
+        familyId: FAMILY_A,
+        now: NOW,
+        ttlSeconds: TTL_SECONDS,
+        ip: null,
+        deviceLabel: null,
+        sessionStartedAt: null,
+      }),
+    )
+
+    const [session] = await useCase.execute(USER_ID)
+
+    expect(session?.ip).toBeNull()
+    expect(session?.deviceLabel).toBeNull()
+    // Never null on the wire, so no client has to render "no start".
+    expect(session?.startedAt).toEqual(NOW)
   })
 
   it('excludes a revoked session', async () => {

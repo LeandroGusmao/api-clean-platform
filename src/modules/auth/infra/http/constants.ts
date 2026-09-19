@@ -52,6 +52,9 @@ export const SERVICE_UNAVAILABLE_STATUS = 503
 export const EXAMPLE_USER_ID = '0d3d5d8a-6f2e-4d2e-9f1a-6d0f9a3b5c21'
 /** A session id IS a `family_id` — see `ListActiveSessionsUseCase`. */
 export const EXAMPLE_SESSION_ID = '11112222-3333-4444-8555-666677778888'
+/** Documentation range reserved by RFC 5737, so no real host is named. */
+export const EXAMPLE_SESSION_IP = '203.0.113.7'
+export const EXAMPLE_DEVICE_LABEL = 'Chrome on Android'
 export const EXAMPLE_EMAIL = 'user@example.com'
 /** Satisfies the registration policy: letter, digit and non-alphanumeric. */
 export const EXAMPLE_PASSWORD = 'sup3rS3cret!'
