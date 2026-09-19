@@ -29,10 +29,11 @@ export class InMemoryRefreshTokensRepository implements IRefreshTokensRepository
     this.#replace((token) => token.id === id && token.revokedAt === null, { revokedAt })
   }
 
-  async revokeFamily(familyId: string, revokedAt: Date): Promise<void> {
-    this.#replace((token) => token.familyId === familyId && token.revokedAt === null, {
-      revokedAt,
-    })
+  async revokeFamily(familyId: string, revokedAt: Date): Promise<number> {
+    return this.#replace(
+      (token) => token.familyId === familyId && token.revokedAt === null,
+      { revokedAt },
+    )
   }
 
   async deleteExpiredBefore(cutoff: Date): Promise<number> {
@@ -58,13 +59,20 @@ export class InMemoryRefreshTokensRepository implements IRefreshTokensRepository
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
   }
 
-  /** The entity is frozen, so "updating" means rebuilding it in place. */
+  /**
+   * The entity is frozen, so "updating" means rebuilding it in place. Returns
+   * how many rows it rebuilt.
+   */
   #replace(
     matches: (token: RefreshToken) => boolean,
     changes: { revokedAt: Date; replacedBy?: string },
-  ): void {
+  ): number {
+    let replaced = 0
+
     this.tokens.forEach((token, index) => {
       if (!matches(token)) return
+
+      replaced += 1
 
       this.tokens[index] = RefreshToken.fromTrusted({
         id: token.id,
@@ -80,5 +88,7 @@ export class InMemoryRefreshTokensRepository implements IRefreshTokensRepository
         sessionStartedAt: token.sessionStartedAt,
       })
     })
+
+    return replaced
   }
 }

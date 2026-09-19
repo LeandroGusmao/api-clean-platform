@@ -141,14 +141,18 @@ export class DrizzleRefreshTokensRepository implements IRefreshTokensRepository 
       .where(and(eq(refreshTokens.id, id), isNull(refreshTokens.revokedAt)))
   }
 
-  async revokeFamily(familyId: string, revokedAt: Date): Promise<void> {
-    await this.db
+  async revokeFamily(familyId: string, revokedAt: Date): Promise<number> {
+    const revoked = await this.db
       .update(refreshTokens)
       .set({ revokedAt })
       // `isNull` is not decoration: without it an already-revoked token would
       // have its `revokedAt` pushed forward, sliding the grace window of a
-      // token that should already be dead.
+      // token that should already be dead. It is also what makes the count mean
+      // "revoked by THIS call".
       .where(and(eq(refreshTokens.familyId, familyId), isNull(refreshTokens.revokedAt)))
+      .returning({ id: refreshTokens.id })
+
+    return revoked.length
   }
 
   async revokeAllForUser(userId: string, revokedAt: Date): Promise<void> {

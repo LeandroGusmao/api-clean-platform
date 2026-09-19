@@ -32,8 +32,13 @@ export interface IRefreshTokensRepository {
    */
   revoke(id: string, revokedAt: Date): Promise<void>
 
-  /** Revokes every still-active token of one chain. */
-  revokeFamily(familyId: string, revokedAt: Date): Promise<void>
+  /**
+   * Revokes every still-active token of one chain and returns how many it
+   * revoked. Zero means the chain was already dead — that is what lets a caller
+   * tell the revocation that just happened from a replay that found nothing
+   * left to revoke.
+   */
+  revokeFamily(familyId: string, revokedAt: Date): Promise<number>
 
   /** Revokes every still-active token of one user, across every chain. */
   revokeAllForUser(userId: string, revokedAt: Date): Promise<void>

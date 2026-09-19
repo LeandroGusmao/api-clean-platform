@@ -165,6 +165,20 @@ describe('DrizzleRefreshTokensRepository', () => {
     expect(stored?.revokedAt).toEqual(NOW)
   })
 
+  it('revokeFamily returns how many rows it revoked, and zero the second time', async () => {
+    const counts: number[] = []
+
+    await uow(async ({ refreshTokens: repo }) => {
+      await repo.save(token(FAMILY_A, HASH_A))
+      await repo.save(token(FAMILY_A, HASH_B))
+      await repo.save(token(FAMILY_B, HASH_C))
+      counts.push(await repo.revokeFamily(FAMILY_A, NOW))
+      counts.push(await repo.revokeFamily(FAMILY_A, LATER))
+    })
+
+    expect(counts).toEqual([TWO_ROWS, NO_ROWS])
+  })
+
   it('revokeAllForUser revokes across every family of that user', async () => {
     await uow(async ({ refreshTokens: repo }) => {
       await repo.save(token(FAMILY_A, HASH_A))
