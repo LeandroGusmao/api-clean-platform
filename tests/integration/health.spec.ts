@@ -12,6 +12,9 @@ const GET_METHOD = 'GET'
 const OK_STATUS_CODE = 200
 const SERVICE_UNAVAILABLE_STATUS_CODE = 503
 const OK_BODY = { status: 'ok', database: 'up' }
+
+const CONTENT_TYPE_OPTIONS_HEADER = 'x-content-type-options'
+const NO_SNIFF = 'nosniff'
 const DOWN_BODY = { status: 'error', database: 'down' }
 
 // Port 1 is never a Postgres: the connection is refused, which is a real
@@ -48,6 +51,14 @@ describe('GET /health', () => {
 
     expect(response.statusCode).toBe(OK_STATUS_CODE)
     expect(response.json()).toEqual(OK_BODY)
+  })
+
+  it('sends transport security headers on every response', async () => {
+    // Asserted on the cheapest route there is, because the headers are global:
+    // a route-local assertion would pass while every other route went bare.
+    const response = await injectHealth(env)
+
+    expect(response.headers[CONTENT_TYPE_OPTIONS_HEADER]).toBe(NO_SNIFF)
   })
 
   it('reports 503 when the database is unreachable', async () => {

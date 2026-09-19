@@ -1,7 +1,12 @@
 import { z } from 'zod'
 
-/** 1 hour — decision 11. Short by design: the refresh token carries the session. */
-export const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 3600
+/**
+ * 15 minutes — decision 11 keeps this short because the refresh token carries
+ * the session. The number IS the revocation latency of `logout-all`: a session
+ * revoked at the refresh layer still opens doors until the access token already
+ * in the client's hands expires.
+ */
+export const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 900
 
 /**
  * 256 bits of secret for HS256. Verified: `jose` signs with a 5-byte secret and
