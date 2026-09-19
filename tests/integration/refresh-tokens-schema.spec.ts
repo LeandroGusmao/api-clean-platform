@@ -122,9 +122,11 @@ describe('refresh_tokens table', () => {
   })
 
   it('round-trips the device context', async () => {
-    await db.insert(refreshTokens).values(
-      row({ ip: IP, deviceLabel: DEVICE_LABEL, sessionStartedAt: SESSION_STARTED_AT }),
-    )
+    await db
+      .insert(refreshTokens)
+      .values(
+        row({ ip: IP, deviceLabel: DEVICE_LABEL, sessionStartedAt: SESSION_STARTED_AT }),
+      )
 
     const [stored] = await db.select().from(refreshTokens)
 
