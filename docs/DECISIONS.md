@@ -2677,7 +2677,9 @@ compra segurança, porque a família já está morta.
 1. Um segundo ataque à mesma família não avisa de novo.
 2. O endereço do aviso pode ser o do próprio dono.
 3. O e-mail leva um IP a um endereço cadastrado: o mesmo dado que
-   `GET /auth/sessions` já devolve ao dono (decisão 38).
+   `GET /auth/sessions` já devolve ao dono (decisão 38). O IP também fica em
+   repouso no `outbox_messages.text` até a poda (7 dias por padrão, contra os 60
+   de `refresh_tokens`), então não abre uma classe nova de exposição.
 4. Uma família cujo último token expirou sem ser revogado ainda conta 1 na
    primeira reapresentação e avisa, uma vez.
 5. O aviso herda as garantias do outbox: pode chegar atrasado, e uma queda entre
