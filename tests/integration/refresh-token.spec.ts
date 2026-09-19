@@ -1,10 +1,11 @@
-import { sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { env } from '#infra/config/env'
 import { createDatabase, type Database } from '#infra/database/client'
 import { buildApp } from '#main/app'
+import { outboxMessages } from '#modules/auth/infra/drizzle/schema/outbox-messages'
 import { refreshTokens } from '#modules/auth/infra/drizzle/schema/refresh-tokens'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
 import { arrangeAccount } from './setup/arrange-account.js'
@@ -26,6 +27,10 @@ const EMAIL = 'joao@example.com'
 const PASSWORD = 'sup3r-s3cr3t!'
 const UNKNOWN_TOKEN = 'a-token-that-was-never-issued'
 
+// Spelled out: the subject is what the owner reads.
+const REUSE_NOTICE_SUBJECT = 'A session on your account was signed out'
+const REPLAY_ATTEMPTS = 3
+const ONE_NOTICE = 1
 const ONE_FAMILY = 1
 const ONE_LIVE_TOKEN = 1
 
@@ -45,6 +50,7 @@ afterAll(async () => {
 })
 
 beforeEach(async () => {
+  await db.delete(outboxMessages)
   await db.delete(refreshTokens)
   await db.delete(users)
   // Inserted directly: since slice 11 `register` writes a `pending_registrations`
@@ -131,6 +137,28 @@ describe('POST /auth/refresh', () => {
     // lose the session, and the victim logs in again.
     const successor = await refresh({ refreshToken: rotated.json().refreshToken })
     expect(successor.statusCode).toBe(UNAUTHORIZED_STATUS_CODE)
+  })
+
+  it('warns the owner ONCE however many times the spent token is replayed', async () => {
+    const { refreshToken } = (await login()).json()
+    await refresh({ refreshToken })
+
+    await ageOutTheGraceWindow()
+
+    // Three replays of the same spent token: the first kills the family, the
+    // other two find nothing left to revoke and must not queue another notice.
+    for (let attempt = 0; attempt < REPLAY_ATTEMPTS; attempt++) {
+      const reused = await refresh({ refreshToken })
+      expect(reused.json().error.code).toBe(REFRESH_TOKEN_REUSED_CODE)
+    }
+
+    const notices = await db
+      .select()
+      .from(outboxMessages)
+      .where(eq(outboxMessages.subject, REUSE_NOTICE_SUBJECT))
+
+    expect(notices).toHaveLength(ONE_NOTICE)
+    expect(notices[0]?.to).toBe(EMAIL)
   })
 
   it('serves two SIMULTANEOUS refreshes of the same token without a false reuse', async () => {
