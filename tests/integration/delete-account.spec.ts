@@ -5,17 +5,20 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { env } from '#infra/config/env'
 import { createDatabase, type Database } from '#infra/database/client'
 import { buildApp } from '#main/app'
+import { federatedIdentities } from '#modules/auth/infra/drizzle/schema/federated-identities'
 import { outboxMessages } from '#modules/auth/infra/drizzle/schema/outbox-messages'
 import { pendingRegistrations } from '#modules/auth/infra/drizzle/schema/pending-registrations'
 import { refreshTokens } from '#modules/auth/infra/drizzle/schema/refresh-tokens'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
 import { arrangeAccount } from './setup/arrange-account.js'
+import { type GoogleJwksServer, startGoogleJwksServer } from './setup/google-jwks.js'
 
 // Spelled out rather than imported: these values ARE the wire contract.
 const LOGIN_PATH = '/auth/login'
 const ME_PATH = '/auth/me'
 const REFRESH_PATH = '/auth/refresh'
 const REGISTER_PATH = '/auth/register'
+const GOOGLE_PATH = '/auth/google'
 const POST_METHOD = 'POST'
 const GET_METHOD = 'GET'
 const DELETE_METHOD = 'DELETE'
@@ -27,8 +30,16 @@ const NOT_FOUND_STATUS_CODE = 404
 const UNPROCESSABLE_ENTITY_STATUS_CODE = 422
 
 const EMAIL = 'joao@example.com'
+/** A second address, so the Google account never collides with the password one. */
+const FEDERATED_EMAIL = 'ana@example.com'
+const GOOGLE_SUBJECT = 'google-subject-1234567890'
 const PASSWORD = 'sup3r-s3cr3t!'
 const WRONG_PASSWORD = 'n0t-the-one!'
+/**
+ * Raised so the suite's own traffic never trips a ceiling: every test logs in,
+ * and most delete. Same move as `sign-in-with-google.spec.ts`.
+ */
+const CEILING = 1000
 const INVALID_CURRENT_PASSWORD_CODE = 'INVALID_CURRENT_PASSWORD'
 /** The exact subject of `accountDeletedEmail`; spelled out, not imported. */
 const ACCOUNT_DELETED_SUBJECT = 'Your account was deleted'
@@ -44,11 +55,20 @@ const ONE_ROW = 1
 let app: FastifyInstance
 let db: Database
 let pool: Pool
+let jwks: GoogleJwksServer
 let accessToken: string
 let refreshToken: string
 
 beforeAll(async () => {
-  app = await buildApp(env)
+  jwks = await startGoogleJwksServer(env.GOOGLE_CLIENT_ID)
+  app = await buildApp({
+    ...env,
+    GOOGLE_JWKS_URI: jwks.url,
+    LOGIN_RATE_LIMIT_MAX_REQUESTS: CEILING,
+    ACCOUNT_DELETE_RATE_LIMIT_MAX_REQUESTS: CEILING,
+    GOOGLE_SIGN_IN_RATE_LIMIT_MAX_REQUESTS: CEILING,
+    REGISTER_RATE_LIMIT_MAX_REQUESTS: CEILING,
+  })
   await app.ready()
   ;({ db, pool } = createDatabase(env))
 })
@@ -56,10 +76,12 @@ beforeAll(async () => {
 afterAll(async () => {
   await app.close()
   await pool.end()
+  await jwks.close()
 })
 
 beforeEach(async () => {
   await db.delete(refreshTokens)
+  await db.delete(federatedIdentities)
   await db.delete(pendingRegistrations)
   await db.delete(outboxMessages)
   await db.delete(users)
@@ -164,6 +186,28 @@ describe('DELETE /auth/me', () => {
 
     expect(response.statusCode).toBe(UNAUTHORIZED_STATUS_CODE)
     expect(await db.select().from(users)).toHaveLength(ONE_ROW)
+  })
+
+  it('lets a Google-only account delete itself with no password', async () => {
+    // The branch where nothing is confirmed: the valid session IS the proof,
+    // because the account has no password to confirm.
+    const idToken = await jwks.sign({ sub: GOOGLE_SUBJECT, email: FEDERATED_EMAIL })
+    const signedIn = await app.inject({
+      method: POST_METHOD,
+      url: GOOGLE_PATH,
+      payload: { idToken },
+    })
+
+    const response = await deleteAccount({}, `Bearer ${signedIn.json().accessToken}`)
+
+    expect(response.statusCode).toBe(NO_CONTENT_STATUS_CODE)
+    expect(
+      await db.select().from(users).where(eq(users.email, FEDERATED_EMAIL)),
+    ).toHaveLength(NO_ROWS)
+    // The password account of this suite's own fixture is untouched.
+    expect(await db.select().from(users).where(eq(users.email, EMAIL))).toHaveLength(
+      ONE_ROW,
+    )
   })
 
   it('lets the address be registered again from scratch', async () => {

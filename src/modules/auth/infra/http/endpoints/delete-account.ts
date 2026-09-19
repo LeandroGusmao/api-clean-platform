@@ -27,8 +27,10 @@ const DELETE_ACCOUNT_DESCRIPTION =
   'pending registration for the address. Irreversible — there is no grace ' +
   'period and nothing is exported first. An account with a password must ' +
   'present it; an account that only signs in with Google does not, having ' +
-  'none. Access tokens already issued stay valid until they expire, with ' +
-  'nothing left to reach — decision 11.'
+  'none — though it still sends a body, an empty JSON object, since a ' +
+  'request with no body at all is rejected as malformed. Access tokens ' +
+  'already issued stay valid until they expire, with nothing left to ' +
+  'reach — decision 11.'
 
 const MIN_SUBMITTED_PASSWORD_LENGTH = 1
 
