@@ -23,8 +23,9 @@ import type { IUsersRepository } from './users-repository.js'
  * `federatedIdentities` for the Google sign-in: it creates the `users` row, the
  * identity link and the first refresh token in one transaction — one fact.
  *
- * `outboxMessages` for the three post-commit notices (password changed,
- * password reset completed, Google account linked): the row that promises the
+ * `outboxMessages` for the four post-commit notices (password changed,
+ * password reset completed, Google account linked, refresh token reuse
+ * detected): the row that promises the
  * e-mail is written in the SAME transaction as the state change it describes —
  * one fact, either both land or neither does.
  */

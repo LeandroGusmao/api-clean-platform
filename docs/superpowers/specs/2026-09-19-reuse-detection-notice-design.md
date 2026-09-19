@@ -68,10 +68,10 @@ certo, porque o dono causou a revogação (ou já foi avisado por outro e-mail).
 | Dado | De onde vem | O que descreve |
 |---|---|---|
 | `deviceLabel` | linha do token gasto (`current`) | a sessão derrubada; herdado pela rotação (decisão 38) |
-| `sessionStartedAt` | idem; linha anterior à fatia 21 adota o `createdAt` | idem |
+| `sessionStartedAt` | idem; linha anterior à fatia 21 adota o `createdAt` (o use case resolve o nulo antes de chamar o template) | idem |
 | `ip` | `command.ip`, resolvido na borda por `buildDeviceContext` | **quem apresentou o token gasto**: pode ser o ladrão ou o próprio cliente do dono com um retry fora da janela |
 
-Os três podem ser `null` (linhas antigas; endereço que não parseia).
+O rótulo e o endereço podem ser `null` (linhas antigas; endereço que não parseia).
 
 ### 3.5 — O e-mail do dono está disponível dentro da transação
 
@@ -107,7 +107,7 @@ e não muda.
 ```ts
 reuseDetectedEmail(to: Email, session: {
   deviceLabel: string | null
-  sessionStartedAt: Date | null
+  sessionStartedAt: Date
   ip: string | null
 }): EmailMessage
 ```
@@ -116,8 +116,9 @@ Função pura em `emails.ts`, com o assunto como constante. O corpo diz que um
 token de renovação já usado foi apresentado de novo, que por isso a sessão de
 `<aparelho>` iniciada em `<data em UTC>` foi encerrada, e que a tentativa veio
 de `<endereço>`. Orienta a trocar a senha se o dono não reconhece, e diz que,
-se foi ele com um app com problema, basta entrar de novo. Nulos viram
-"an unknown device", "an unknown start time" e "an unrecognized address".
+se foi ele com um app com problema, basta entrar de novo. Nulos de rótulo e de endereço viram
+"an unknown device" e "an unrecognized address"; o início nulo já foi resolvido
+pelo use case, que adota o `createdAt` da linha, como `inherit`.
 
 ## 6. O ramo de reuso
 

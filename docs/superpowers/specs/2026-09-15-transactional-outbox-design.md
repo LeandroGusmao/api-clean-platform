@@ -51,6 +51,8 @@ cobre o processo nunca chegar a tentar.
 
 1. **Escopo: só os três avisos pós-commit.** Ver §1. `verificationEmail` e
    `passwordResetEmail` seguem fora, `accountAlreadyExistsEmail` também.
+   **Emenda (fatia 24):** um quarto aviso, `reuseDetectedEmail`, passou a usar o
+   outbox — decisão 41.
 2. **Retry: contador simples com teto, sem backoff explícito.** O intervalo do
    scheduler externo que invoca `cron.ts` (decisão 30, §3.1 da spec da fatia
    13) já É o backoff — uma linha que falhou fica pendente e é tentada de novo

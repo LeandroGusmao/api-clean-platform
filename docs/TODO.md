@@ -5,6 +5,14 @@
 > este arquivo quer saber o que fazer, não o que já foi feito. O critério da
 > separação está na própria seção.
 >
+> **Fatia 24 (2026-09-19) entregou o aviso ao dono quando a detecção de reuso
+> dispara** (decisão 41). Fecha o item #3 de "Pendências do boilerplate". A
+> revogação da família e o aviso vão na mesma transação, pelo outbox, e o aviso
+> só sai na transição: um replay contra a família já morta revoga zero linhas e
+> não grava nada, então um token velho não serve para encher a caixa do dono. O
+> texto diz "suspeito", nunca "roubo", porque o endereço pode ser o do próprio
+> cliente do dono.
+>
 > **Fatia 23 (2026-09-19) entregou o dispatch do outbox com etiqueta por
 > mensagem** (decisão 40). Fecha o item #2 de "Pendências do boilerplate". Cada
 > mensagem é pega com um prazo (`claimed_until`) antes de ser enviada, então
@@ -123,7 +131,7 @@ cumprir o que ele mesmo promete** assim que sai de uma instância só.
 |---|---|---|---|
 | 1 | ~~Store do rate limit é in-process~~ | — | **fechado pela fatia 22.** Rota com teto próprio conta num Redis compartilhado e recusa com 503 quando ele cai; o teto global segue em memória, por réplica. Decisão 39 |
 | 2 | ~~Dispatch do outbox sem trava~~ | — | **fechado pela fatia 23.** Cada mensagem é pega com uma etiqueta de prazo (`claimed_until`) por uma instrução única com `FOR UPDATE SKIP LOCKED`; execuções concorrentes trabalham em mensagens diferentes. Decisão 40 |
-| 3 | **Notificar o dono quando a detecção de reuso dispara** | nada (o log foi fechado em 2026-09-08) | troca e recuperação de senha já mandam e-mail; roubo de sessão detectado não manda nada — e é a única defesa que sobra quando o atacante já tem a sessão. A fatia 21 melhorou o que dá para dizer: o aviso pode nomear aparelho e endereço |
+| 3 | ~~Notificar o dono quando a detecção de reuso dispara~~ | — | **fechado pela fatia 24.** `revokeFamily` devolve a contagem e só a chamada que matou a família grava o aviso, pelo outbox, na mesma transação. Decisão 41 |
 | 4 | **Sessão sem teto absoluto** | decisão de produto nunca tomada | os 60 dias são deslizantes, então quem der refresh toda semana nunca reautentica. Rotação e detecção de reuso cobrem roubo, então não é furo — mas **não decidir também é decidir**, e a não-decisão viaja para todo app derivado. A saída usual é um `max_lifetime` por família, com idle timeout junto |
 | 5 | Checagem de senha vazada | decisão: API externa (HIBP) ou lista embarcada | o piso é 8 caracteres e não há blocklist. Como o lockout foi recusado, o custo do argon2 e a qualidade da senha são as duas únicas defesas contra força bruta — e uma delas está no piso |
 | 6 | Trilha de auditoria — **só o mecanismo** | nada | a tabela e a porta são genéricas; *o que* registrar e por quanto tempo é produto. O boilerplate entrega o encanamento. É o que a LGPD art. 37 cobra, e a **deleção de conta** (fatia 20) é um dos eventos a capturar quando for retomada |
@@ -291,15 +299,16 @@ acesso diferenciado por usuário. `DECISIONS.md` §6.
 antes qual app vem primeiro — os sete itens valem para qualquer um deles.
 
 ~~Store do rate limit~~ — **fechado pela fatia 22** (decisão 39).
-~~Dispatch do outbox sem trava~~ — **fechado pela fatia 23** (decisão 40). O
-próximo é o #3, **notificar o dono quando a detecção de reuso dispara**, o
-primeiro consumidor natural de um aviso que precisa sair uma vez só.
+~~Dispatch do outbox sem trava~~ — **fechado pela fatia 23** (decisão 40).
+~~Notificar o dono quando a detecção de reuso dispara~~ — **fechado pela fatia
+24** (decisão 41). O próximo é o #4, **sessão sem teto absoluto**, que depende
+de uma decisão de produto ainda não tomada.
 
 **Se o alvo tratar dado sensível, entra a ordem da auditoria de 2026-09-07 por
 cima desta**: ~~(1) log de evento de segurança~~ fechado em 2026-09-08;
 ~~(2) `helmet` e TTL do access token~~ fechados pela fatia 21; (3) colunas de
-dispositivo — **fechadas pela fatia 21** — e notificação de reuso, que é o #3
-da fila do boilerplate; (4) reabrir o lockout; (5) trilha de auditoria e teto
+dispositivo — **fechadas pela fatia 21** — e ~~notificação de reuso~~,
+**fechada pela fatia 24**; (4) reabrir o lockout; (5) trilha de auditoria e teto
 absoluto de sessão; (6) MFA.
 
 **A escolha do app continua pendente** e muda só a ordem do que está em

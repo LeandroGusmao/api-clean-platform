@@ -2640,6 +2640,51 @@ lote inteiro:* a etiqueta teria de durar cem envios ou venceria no meio.
 
 Spec: [`specs/2026-09-19-outbox-dispatch-lease-design.md`](superpowers/specs/2026-09-19-outbox-dispatch-lease-design.md).
 
+### 41 — Aviso ao dono quando a detecção de reuso dispara
+
+Fecha o item #3 de "Pendências do boilerplate". A detecção de reuso revogava a
+família e respondia 401, e o único rastro era uma linha de log: o dono só
+descobria pelo app mandando-o para o login. Troca e recuperação de senha e o
+vínculo do Google já avisam; o roubo de sessão detectado, que é a única defesa
+que sobra quando o atacante já tem a sessão, não avisava.
+
+**O aviso sai só na transição.** O token gasto continua gasto para sempre, então
+cada reapresentação cai no mesmo ramo. Um aviso gravado ali sem condição vira um
+e-mail por tentativa, e quem tem um token velho passaria a encher a caixa do
+dono. `revokeFamily` passou a devolver quantas linhas revogou; só maior que zero
+grava o aviso. Um replay contra a família já morta revoga zero e não grava.
+`logout`, `logout-all` e as trocas de senha ficam sem aviso pelo mesmo caminho:
+foi o dono quem revogou, ou ele já foi avisado por outro e-mail.
+
+**Pelo outbox, na mesma transação da revogação**, pela razão da decisão 33: uma
+queda entre a revogação e o envio não perde o aviso, e o SMTP não prende a
+requisição. `REUSE_DETECTED` continua retornado e não lançado, senão o rollback
+desfaria a revogação e o aviso.
+
+**O texto diz "suspeito", nunca "roubo".** O endereço é o de quem apresentou o
+token gasto, que pode ser o ladrão ou o cliente do próprio dono num retry fora da
+janela de graça. O e-mail nomeia o aparelho e o início da sessão derrubada (da
+linha do token) e esse endereço, e cobre os dois casos.
+
+**Recusado.** *Cooldown com "último aviso enviado":* exige estado novo e não
+compra segurança, porque a família já está morta.
+
+**Medido:** três reapresentações do mesmo token gasto deixam **uma** linha em
+`outbox_messages`; com a condição removida de propósito, deixam três.
+
+**Custos aceitos.**
+
+1. Um segundo ataque à mesma família não avisa de novo.
+2. O endereço do aviso pode ser o do próprio dono.
+3. O e-mail leva um IP a um endereço cadastrado: o mesmo dado que
+   `GET /auth/sessions` já devolve ao dono (decisão 38).
+4. Uma família cujo último token expirou sem ser revogado ainda conta 1 na
+   primeira reapresentação e avisa, uma vez.
+5. O aviso herda as garantias do outbox: pode chegar atrasado, e uma queda entre
+   o `send` e o registro pode repeti-lo (decisão 40).
+
+Spec: [`specs/2026-09-19-reuse-detection-notice-design.md`](superpowers/specs/2026-09-19-reuse-detection-notice-design.md).
+
 ---
 
 ## 7. Pendências de manutenção
