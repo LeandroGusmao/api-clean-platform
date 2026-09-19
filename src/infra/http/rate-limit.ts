@@ -2,6 +2,8 @@ import rateLimit, { normalizeIP } from '@fastify/rate-limit'
 import type { FastifyInstance } from 'fastify'
 import type { Env } from '#infra/config/env'
 import { clientIpKey } from './client-ip.js'
+import type { RateLimitRedis } from './redis-rate-limit-store.js'
+import { createScopedRateLimitStore } from './scoped-rate-limit-store.js'
 
 const MILLISECONDS_PER_SECOND = 1000
 
@@ -29,12 +31,15 @@ export type RateLimitEnv = Pick<
  * reason `registerErrorHandling` and `registerOpenApi` are: a spec can then
  * mount a bare server and exercise the limiter without a database.
  *
- * The store is in-process. With N replicas the effective ceiling is N times the
- * configured one — one more reason the limit that matters belongs at the edge.
+ * A route that declares its own ceiling counts in `redis`, shared by every
+ * replica, and refuses while it is unreachable. Every other route counts in
+ * process, so N replicas give N times the global ceiling (decision 39). Without
+ * `redis`, every route counts in process.
  */
 export async function registerRateLimit(
   app: FastifyInstance,
   env: RateLimitEnv,
+  redis?: RateLimitRedis,
 ): Promise<void> {
   await app.register(rateLimit, {
     global: true,
@@ -53,5 +58,6 @@ export async function registerRateLimit(
      * nothing at all while looking exactly like it should work.
      */
     keyGenerator: (request) => normalizeIP(clientIpKey(request)),
+    ...(redis === undefined ? {} : { store: createScopedRateLimitStore(redis) }),
   })
 }

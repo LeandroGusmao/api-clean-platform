@@ -1,8 +1,9 @@
 import { Writable } from 'node:stream'
 import type { FastifyInstance } from 'fastify'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { TEST_ENV } from '#infra/config/fixtures/test-env'
 import { registerRateLimit } from '#infra/http/rate-limit'
+import type { RateLimitRedis } from '#infra/http/redis-rate-limit-store'
 import { buildServer } from '#infra/http/server'
 
 const MAX_REQUESTS = 2
@@ -130,5 +131,147 @@ describe('registerRateLimit', () => {
     }
 
     expect((await get(app, PROBE_PATH, '198.51.100.4')).statusCode).toBe(OK_STATUS)
+  })
+})
+
+const GLOBAL_CEILING = 100
+const OWN_CEILING = 2
+const MILLISECONDS_PER_SECOND = 1000
+const SERVICE_UNAVAILABLE_STATUS = 503
+const STORE_UNAVAILABLE_CODE = 'RATE_LIMIT_STORE_UNAVAILABLE'
+const DRIVER_ADDRESS = '10.0.0.5'
+
+const PLAIN_PATH = '/probe/plain'
+const OWN_PATH = '/probe/own'
+const OTHER_OWN_PATH = '/probe/other-own'
+
+/** A Redis that counts like the real one, keyed the way the script receives it. */
+function countingRedis() {
+  const counts = new Map<string, number>()
+  const evalScript = vi.fn(
+    async (_script: string, _keyCount: number, key: string, windowMs: number) => {
+      const current = (counts.get(key) ?? 0) + 1
+      counts.set(key, current)
+
+      return [current, windowMs]
+    },
+  )
+
+  return { redis: { eval: evalScript } as unknown as RateLimitRedis, evalScript }
+}
+
+function brokenRedis(): RateLimitRedis {
+  return {
+    eval: vi
+      .fn()
+      .mockRejectedValue(new Error(`connect ECONNREFUSED ${DRIVER_ADDRESS}:6379`)),
+  } as unknown as RateLimitRedis
+}
+
+/**
+ * Two routes declaring their own ceiling and one that does not — the split the
+ * store makes. The global ceiling is far above what any case spends, so a 429
+ * here can only come from a route's own.
+ */
+async function buildRedisBackedServer(
+  redis: RateLimitRedis,
+  logStream: Writable = discardedLog(),
+): Promise<FastifyInstance> {
+  const app = buildServer(
+    { ...TEST_ENV, RATE_LIMIT_MAX_REQUESTS: GLOBAL_CEILING },
+    { logStream },
+  )
+  openApps.push(app)
+
+  await registerRateLimit(
+    app,
+    {
+      RATE_LIMIT_MAX_REQUESTS: GLOBAL_CEILING,
+      RATE_LIMIT_WINDOW_SECONDS: WINDOW_SECONDS,
+    },
+    redis,
+  )
+
+  const ownCeiling = {
+    config: {
+      rateLimit: {
+        max: OWN_CEILING,
+        timeWindow: WINDOW_SECONDS * MILLISECONDS_PER_SECOND,
+      },
+    },
+  }
+  app.get(PLAIN_PATH, async () => ({ ok: true }))
+  app.get(OWN_PATH, ownCeiling, async () => ({ ok: true }))
+  app.get(OTHER_OWN_PATH, ownCeiling, async () => ({ ok: true }))
+  await app.ready()
+
+  return app
+}
+
+describe('registerRateLimit with a Redis store', () => {
+  it('counts a route with its own ceiling in Redis and every other route in process', async () => {
+    const { redis, evalScript } = countingRedis()
+    const app = await buildRedisBackedServer(redis)
+
+    await get(app, PLAIN_PATH)
+    expect(evalScript).not.toHaveBeenCalled()
+
+    await get(app, OWN_PATH)
+    expect(evalScript).toHaveBeenCalledTimes(1)
+  })
+
+  // The whole point of the store: two replicas, one number.
+  it('shares the count of a route with its own ceiling across servers', async () => {
+    const { redis } = countingRedis()
+    const first = await buildRedisBackedServer(redis)
+    const second = await buildRedisBackedServer(redis)
+
+    expect((await get(first, OWN_PATH)).statusCode).toBe(OK_STATUS)
+    expect((await get(second, OWN_PATH)).statusCode).toBe(OK_STATUS)
+
+    expect((await get(first, OWN_PATH)).statusCode).toBe(TOO_MANY_REQUESTS_STATUS)
+  })
+
+  it('keeps one count per route', async () => {
+    const { redis } = countingRedis()
+    const app = await buildRedisBackedServer(redis)
+
+    for (let attempt = 0; attempt < OWN_CEILING; attempt++) {
+      expect((await get(app, OWN_PATH)).statusCode).toBe(OK_STATUS)
+    }
+
+    expect((await get(app, OTHER_OWN_PATH)).statusCode).toBe(OK_STATUS)
+  })
+
+  it('refuses a route with its own ceiling while Redis fails, and keeps answering the others', async () => {
+    const app = await buildRedisBackedServer(brokenRedis())
+
+    const refused = await get(app, OWN_PATH)
+
+    expect(refused.statusCode).toBe(SERVICE_UNAVAILABLE_STATUS)
+    expect(refused.json().error.code).toBe(STORE_UNAVAILABLE_CODE)
+    expect(refused.headers[RETRY_AFTER_HEADER]).toBeDefined()
+    expect((await get(app, PLAIN_PATH)).statusCode).toBe(OK_STATUS)
+  })
+
+  // A 503 with no log line would make a control that stopped controlling look
+  // like ordinary traffic; and the driver error must not ride along with it.
+  it('leaves a security event in the log, without the driver error', async () => {
+    const lines: string[] = []
+    const stream = new Writable({
+      write(chunk, _encoding, callback) {
+        lines.push(String(chunk))
+        callback()
+      },
+    })
+    const app = await buildRedisBackedServer(brokenRedis(), stream)
+
+    const refused = await get(app, OWN_PATH)
+
+    const logged = lines.join('')
+    expect(logged).toContain(`"code":"${STORE_UNAVAILABLE_CODE}"`)
+    expect(logged).toContain('security event')
+    expect(logged).not.toContain(DRIVER_ADDRESS)
+    expect(refused.body).not.toContain(DRIVER_ADDRESS)
   })
 })
