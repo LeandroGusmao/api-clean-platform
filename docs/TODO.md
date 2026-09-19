@@ -1,5 +1,19 @@
 # O que falta
 
+> **Fatia 21 (2026-09-19) entregou o contexto de dispositivo na sessão, os
+> claims `iss`/`aud`, o `helmet` e o TTL de 900s** (decisão 38). É a primeira
+> fatia puxada pela auditoria de 2026-09-07 em vez da tabela genérica, que
+> ficou sem item desbloqueado na fatia 20. O gatilho foi levantado: o primeiro
+> app derivado será um agregador de gastos e investimentos ou um app de
+> alimentação e calorias, e os dois disparam o critério da §6.
+>
+> O recorte foi por **reversibilidade**: coluna que o banco não registrou não
+> volta, enquanto claim de access token se conserta sozinho numa janela de
+> TTL. Por isso as três colunas entraram agora, com a tabela vazia, e `kid` e
+> `auth_time`/`amr` não. **A justificativa que esta lista dava para o `kid`
+> estava errada** e foi corrigida: trocar o `JWT_SECRET` não desloga ninguém,
+> porque `/auth/refresh` não lê o access token.
+>
 > **Fatia 20 (2026-09-18) entregou a deleção de conta** (decisão 37).
 > `DELETE /auth/me` com hard delete da linha de `users`; a cascata que o schema
 > já declarava leva `refresh_tokens`, `federated_identities` e
@@ -129,6 +143,7 @@ emendados junto, para não voltar a ler como coberto.
 | ~~Invalidar sessões + notificar o dono na verificação~~ | — | **fechada pela fatia 19.** Faltava só a invalidação no vínculo do Google — troca e recuperação de senha já derrubavam sessão. Decisão 36 |
 | ~~Deleção de conta~~ | — | **fechada pela fatia 20.** `DELETE /auth/me`, hard delete apoiado na cascata; varre os `pending_registrations` do endereço. Decisão 37 |
 | ~~Revogação por usuário deletado/banido~~ | — | **fechada pela fatia 20**, sem código próprio: a cascata apaga os `refresh_tokens` junto com a conta |
+| ~~Contexto de dispositivo + `iss`/`aud` + `helmet` + TTL~~ | — | **fechados pela fatia 21.** Ver a tabela da auditoria abaixo e a decisão 38 |
 
 ## Auditoria de 2026-09-07 — o que falta para dado sensível
 
@@ -145,10 +160,10 @@ qual os itens estão avaliados, e é o mesmo cenário que a §6 do
 
 | Item | Depende de | Nota |
 |---|---|---|
-| Headers de segurança (`helmet`) | nada | não está nas dependências nem no código. Sem HSTS, `X-Content-Type-Options` nem `Referrer-Policy` — e o modo cookie da decisão 12 é justamente quem mais depende de HSTS |
-| Contexto de dispositivo em `refresh_tokens` | nada | sem `ip`, `user_agent` e `last_used_at`, "listar sessões ativas" (abaixo) mostra só UUID opaco e o dono não consegue responder "fui eu?". Migration de graça enquanto não há usuário; depois é backfill sem dado para preencher |
+| ~~Headers de segurança (`helmet`)~~ | — | **fechado pela fatia 21.** `@fastify/helmet` nos defaults, registrado como `registerHelmet` no molde de `registerCors`. Decisão 38 |
+| ~~Contexto de dispositivo em `refresh_tokens`~~ | — | **fechado pela fatia 21.** `ip`, `device_label` e `session_started_at`, os três nuláveis; a rotação herda rótulo e início. `last_used_at` ficou **de fora**: a rotação descarta a linha, então o `createdAt` da linha viva já é o instante da última renovação. Decisão 38 |
 | Notificar o dono quando a detecção de reuso dispara | o log do furo acima | troca e recuperação de senha já mandam e-mail; roubo de sessão detectado não manda nada — e é a única defesa que sobra quando o atacante já tem a sessão |
-| `iss` / `aud` / `kid` no JWT | nada | sem `kid` não há rotação de `JWT_SECRET` com janela de duas chaves: trocar o segredo desloga todo mundo de uma vez. Em app financeiro rotação de chave é rotina, não incidente |
+| `kid` no JWT | nada | `iss` e `aud` **entregues pela fatia 21** (decisão 38), obrigatórios e sem default. `kid` segue aberto, e **não pelo motivo que esta linha afirmava antes**: trocar o `JWT_SECRET` NÃO desloga ninguém, porque `POST /auth/refresh` não lê o access token — cada cliente ativo toma um `401` e renova de forma transparente. O que o `kid` compra é evitar que todos renovem no mesmo instante quando o segredo troca: estampida, não logout. Sem usuário em produção, não há o que evitar |
 | Trilha de auditoria | nada | não existe tabela nem evento de login, troca de senha ou revogação. É o que a LGPD art. 37 cobra, e o que decide disputa depois — e a **deleção de conta** (fatia 20) é um dos eventos que ela deve capturar quando for retomada |
 | Checagem de senha vazada | nada | o piso é 8 caracteres e não há blocklist. Como o lockout foi recusado, o custo do argon2 e a qualidade da senha são as duas únicas defesas contra força bruta — e uma delas está no piso |
 | Custo do argon2 acima do mínimo | máquina alvo | 7,3 ms / 19 MB é o **mínimo** recomendado pela OWASP; o comentário do adapter já registra que tunar é "hardening, once there is a target machine" |
@@ -169,8 +184,9 @@ contexto, não a análise:
   N × 10/min. Precisa de store compartilhado, ou de teto de borda de verdade.
 - **Teto absoluto de sessão, mais idle timeout.** Os 60 dias deslizantes viram
   sessão perpétua — ver a pergunta registrada logo abaixo.
-- **TTL do access token.** 1h é a latência de revogação do `logout-all`. Em
-  financeiro o usual é 5–15 min, e aqui é só variável de ambiente.
+- ~~**TTL do access token.**~~ **Fechado pela fatia 21:** o default caiu de
+  3600s para 900s (decisão 38). Continua variável de ambiente para quem quiser
+  outro valor. Custo aceito: o `/refresh` é chamado 4× mais por cliente ativo.
 
 ## Perguntas registradas, não pendências
 
@@ -209,10 +225,18 @@ acesso diferenciado por usuário. `DECISIONS.md` §6.
 
 **Se o alvo tratar dado sensível, a ordem muda**, e a auditoria de 2026-09-07
 propõe esta: ~~(1) log de evento de segurança — sem ele nada mais é
-observável~~ fechado em 2026-09-08; (2) `helmet` e TTL do access token; (3)
-colunas de dispositivo e notificação de reuso, enquanto a migration ainda é de
-graça; (4) reabrir o lockout; (5) trilha de auditoria e teto absoluto de
-sessão; (6) MFA. Para o boilerplate genérico, segue valendo o que está abaixo.
+observável~~ fechado em 2026-09-08; ~~(2) `helmet` e TTL do access token~~
+fechados pela fatia 21; (3) colunas de dispositivo — **fechadas pela fatia
+21** — e notificação de reuso, que **segue aberta**; (4) reabrir o lockout;
+(5) trilha de auditoria e teto absoluto de sessão; (6) MFA. Para o boilerplate
+genérico, segue valendo o que está abaixo.
+
+**O próximo item desbloqueado é a notificação de reuso** — e ela ficou melhor
+do que era: com `device_label` e `ip` na linha, o e-mail de aviso pode dizer
+de qual aparelho e endereço a sessão foi usada, em vez de só "algo aconteceu".
+
+A escolha entre os dois apps derivados muda a ordem do resto: o financeiro
+sobe MFA, o de saúde sobe trilha de auditoria. Decidir o app primeiro.
 
 ~~Login social / OAuth com Google~~ — **entregue pela fatia 14** (decisão 31).
 O `auth` agora tem identidade federada: cadastro, verificação, login por senha
@@ -241,6 +265,11 @@ abaixo e `DECISIONS.md` §6.
 
 ~~Deleção de conta~~ — **entregue pela fatia 20** (decisão 37), e com ela
 ~~revogação por usuário deletado~~, que a cascata resolve sem código próprio.
+
+~~Contexto de dispositivo, `iss`/`aud`, `helmet` e TTL~~ — **entregues pela
+fatia 21** (decisão 38). `GET /auth/sessions` passou a devolver `ip`,
+`deviceLabel` e `startedAt`, fechando a limitação que a decisão 35 registrou
+como deliberada e dependente de migration.
 
 A tabela genérica fica sem item desbloqueado. O que resta são os achados da
 auditoria de 2026-09-07, que sobem de prioridade pelo gatilho de dado

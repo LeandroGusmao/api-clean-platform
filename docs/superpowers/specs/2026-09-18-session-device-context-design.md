@@ -320,7 +320,10 @@ A query não muda: continua plana, sem `GROUP BY`, pelo argumento da decisão 35
 
 ## 10. Config
 
-Duas variáveis novas no schema de `env`, **sem default**:
+Duas variáveis novas no `authEnvSchema` de
+[`config.ts`](../../../src/modules/auth/config.ts), **sem default** — no
+schema do módulo e não no core, pela decisão 14, como `JWT_SECRET` e
+`GOOGLE_CLIENT_ID` já estão:
 
 | Variável | Papel |
 |---|---|
@@ -329,6 +332,11 @@ Duas variáveis novas no schema de `env`, **sem default**:
 
 `src/infra/config/fixtures/test-env.ts` ganha as duas, e `env.spec.ts` ganha a
 asserção de que a ausência de qualquer uma reprova o boot.
+
+`vitest.config.ts` também: ele injeta as variáveis obrigatórias no ambiente dos
+testes, e sem isso o projeto de integração não sobe — `env.ts` encerra o
+processo num ambiente inválido, então a suíte inteira falharia no boot em vez
+de falhar um teste.
 
 Nenhuma variável nova para as colunas, para o `helmet` ou para o TTL.
 
