@@ -10,6 +10,9 @@ const PASSWORD_RESET_SUBJECT = 'Reset your password'
 const PASSWORD_RESET_COMPLETED_SUBJECT = 'Your password was reset'
 const GOOGLE_ACCOUNT_LINKED_SUBJECT = 'A Google sign-in was connected to your account'
 const ACCOUNT_DELETED_SUBJECT = 'Your account was deleted'
+const REUSE_DETECTED_SUBJECT = 'A session on your account was signed out'
+const UNKNOWN_DEVICE = 'an unknown device'
+const UNRECOGNIZED_ADDRESS = 'an unrecognized address'
 
 /**
  * Pure functions rather than bodies inlined in the use cases: this is the one
@@ -119,6 +122,40 @@ export function googleAccountLinkedEmail(to: Email): EmailMessage {
       'Sign in with Google was just connected to your account.\n\n' +
       'If this was not you, reset your password immediately — whoever ' +
       'connected it can then sign in without your password.',
+  }
+}
+
+export interface ReuseDetectedSession {
+  deviceLabel: string | null
+  sessionStartedAt: Date
+  /** Who PRESENTED the spent token — possibly the owner's own client. */
+  ip: string | null
+}
+
+/**
+ * Sent when a spent refresh token is presented again and the family it belonged
+ * to is revoked. The address is the one that presented the token, which can be
+ * an attacker or the owner's own client retrying outside the grace window, so
+ * the text says "suspicious" and covers both readings.
+ */
+export function reuseDetectedEmail(
+  to: Email,
+  session: ReuseDetectedSession,
+): EmailMessage {
+  const device = session.deviceLabel ?? UNKNOWN_DEVICE
+  const address = session.ip ?? UNRECOGNIZED_ADDRESS
+
+  return {
+    to: to.value,
+    subject: REUSE_DETECTED_SUBJECT,
+    text:
+      'A sign-in credential from one of your sessions was used a second time, ' +
+      'which is suspicious. We signed that session out: it was on ' +
+      `${device} and started at ${session.sessionStartedAt.toISOString()}.\n\n` +
+      `The attempt came from ${address}.\n\n` +
+      'If you do not recognise this, reset your password immediately. If it ' +
+      'was you, for instance an app that misbehaved, sign in again and no ' +
+      'further action is needed.',
   }
 }
 

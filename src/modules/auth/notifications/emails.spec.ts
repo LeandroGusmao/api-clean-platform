@@ -4,6 +4,7 @@ import {
   googleAccountLinkedEmail,
   passwordResetCompletedEmail,
   passwordResetEmail,
+  reuseDetectedEmail,
 } from '#modules/auth/notifications/emails'
 import { Email } from '#modules/auth/value-objects/email'
 
@@ -49,5 +50,57 @@ describe('accountDeletedEmail', () => {
     expect(message.to).toBe(TO.value)
     expect(message.text.toLowerCase()).toContain('deleted')
     expect(message.text.toLowerCase()).toContain('cannot be undone')
+  })
+})
+
+const REUSE_DEVICE = 'Chrome on Android'
+const REUSE_STARTED_AT = new Date('2026-08-01T09:00:00.000Z')
+const REUSE_IP = '198.51.100.42'
+const UNKNOWN_DEVICE_TEXT = 'an unknown device'
+const UNKNOWN_ADDRESS_TEXT = 'an unrecognized address'
+const FORBIDDEN_CLAIMS = ['stolen', 'theft', 'null', 'undefined']
+
+const knownSession = {
+  deviceLabel: REUSE_DEVICE,
+  sessionStartedAt: REUSE_STARTED_AT,
+  ip: REUSE_IP,
+}
+
+describe('reuseDetectedEmail', () => {
+  it('addresses the owner and names the session and the address of the attempt', () => {
+    const message = reuseDetectedEmail(TO, knownSession)
+
+    expect(message.to).toBe(TO.value)
+    expect(message.text).toContain(REUSE_DEVICE)
+    expect(message.text).toContain(REUSE_STARTED_AT.toISOString())
+    expect(message.text).toContain(REUSE_IP)
+  })
+
+  it('tells the owner what to do in both cases: not recognised, and it was them', () => {
+    const text = reuseDetectedEmail(TO, knownSession).text.toLowerCase()
+
+    expect(text).toContain('reset your password')
+    expect(text).toContain('sign in again')
+  })
+
+  it('says suspicious, never that anything was stolen', () => {
+    const text = reuseDetectedEmail(TO, knownSession).text.toLowerCase()
+
+    expect(text).toContain('suspicious')
+    for (const claim of FORBIDDEN_CLAIMS) expect(text).not.toContain(claim)
+  })
+
+  it('falls back to neutral wording for a missing label or address', () => {
+    const message = reuseDetectedEmail(TO, {
+      deviceLabel: null,
+      sessionStartedAt: REUSE_STARTED_AT,
+      ip: null,
+    })
+
+    expect(message.text).toContain(UNKNOWN_DEVICE_TEXT)
+    expect(message.text).toContain(UNKNOWN_ADDRESS_TEXT)
+    for (const claim of FORBIDDEN_CLAIMS) {
+      expect(message.text.toLowerCase()).not.toContain(claim)
+    }
   })
 })
