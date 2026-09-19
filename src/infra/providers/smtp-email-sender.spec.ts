@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { type SmtpEmailSenderConfig, smtpTransportOptions } from './smtp-email-sender.js'
+import {
+  SMTP_CONNECTION_TIMEOUT_MS,
+  SMTP_GREETING_TIMEOUT_MS,
+  SMTP_SOCKET_TIMEOUT_MS,
+  type SmtpEmailSenderConfig,
+  smtpTransportOptions,
+} from './smtp-email-sender.js'
 
 const MINIMUM_TLS_VERSION = 'TLSv1.2'
 const SMTP_HOST = 'smtp.example.com'
@@ -18,6 +24,17 @@ const baseConfig: SmtpEmailSenderConfig = {
 describe('smtpTransportOptions', () => {
   it('pools connections rather than opening a fresh one per send', () => {
     expect(smtpTransportOptions(baseConfig).pool).toBe(true)
+  })
+
+  it('bounds a single send with explicit timeouts instead of the library defaults', () => {
+    const options = smtpTransportOptions(baseConfig)
+
+    expect(options.connectionTimeout).toBeTypeOf('number')
+    expect(options.greetingTimeout).toBeTypeOf('number')
+    expect(options.socketTimeout).toBeTypeOf('number')
+    expect(options.connectionTimeout).toBe(SMTP_CONNECTION_TIMEOUT_MS)
+    expect(options.greetingTimeout).toBe(SMTP_GREETING_TIMEOUT_MS)
+    expect(options.socketTimeout).toBe(SMTP_SOCKET_TIMEOUT_MS)
   })
 
   it('forces STARTTLS when required, so the connection fails closed', () => {

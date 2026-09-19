@@ -9,6 +9,7 @@ import {
   DEFAULT_GOOGLE_SIGN_IN_RATE_LIMIT_MAX_REQUESTS,
   DEFAULT_GOOGLE_SIGN_IN_RATE_LIMIT_WINDOW_SECONDS,
   DEFAULT_OUTBOX_DISPATCH_BATCH_SIZE,
+  DEFAULT_OUTBOX_DISPATCH_LEASE_SECONDS,
   DEFAULT_OUTBOX_DISPATCH_MAX_ATTEMPTS,
   DEFAULT_OUTBOX_MESSAGE_PRUNE_RETENTION_SECONDS,
   DEFAULT_PASSWORD_RESET_TOKEN_PRUNE_RETENTION_SECONDS,
@@ -160,6 +161,9 @@ describe('authEnvSchema', () => {
 
     expect(config.OUTBOX_DISPATCH_MAX_ATTEMPTS).toBe(DEFAULT_OUTBOX_DISPATCH_MAX_ATTEMPTS)
     expect(config.OUTBOX_DISPATCH_BATCH_SIZE).toBe(DEFAULT_OUTBOX_DISPATCH_BATCH_SIZE)
+    expect(config.OUTBOX_DISPATCH_LEASE_SECONDS).toBe(
+      DEFAULT_OUTBOX_DISPATCH_LEASE_SECONDS,
+    )
     expect(config.OUTBOX_MESSAGE_PRUNE_RETENTION_SECONDS).toBe(
       DEFAULT_OUTBOX_MESSAGE_PRUNE_RETENTION_SECONDS,
     )
@@ -178,6 +182,13 @@ describe('authEnvSchema', () => {
     // Zero would mark every row failed on its very first attempt.
     expect(() =>
       authEnvSchema.parse({ ...MINIMAL_ENV, OUTBOX_DISPATCH_MAX_ATTEMPTS: '' }),
+    ).toThrow()
+  })
+
+  it('rejects an empty outbox claim lease instead of coercing it to zero', () => {
+    // Zero would expire every claim the moment it is taken.
+    expect(() =>
+      authEnvSchema.parse({ ...MINIMAL_ENV, OUTBOX_DISPATCH_LEASE_SECONDS: '' }),
     ).toThrow()
   })
 })

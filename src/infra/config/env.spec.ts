@@ -19,6 +19,11 @@ import {
   parseEnv,
 } from '#infra/config/env'
 import {
+  SMTP_CONNECTION_TIMEOUT_MS,
+  SMTP_GREETING_TIMEOUT_MS,
+  SMTP_SOCKET_TIMEOUT_MS,
+} from '#infra/providers/smtp-email-sender'
+import {
   DEFAULT_ACCESS_TOKEN_TTL_SECONDS,
   DEFAULT_ACCOUNT_DELETE_RATE_LIMIT_MAX_REQUESTS,
   DEFAULT_ACCOUNT_DELETE_RATE_LIMIT_WINDOW_SECONDS,
@@ -35,6 +40,7 @@ import {
   DEFAULT_LOGIN_RATE_LIMIT_MAX_REQUESTS,
   DEFAULT_LOGIN_RATE_LIMIT_WINDOW_SECONDS,
   DEFAULT_OUTBOX_DISPATCH_BATCH_SIZE,
+  DEFAULT_OUTBOX_DISPATCH_LEASE_SECONDS,
   DEFAULT_OUTBOX_DISPATCH_MAX_ATTEMPTS,
   DEFAULT_OUTBOX_MESSAGE_PRUNE_RETENTION_SECONDS,
   DEFAULT_PASSWORD_CHANGE_RATE_LIMIT_MAX_REQUESTS,
@@ -197,6 +203,7 @@ describe('parseEnv', () => {
       MAIL_FROM: DEFAULT_MAIL_FROM,
       OUTBOX_DISPATCH_MAX_ATTEMPTS: DEFAULT_OUTBOX_DISPATCH_MAX_ATTEMPTS,
       OUTBOX_DISPATCH_BATCH_SIZE: DEFAULT_OUTBOX_DISPATCH_BATCH_SIZE,
+      OUTBOX_DISPATCH_LEASE_SECONDS: DEFAULT_OUTBOX_DISPATCH_LEASE_SECONDS,
       OUTBOX_MESSAGE_PRUNE_RETENTION_SECONDS:
         DEFAULT_OUTBOX_MESSAGE_PRUNE_RETENTION_SECONDS,
     })
@@ -507,5 +514,21 @@ describe('MAIL_USER and MAIL_PASSWORD must travel together', () => {
     })
 
     expect(result.success).toBe(true)
+  })
+})
+
+const MILLISECONDS_PER_SECOND = 1000
+
+// The claim on an outbox message has to outlast the longest a single send can
+// stall, or a second run picks the message up and sends it again (decision 40).
+// The two numbers live in different modules, so nothing else keeps them together.
+describe('the outbox claim lease', () => {
+  it('outlasts a stalled SMTP send at the shipped defaults', () => {
+    const stalledSendMs =
+      SMTP_CONNECTION_TIMEOUT_MS + SMTP_GREETING_TIMEOUT_MS + SMTP_SOCKET_TIMEOUT_MS
+
+    expect(
+      DEFAULT_OUTBOX_DISPATCH_LEASE_SECONDS * MILLISECONDS_PER_SECOND,
+    ).toBeGreaterThan(stalledSendMs)
   })
 })

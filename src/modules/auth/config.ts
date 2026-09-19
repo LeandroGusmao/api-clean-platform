@@ -147,14 +147,22 @@ export const DEFAULT_PASSWORD_RESET_TOKEN_PRUNE_RETENTION_SECONDS = 86_400
 
 /**
  * Five attempts before a pending notice gives up and stops being retried
- * (design §3, §8). The interval BETWEEN attempts is whatever the external
- * scheduler invoking `cron.ts` is set to — that already is the backoff
- * (decision 30, §3.1 of the slice 13 design).
+ * (design §3, §8). The interval BETWEEN attempts is the claim lease below: a
+ * message whose send failed keeps its claim, so it is offered again only when
+ * the claim expires (decision 40).
  */
 export const DEFAULT_OUTBOX_DISPATCH_MAX_ATTEMPTS = 5
 
-/** How many pending rows one dispatch run picks up. */
+/** The most messages one dispatch run handles. */
 export const DEFAULT_OUTBOX_DISPATCH_BATCH_SIZE = 100
+
+/**
+ * How long a dispatch run's claim on a message lasts (decision 40). It has to
+ * outlast the longest a single send can stall — the SMTP timeouts bound that —
+ * or a second run picks the message up and sends it again. It is also the wait
+ * between two attempts at a message whose send failed.
+ */
+export const DEFAULT_OUTBOX_DISPATCH_LEASE_SECONDS = 120
 
 /**
  * Seven days, same window as `refresh_tokens`: a dispatched or given-up-on
@@ -385,6 +393,13 @@ export const authEnvSchema = z.object({
     .int()
     .positive()
     .default(DEFAULT_OUTBOX_DISPATCH_BATCH_SIZE),
+  // `.positive()` for the same reason: zero would expire every claim the moment
+  // it is taken, and two runs would send the same message.
+  OUTBOX_DISPATCH_LEASE_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_OUTBOX_DISPATCH_LEASE_SECONDS),
   OUTBOX_MESSAGE_PRUNE_RETENTION_SECONDS: z.coerce
     .number()
     .int()
