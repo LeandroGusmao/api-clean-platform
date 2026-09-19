@@ -6,6 +6,9 @@ import { PersistenceError } from '#infra/database/driver-error'
 import { User } from '#modules/auth/entities/user'
 import { EmailAlreadyInUseError } from '#modules/auth/errors/email-already-in-use-error'
 import { DrizzleUsersRepository } from '#modules/auth/infra/drizzle/drizzle-users-repository'
+import { federatedIdentities } from '#modules/auth/infra/drizzle/schema/federated-identities'
+import { passwordResetTokens } from '#modules/auth/infra/drizzle/schema/password-reset-tokens'
+import { refreshTokens } from '#modules/auth/infra/drizzle/schema/refresh-tokens'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
 import { Email } from '#modules/auth/value-objects/email'
 
@@ -42,6 +45,34 @@ const NEW_PASSWORD_HASH = '$argon2id$v=19$m=65536,t=3,p=4$b3RoZXJzYWx0$newhash'
  */
 const DISTANT_PAST = new Date('2020-01-01T00:00:00.000Z')
 
+const HASH_LENGTH = 64
+const REFRESH_HASH = 'a'.repeat(HASH_LENGTH)
+const RESET_HASH = 'b'.repeat(HASH_LENGTH)
+const FAMILY_ID = '11112222-3333-4444-8555-666677778888'
+const GOOGLE_PROVIDER_NAME = 'google'
+const GOOGLE_SUBJECT = 'google-subject-1234567890'
+const CHILD_EXPIRES_AT = new Date('2026-12-31T12:00:00.000Z')
+
+const NO_ROWS = 0
+const ONE_ROW = 1
+
+/**
+ * Distinct ids per child table and per owner: the three tables have their own
+ * primary keys, and both users get a full set in the isolation test.
+ */
+const CHILD_IDS = {
+  [ID]: {
+    refresh: '44445555-6666-4777-8888-999900001111',
+    federated: '44445555-6666-4777-8888-999900002222',
+    reset: '44445555-6666-4777-8888-999900003333',
+  },
+  [OTHER_ID]: {
+    refresh: '55556666-7777-4888-8999-000011114444',
+    federated: '55556666-7777-4888-8999-000011115555',
+    reset: '55556666-7777-4888-8999-000011116666',
+  },
+} as const
+
 let db: Database
 let pool: Pool
 let repository: DrizzleUsersRepository
@@ -65,6 +96,36 @@ function makeUser(id: string, email: string) {
     email: Email.create(email),
     passwordHash: PASSWORD_HASH,
     now: NOW,
+  })
+}
+
+/** One row in each table that carries a cascading foreign key to `users`. */
+async function storeChildRows(userId: keyof typeof CHILD_IDS) {
+  const ids = CHILD_IDS[userId]
+
+  await db.insert(refreshTokens).values({
+    id: ids.refresh,
+    userId,
+    tokenHash: `${REFRESH_HASH}${ids.refresh}`,
+    familyId: FAMILY_ID,
+    expiresAt: CHILD_EXPIRES_AT,
+    createdAt: NOW,
+  })
+  await db.insert(federatedIdentities).values({
+    id: ids.federated,
+    userId,
+    provider: GOOGLE_PROVIDER_NAME,
+    providerUserId: `${GOOGLE_SUBJECT}-${ids.federated}`,
+    emailAtLink: EMAIL,
+    createdAt: NOW,
+  })
+  await db.insert(passwordResetTokens).values({
+    id: ids.reset,
+    userId,
+    tokenHash: `${RESET_HASH}${ids.reset}`,
+    issuedAt: NOW,
+    expiresAt: CHILD_EXPIRES_AT,
+    createdAt: NOW,
   })
 }
 
@@ -251,5 +312,46 @@ describe('DrizzleUsersRepository.updatePasswordHash', () => {
     const other = await repository.findById(OTHER_ID)
     expect(other?.passwordHash).toBe(PASSWORD_HASH)
     expect(other?.updatedAt).not.toEqual(DISTANT_PAST)
+  })
+})
+
+describe('DrizzleUsersRepository.deleteById', () => {
+  it('removes the row', async () => {
+    await repository.save(makeUser(ID, EMAIL))
+
+    await repository.deleteById(ID)
+
+    expect(await db.select().from(users)).toHaveLength(NO_ROWS)
+  })
+
+  it('takes the refresh tokens, federated identities and reset tokens with it', async () => {
+    // The cascade is declared in the schema; this is what proves Postgres
+    // applies it, rather than trusting the declaration.
+    await repository.save(makeUser(ID, EMAIL))
+    await storeChildRows(ID)
+
+    await repository.deleteById(ID)
+
+    expect(await db.select().from(refreshTokens)).toHaveLength(NO_ROWS)
+    expect(await db.select().from(federatedIdentities)).toHaveLength(NO_ROWS)
+    expect(await db.select().from(passwordResetTokens)).toHaveLength(NO_ROWS)
+  })
+
+  it("never touches another account's rows", async () => {
+    await repository.save(makeUser(ID, EMAIL))
+    await repository.save(makeUser(OTHER_ID, OTHER_EMAIL))
+    await storeChildRows(ID)
+    await storeChildRows(OTHER_ID)
+
+    await repository.deleteById(ID)
+
+    expect(await db.select().from(users)).toHaveLength(ONE_ROW)
+    expect(await db.select().from(refreshTokens)).toHaveLength(ONE_ROW)
+    expect(await db.select().from(federatedIdentities)).toHaveLength(ONE_ROW)
+    expect(await db.select().from(passwordResetTokens)).toHaveLength(ONE_ROW)
+  })
+
+  it('is silent about an id that has no row', async () => {
+    await expect(repository.deleteById(MISSING_USER_ID)).resolves.toBeUndefined()
   })
 })

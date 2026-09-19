@@ -3,6 +3,9 @@ import { EmailAlreadyInUseError } from '#modules/auth/errors/email-already-in-us
 import type { IUsersRepository } from '#modules/auth/repositories/users-repository'
 import type { Email } from '#modules/auth/value-objects/email'
 
+/** `splice` takes a count, and exactly one row carries a given id. */
+const SINGLE_ROW = 1
+
 /**
  * In-memory adapter, for the unit tests of the use cases (decision 09).
  *
@@ -52,5 +55,17 @@ export class InMemoryUsersRepository implements IUsersRepository {
       createdAt: current.createdAt,
       updatedAt,
     })
+  }
+
+  /**
+   * Models NO cascade: the real one is the database's, and it is proved in
+   * `tests/integration/drizzle-users-repository.spec.ts`. A use case spec that
+   * needs a child table emptied asserts on that table's own double.
+   */
+  async deleteById(id: string): Promise<void> {
+    const index = this.users.findIndex((existing) => existing.id === id)
+    if (index < 0) return
+
+    this.users.splice(index, SINGLE_ROW)
   }
 }

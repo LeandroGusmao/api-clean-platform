@@ -108,6 +108,7 @@ beforeEach(() => {
         callLog.push(UPDATE_CALL)
         return usersRepository.updatePasswordHash(id, passwordHash, updatedAt)
       },
+      deleteById: (id) => usersRepository.deleteById(id),
     },
     refreshTokens: {
       save: (token) => {
@@ -153,6 +154,7 @@ beforeEach(() => {
     findById: findByIdSpy,
     updatePasswordHash: (id, passwordHash, updatedAt) =>
       usersRepository.updatePasswordHash(id, passwordHash, updatedAt),
+    deleteById: (id) => usersRepository.deleteById(id),
   }
 
   // Pushes COMMIT only once `work` has resolved — never on a rejection — which

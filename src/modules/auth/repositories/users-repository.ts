@@ -41,4 +41,19 @@ export interface IUsersRepository {
    * belongs to the use case.
    */
   updatePasswordHash(id: string, passwordHash: string, updatedAt: Date): Promise<void>
+
+  /**
+   * Deletes the row. The `onDelete: 'cascade'` foreign keys take
+   * `refresh_tokens`, `federated_identities` and `password_reset_tokens` with
+   * it — which is also what ends every session of a deleted account, with no
+   * revocation step of its own.
+   *
+   * It does NOT reach `pending_registrations`: that table is keyed by email and
+   * carries no foreign key, so the caller sweeps it explicitly.
+   *
+   * Silent about a missing id, like `updatePasswordHash`: the caller has
+   * already loaded the user, and turning a missing row into an error here would
+   * duplicate a decision that belongs to the use case.
+   */
+  deleteById(id: string): Promise<void>
 }

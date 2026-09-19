@@ -12,6 +12,7 @@ export function noopAuthRepos(): AuthRepos {
       findByEmail: async () => null,
       findById: async () => null,
       updatePasswordHash: async () => {},
+      deleteById: async () => {},
     },
     refreshTokens: {
       save: async () => {},

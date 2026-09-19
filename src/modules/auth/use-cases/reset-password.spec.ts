@@ -119,6 +119,7 @@ beforeEach(() => {
         callLog.push(UPDATE_CALL)
         return usersRepository.updatePasswordHash(id, passwordHash, updatedAt)
       },
+      deleteById: (id) => usersRepository.deleteById(id),
     },
     refreshTokens: {
       save: (token) => refreshTokensRepository.save(token),

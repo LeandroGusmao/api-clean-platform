@@ -118,6 +118,7 @@ function trackedRepos(): AuthRepos {
       findById: (id) => usersRepository.findById(id),
       updatePasswordHash: (id, passwordHash, updatedAt) =>
         usersRepository.updatePasswordHash(id, passwordHash, updatedAt),
+      deleteById: (id) => usersRepository.deleteById(id),
     },
     refreshTokens: {
       save: (token) => {
