@@ -31,6 +31,9 @@ const USER_ID = '3f2a1b4c-5d6e-4f70-8192-a3b4c5d6e7f8'
 const EMAIL = 'ana@example.com'
 const SUBJECT = 'google-subject-1234567890'
 const ID_TOKEN = 'the.raw.id-token'
+const DEVICE = { ip: '203.0.113.7', label: 'Chrome on Android' } as const
+const OTHER_DEVICE_IP = '198.51.100.42'
+const OTHER_DEVICE_LABEL = 'Firefox on Windows'
 const APP_PASSWORD = 'sup3r-s3cr3t!'
 const STORED_HASH = 'hashed:sup3r-s3cr3t!'
 const DUMMY_HASH = 'hashed:dummy'
@@ -149,6 +152,9 @@ const existingSessionFor = (userId: string) =>
     familyId: 'existing-family',
     now: CREATED_AT,
     ttlSeconds: REFRESH_TTL_SECONDS,
+    ip: OTHER_DEVICE_IP,
+    deviceLabel: OTHER_DEVICE_LABEL,
+    sessionStartedAt: CREATED_AT,
   })
 
 beforeEach(() => {
@@ -206,18 +212,30 @@ describe('SignInWithGoogleUseCase — already linked (fast path)', () => {
     storePasswordUser()
     await federatedIdentitiesRepository.save(linkFor(USER_ID))
 
-    const result = await useCase.execute({ idToken: ID_TOKEN })
+    const result = await useCase.execute({ idToken: ID_TOKEN, device: DEVICE })
 
     expect(result).toEqual({ accessToken: ACCESS_TOKEN, refreshToken: OPAQUE_TOKEN })
     expect(refreshTokensRepository.tokens).toHaveLength(1)
     expect(callLog).toEqual([VERIFY])
     expect(uowSpy).not.toHaveBeenCalled()
   })
+
+  it('records the device context on the session it opens', async () => {
+    storePasswordUser()
+    await federatedIdentitiesRepository.save(linkFor(USER_ID))
+
+    await useCase.execute({ idToken: ID_TOKEN, device: DEVICE })
+
+    const [stored] = refreshTokensRepository.tokens
+    expect(stored?.ip).toBe(DEVICE.ip)
+    expect(stored?.deviceLabel).toBe(DEVICE.label)
+    expect(stored?.sessionStartedAt).toEqual(NOW)
+  })
 })
 
 describe('SignInWithGoogleUseCase — new email', () => {
   it('creates a verified passwordless account, links it, clears pendings, issues a session — all in one uow', async () => {
-    const result = await useCase.execute({ idToken: ID_TOKEN })
+    const result = await useCase.execute({ idToken: ID_TOKEN, device: DEVICE })
 
     expect(result.accessToken).toBe(ACCESS_TOKEN)
     const [created] = usersRepository.users
@@ -231,8 +249,17 @@ describe('SignInWithGoogleUseCase — new email', () => {
     expect(callLog).toEqual([VERIFY, UOW, COMMIT])
   })
 
+  it('records the device context on the session it opens', async () => {
+    await useCase.execute({ idToken: ID_TOKEN, device: DEVICE })
+
+    const [stored] = refreshTokensRepository.tokens
+    expect(stored?.ip).toBe(DEVICE.ip)
+    expect(stored?.deviceLabel).toBe(DEVICE.label)
+    expect(stored?.sessionStartedAt).toEqual(NOW)
+  })
+
   it('reads the clock once — the user, its verification and the link share one instant', async () => {
-    await useCase.execute({ idToken: ID_TOKEN })
+    await useCase.execute({ idToken: ID_TOKEN, device: DEVICE })
 
     const [created] = usersRepository.users
     expect(created?.createdAt).toEqual(NOW)
@@ -244,9 +271,9 @@ describe('SignInWithGoogleUseCase — email has a password account', () => {
   it('refuses without a password, writing nothing', async () => {
     storePasswordUser()
 
-    await expect(useCase.execute({ idToken: ID_TOKEN })).rejects.toBeInstanceOf(
-      GoogleLinkRequiresPasswordError,
-    )
+    await expect(
+      useCase.execute({ idToken: ID_TOKEN, device: DEVICE }),
+    ).rejects.toBeInstanceOf(GoogleLinkRequiresPasswordError)
     expect(federatedIdentitiesRepository.rows).toHaveLength(0)
     expect(refreshTokensRepository.tokens).toHaveLength(0)
     expect(uowSpy).not.toHaveBeenCalled()
@@ -257,10 +284,21 @@ describe('SignInWithGoogleUseCase — email has a password account', () => {
     compareResult = false
 
     await expect(
-      useCase.execute({ idToken: ID_TOKEN, password: 'wrong' }),
+      useCase.execute({ idToken: ID_TOKEN, password: 'wrong', device: DEVICE }),
     ).rejects.toBeInstanceOf(InvalidCredentialsError)
     expect(callLog).toEqual([VERIFY, COMPARE])
     expect(uowSpy).not.toHaveBeenCalled()
+  })
+
+  it('records the device context on the session it opens', async () => {
+    storePasswordUser()
+
+    await useCase.execute({ idToken: ID_TOKEN, password: APP_PASSWORD, device: DEVICE })
+
+    const [stored] = refreshTokensRepository.tokens
+    expect(stored?.ip).toBe(DEVICE.ip)
+    expect(stored?.deviceLabel).toBe(DEVICE.label)
+    expect(stored?.sessionStartedAt).toEqual(NOW)
   })
 
   it('revokes every other session before issuing the fresh one', async () => {
@@ -268,7 +306,7 @@ describe('SignInWithGoogleUseCase — email has a password account', () => {
     const stolenSession = existingSessionFor(USER_ID)
     await refreshTokensRepository.save(stolenSession)
 
-    await useCase.execute({ idToken: ID_TOKEN, password: APP_PASSWORD })
+    await useCase.execute({ idToken: ID_TOKEN, password: APP_PASSWORD, device: DEVICE })
 
     const stored = refreshTokensRepository.tokens
     expect(stored.find((each) => each.id === stolenSession.id)?.revokedAt).toEqual(NOW)
@@ -279,7 +317,11 @@ describe('SignInWithGoogleUseCase — email has a password account', () => {
   it('links on the right password: identity + refresh token + outbox row in one uow, before the commit', async () => {
     storePasswordUser()
 
-    const result = await useCase.execute({ idToken: ID_TOKEN, password: APP_PASSWORD })
+    const result = await useCase.execute({
+      idToken: ID_TOKEN,
+      password: APP_PASSWORD,
+      device: DEVICE,
+    })
 
     expect(result).toEqual({ accessToken: ACCESS_TOKEN, refreshToken: OPAQUE_TOKEN })
     expect(federatedIdentitiesRepository.rows).toHaveLength(1)
@@ -297,9 +339,9 @@ describe('SignInWithGoogleUseCase — federated-only account with a mismatched s
   it('fails with GoogleSignInConflictError, writing nothing', async () => {
     storeFederatedUser() // no federated_identities row for SUBJECT
 
-    await expect(useCase.execute({ idToken: ID_TOKEN })).rejects.toBeInstanceOf(
-      GoogleSignInConflictError,
-    )
+    await expect(
+      useCase.execute({ idToken: ID_TOKEN, device: DEVICE }),
+    ).rejects.toBeInstanceOf(GoogleSignInConflictError)
     expect(federatedIdentitiesRepository.rows).toHaveLength(0)
     expect(uowSpy).not.toHaveBeenCalled()
   })
@@ -311,9 +353,9 @@ describe('SignInWithGoogleUseCase — bad identity', () => {
       throw new InvalidGoogleIdentityError()
     }
 
-    await expect(useCase.execute({ idToken: ID_TOKEN })).rejects.toBeInstanceOf(
-      InvalidGoogleIdentityError,
-    )
+    await expect(
+      useCase.execute({ idToken: ID_TOKEN, device: DEVICE }),
+    ).rejects.toBeInstanceOf(InvalidGoogleIdentityError)
     expect(usersRepository.users).toHaveLength(0)
     expect(uowSpy).not.toHaveBeenCalled()
   })

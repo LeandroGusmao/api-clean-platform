@@ -46,6 +46,10 @@ const ONE_HOUR_MS = 60 * 60 * 1000
 const PRUNED_ONE = 1
 const KEPT_ONE = 1
 
+const IP = '203.0.113.7'
+const DEVICE_LABEL = 'Chrome on Android'
+const SESSION_STARTED_AT = new Date('2026-08-01T09:00:00.000Z')
+
 let db: Database
 let pool: Pool
 let uow: IAuthUnitOfWork
@@ -87,6 +91,9 @@ const token = (familyId: string, hash: string, id: string = nextId()) =>
     familyId,
     now: NOW,
     ttlSeconds: TTL_SECONDS,
+    ip: IP,
+    deviceLabel: DEVICE_LABEL,
+    sessionStartedAt: SESSION_STARTED_AT,
   })
 
 describe('DrizzleRefreshTokensRepository', () => {
@@ -280,6 +287,9 @@ describe('DrizzleRefreshTokensRepository', () => {
       revokedAt: null,
       replacedBy: null,
       createdAt: NOW,
+      ip: IP,
+      deviceLabel: DEVICE_LABEL,
+      sessionStartedAt: SESSION_STARTED_AT,
     })
     await uow(({ refreshTokens: repo }) => repo.save(expired))
 
@@ -309,6 +319,9 @@ describe('DrizzleRefreshTokensRepository', () => {
           familyId: FAMILY_B,
           now: NOW,
           ttlSeconds: TTL_SECONDS,
+          ip: IP,
+          deviceLabel: DEVICE_LABEL,
+          sessionStartedAt: SESSION_STARTED_AT,
         }),
       )
     })
@@ -332,6 +345,9 @@ describe('DrizzleRefreshTokensRepository', () => {
       revokedAt: null,
       replacedBy: null,
       createdAt: new Date(cutoff.getTime() - ONE_HOUR_MS),
+      ip: IP,
+      deviceLabel: DEVICE_LABEL,
+      sessionStartedAt: SESSION_STARTED_AT,
     })
     // Expired, but still inside the retention window — must survive.
     const alive = RefreshToken.fromTrusted({
@@ -343,6 +359,9 @@ describe('DrizzleRefreshTokensRepository', () => {
       revokedAt: null,
       replacedBy: null,
       createdAt: new Date(cutoff.getTime() + ONE_HOUR_MS),
+      ip: IP,
+      deviceLabel: DEVICE_LABEL,
+      sessionStartedAt: SESSION_STARTED_AT,
     })
 
     const deleted = await uow(async ({ refreshTokens: repo }) => {

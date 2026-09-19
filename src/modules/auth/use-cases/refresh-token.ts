@@ -1,3 +1,4 @@
+import type { RefreshToken } from '#modules/auth/entities/refresh-token'
 import { InvalidRefreshTokenError } from '#modules/auth/errors/invalid-refresh-token-error'
 import { RefreshTokenReusedError } from '#modules/auth/errors/refresh-token-reused-error'
 import type { ITokenSigner } from '#modules/auth/ports/token-signer'
@@ -5,14 +6,35 @@ import type { IRefreshTokensRepository } from '#modules/auth/repositories/refres
 import type { IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
 import type {
   IssuedRefreshToken,
+  IssuedSessionContext,
   RefreshTokenIssuer,
 } from '#modules/auth/services/refresh-token-issuer'
 import type { IClock } from '#shared/ports/clock'
 import type { ITokenDigest } from '#shared/ports/token-digest'
 
+/**
+ * The address follows the client, so it comes from this request; the label
+ * names the device and the start names the family, so both ride along from the
+ * row being replaced. A row older than the columns adopts its own `createdAt`:
+ * later than the true start, but stable from then on.
+ */
+function inherit(current: RefreshToken, ip: string | null): IssuedSessionContext {
+  return {
+    ip,
+    deviceLabel: current.deviceLabel,
+    sessionStartedAt: current.sessionStartedAt ?? current.createdAt,
+  }
+}
+
 /** Raw, untrusted input. */
 export interface RefreshTokenCommand {
   refreshToken: string
+  /**
+   * Resolved at the edge by `buildDeviceContext`. Only the address: the label
+   * and the session start name the FAMILY, so they come from the row being
+   * replaced, not from this request.
+   */
+  ip: string | null
 }
 
 export interface RefreshTokenResult {
@@ -120,6 +142,7 @@ export class RefreshTokenUseCase {
             current.userId,
             current.familyId,
             now,
+            inherit(current, command.ip),
           ),
         }
       }
@@ -131,6 +154,7 @@ export class RefreshTokenUseCase {
         current.userId,
         current.familyId,
         now,
+        inherit(current, command.ip),
       )
       await refreshTokens.markRotated(current.id, next.entity.id, now)
 
@@ -161,8 +185,9 @@ export class RefreshTokenUseCase {
     userId: string,
     familyId: string,
     now: Date,
+    context: IssuedSessionContext,
   ): Promise<IssuedRefreshToken> {
-    const issued = this.issuer.issue(userId, familyId, now)
+    const issued = this.issuer.issue(userId, familyId, now, context)
     await refreshTokens.save(issued.entity)
 
     return issued

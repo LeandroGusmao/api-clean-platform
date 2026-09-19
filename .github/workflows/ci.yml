@@ -104,6 +104,12 @@ jobs:
           # Any non-empty value lets the process start; this step never
           # exchanges a real Google ID token.
           GOOGLE_CLIENT_ID: a-ci-google-client-id.apps.googleusercontent.com
+          # Required with no default, and deliberately so: a shared default
+          # would stamp two deployments alike and let one accept the other's
+          # tokens (decision 38). This step never verifies a token, so any
+          # non-empty pair boots.
+          JWT_ISSUER: api-clean-platform-ci
+          JWT_AUDIENCE: api-clean-platform-ci
           # Required in production by env.ts, so the process refuses to boot
           # without them. Unroutable on purpose: this step only proves the
           # binary boots and answers /health, and never sends — the pooled

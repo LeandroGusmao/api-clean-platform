@@ -37,6 +37,11 @@ const REFRESH_COOKIE_PATH = '/auth'
 const STRICT_SAME_SITE = 'Strict'
 const NO_COOKIES = 0
 
+const CHROME_ON_ANDROID_USER_AGENT =
+  'Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like ' +
+  'Gecko) Chrome/125.0.0.0 Mobile Safari/537.36'
+const CHROME_ON_ANDROID_LABEL = 'Chrome on Android'
+
 const ROW_MISSING_MESSAGE = 'no user row was stored'
 
 const TOO_MANY_REQUESTS_STATUS_CODE = 429
@@ -93,6 +98,14 @@ beforeEach(async () => {
 const login = (payload: object) =>
   app.inject({ method: POST_METHOD, url: LOGIN_PATH, payload })
 
+const loginFrom = (payload: object, userAgent: string) =>
+  app.inject({
+    method: POST_METHOD,
+    url: LOGIN_PATH,
+    payload,
+    headers: { 'user-agent': userAgent },
+  })
+
 describe('POST /auth/login', () => {
   it('answers 200 with both tokens for valid credentials', async () => {
     const response = await login({ email: EMAIL, password: PASSWORD })
@@ -112,6 +125,16 @@ describe('POST /auth/login', () => {
 
     expect(stored?.tokenHash).not.toBe(response.json().refreshToken)
     expect(response.body).not.toContain(stored?.tokenHash)
+  })
+
+  it('stores the device context of the request that logged in', async () => {
+    await loginFrom({ email: EMAIL, password: PASSWORD }, CHROME_ON_ANDROID_USER_AGENT)
+
+    const [stored] = await db.select().from(refreshTokens)
+
+    expect(stored?.deviceLabel).toBe(CHROME_ON_ANDROID_LABEL)
+    expect(stored?.ip).not.toBeNull()
+    expect(stored?.sessionStartedAt).not.toBeNull()
   })
 
   it('matches the email case-insensitively', async () => {

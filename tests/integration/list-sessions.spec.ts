@@ -47,11 +47,12 @@ beforeEach(async () => {
   await arrangeAccount(db, { email: EMAIL, password: PASSWORD })
 })
 
-const login = () =>
+const login = (userAgent?: string) =>
   app.inject({
     method: POST_METHOD,
     url: LOGIN_PATH,
     payload: { email: EMAIL, password: PASSWORD },
+    ...(userAgent === undefined ? {} : { headers: { 'user-agent': userAgent } }),
   })
 
 const logout = (refreshToken: string) =>
@@ -63,6 +64,11 @@ const listSessions = (authorization?: string) =>
     url: SESSIONS_PATH,
     ...(authorization === undefined ? {} : { headers: { authorization } }),
   })
+
+const CHROME_ON_ANDROID_USER_AGENT =
+  'Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like ' +
+  'Gecko) Chrome/125.0.0.0 Mobile Safari/537.36'
+const CHROME_ON_ANDROID_LABEL = 'Chrome on Android'
 
 describe('GET /auth/sessions', () => {
   it('shows exactly one session after a fresh login', async () => {
@@ -76,6 +82,19 @@ describe('GET /auth/sessions', () => {
       id: expect.stringMatching(/^[0-9a-f-]{36}$/),
       createdAt: expect.stringMatching(ISO_DATE_PATTERN),
       expiresAt: expect.stringMatching(ISO_DATE_PATTERN),
+      ip: expect.any(String),
+      deviceLabel: expect.any(String),
+      startedAt: expect.stringMatching(ISO_DATE_PATTERN),
+    })
+  })
+
+  it('describes the session well enough for the owner to recognise it', async () => {
+    const { accessToken } = (await login(CHROME_ON_ANDROID_USER_AGENT)).json()
+
+    const response = await listSessions(`Bearer ${accessToken}`)
+
+    expect(response.json()[0]).toMatchObject({
+      deviceLabel: CHROME_ON_ANDROID_LABEL,
     })
   })
 

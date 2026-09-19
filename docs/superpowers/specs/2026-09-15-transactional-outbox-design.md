@@ -365,6 +365,9 @@ outras tabelas/jobs não foram tocados.
 
 - **Duplicidade em corrida entre execuções concorrentes do dispatch job** (§7).
   Inofensivo para avisos sem segredo.
+  **Deixou de ser só custo aceito em 2026-09-19:** virou o item #2 de
+  "Pendências do boilerplate" no [`TODO.md`](../../TODO.md), porque atinge todo
+  app derivado e estava registrado apenas aqui.
 - **`DELETE` sem batching na poda**, mesmo custo aceito da fatia 13 — volume de
   boilerplate não justifica `LIMIT` em laço agora.
 - **Sem lock de instância** no dispatch nem na poda — mesmo raciocínio da

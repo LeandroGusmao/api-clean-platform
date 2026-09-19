@@ -1,6 +1,10 @@
 import type { FastifyRequest } from 'fastify'
 import { describe, expect, it } from 'vitest'
-import { clientIpKey, UNPARSEABLE_CLIENT_IP_KEY } from '#infra/http/client-ip'
+import {
+  clientIpKey,
+  parsedClientIp,
+  UNPARSEABLE_CLIENT_IP_KEY,
+} from '#infra/http/client-ip'
 
 /** Only `ip` is read, so a literal stands in for the request — no server, no I/O. */
 const requestWithIp = (ip: string) => ({ ip }) as FastifyRequest
@@ -55,5 +59,22 @@ describe('clientIpKey', () => {
     expect(clientIpKey(requestWithIp(LONG_FORGED_IP)).length).toBeLessThanOrEqual(
       MAX_ADDRESS_LENGTH,
     )
+  })
+})
+
+describe('parsedClientIp', () => {
+  it('normalises a usable address exactly as the key generator does', () => {
+    // The two share one validation on purpose: an address that counts against
+    // the rate limit and an address stored on a session must not disagree.
+    expect(parsedClientIp(requestWithIp('2001:DB8:0:1::5'))).toBe(
+      clientIpKey(requestWithIp('2001:DB8:0:1::5')),
+    )
+  })
+
+  it.each(FORGED_IPS)('reports %s as no address at all', (_label, forged) => {
+    // Where the key generator returns the shared bucket, this returns null:
+    // "one bucket" is a rate-limit meaning, and it does not survive being
+    // written to a column and rendered back to an account owner.
+    expect(parsedClientIp(requestWithIp(forged))).toBeNull()
   })
 })

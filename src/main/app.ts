@@ -5,6 +5,7 @@ import { createDatabase } from '#infra/database/client'
 import { makeAuthGuard } from '#infra/http/auth-guard'
 import { registerCors } from '#infra/http/cors'
 import { healthRoute } from '#infra/http/endpoints/health'
+import { registerHelmet } from '#infra/http/helmet'
 import { registerOpenApi } from '#infra/http/openapi'
 import { registerRateLimit } from '#infra/http/rate-limit'
 import { type BuildServerOptions, buildServer } from '#infra/http/server'
@@ -47,6 +48,8 @@ export async function buildApp(
   // Before the rate limiter, so a preflight `OPTIONS` is answered by the CORS
   // plugin's own route rather than counting against the per-address ceiling.
   await registerCors(app)
+
+  await registerHelmet(app)
 
   // Before any route, because the ceiling has to cover everything registered
   // after it. It counts requests and not failed logins — that half is the

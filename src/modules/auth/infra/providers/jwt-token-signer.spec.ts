@@ -1,4 +1,4 @@
-import { SignJWT } from 'jose'
+import { jwtVerify, SignJWT } from 'jose'
 import { describe, expect, it } from 'vitest'
 import type { AuthConfig } from '#modules/auth/config'
 import { JwtTokenSigner } from '#modules/auth/infra/providers/jwt-token-signer'
@@ -6,9 +6,16 @@ import type { IClock } from '#shared/ports/clock'
 
 const SECRET = 'a-test-secret-with-at-least-32-chars'
 const OTHER_SECRET = 'a-different-secret-with-32-chars-ok'
+const ALGORITHM = 'HS256'
 const OTHER_ALGORITHM = 'HS512'
+/** Long enough that expiry never decides one of these cases. */
+const FOREIGN_TOKEN_LIFETIME = '1h'
 const TTL_SECONDS = 3600
 const USER_ID = '3f2a1b4c-5d6e-4f70-8192-a3b4c5d6e7f8'
+const ISSUER = 'api-clean-platform'
+const AUDIENCE = 'api-clean-platform'
+const OTHER_ISSUER = 'another-system'
+const OTHER_AUDIENCE = 'another-audience'
 const FIXED_NOW = new Date('2026-08-27T12:00:00.000Z')
 const MILLISECONDS_PER_SECOND = 1000
 
@@ -31,8 +38,30 @@ function makeClock(start: Date) {
 
 function makeConfig(
   secret = SECRET,
-): Pick<AuthConfig, 'JWT_SECRET' | 'ACCESS_TOKEN_TTL_SECONDS'> {
-  return { JWT_SECRET: secret, ACCESS_TOKEN_TTL_SECONDS: TTL_SECONDS }
+): Pick<
+  AuthConfig,
+  'JWT_SECRET' | 'ACCESS_TOKEN_TTL_SECONDS' | 'JWT_ISSUER' | 'JWT_AUDIENCE'
+> {
+  return {
+    JWT_SECRET: secret,
+    ACCESS_TOKEN_TTL_SECONDS: TTL_SECONDS,
+    JWT_ISSUER: ISSUER,
+    JWT_AUDIENCE: AUDIENCE,
+  }
+}
+
+/** A token this system did not mint, shaped exactly like one it would. */
+const foreignToken = (issuer: string | undefined, audience: string | undefined) => {
+  let builder = new SignJWT({})
+    .setProtectedHeader({ alg: ALGORITHM })
+    .setSubject(USER_ID)
+    .setIssuedAt()
+    .setExpirationTime(FOREIGN_TOKEN_LIFETIME)
+
+  if (issuer !== undefined) builder = builder.setIssuer(issuer)
+  if (audience !== undefined) builder = builder.setAudience(audience)
+
+  return builder.sign(new TextEncoder().encode(SECRET))
 }
 
 describe('JwtTokenSigner', () => {
@@ -101,5 +130,51 @@ describe('JwtTokenSigner', () => {
     const signer = new JwtTokenSigner(makeConfig(), clock)
 
     await expect(signer.verify('not-a-jwt')).rejects.toThrow()
+  })
+})
+
+describe('JwtTokenSigner issuer and audience', () => {
+  it('stamps the configured issuer and audience', async () => {
+    const { clock } = makeClock(FIXED_NOW)
+    const signer = new JwtTokenSigner(makeConfig(), clock)
+
+    const token = await signer.sign({ sub: USER_ID })
+
+    // The same instant the signer used: the fixture clock is in the past, so
+    // jose's own wall clock would read this token as expired.
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(SECRET), {
+      currentDate: FIXED_NOW,
+    })
+    expect(payload.iss).toBe(ISSUER)
+    expect(payload.aud).toBe(AUDIENCE)
+  })
+
+  it('rejects a token minted by another issuer', async () => {
+    const { clock } = makeClock(FIXED_NOW)
+    const signer = new JwtTokenSigner(makeConfig(), clock)
+
+    await expect(
+      signer.verify(await foreignToken(OTHER_ISSUER, AUDIENCE)),
+    ).rejects.toThrow()
+  })
+
+  it('rejects a token minted for another audience', async () => {
+    const { clock } = makeClock(FIXED_NOW)
+    const signer = new JwtTokenSigner(makeConfig(), clock)
+
+    await expect(
+      signer.verify(await foreignToken(ISSUER, OTHER_AUDIENCE)),
+    ).rejects.toThrow()
+  })
+
+  it('rejects a token carrying neither claim', async () => {
+    // The shape every token had before this was required: same secret, same
+    // algorithm, no claims. It must stop verifying.
+    const { clock } = makeClock(FIXED_NOW)
+    const signer = new JwtTokenSigner(makeConfig(), clock)
+
+    await expect(
+      signer.verify(await foreignToken(undefined, undefined)),
+    ).rejects.toThrow()
   })
 })

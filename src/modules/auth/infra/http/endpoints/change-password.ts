@@ -2,6 +2,7 @@ import type { FastifyPluginAsync, preHandlerHookHandler } from 'fastify'
 import type { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { getPrincipal } from '#infra/http/auth-guard'
+import { buildDeviceContext } from '#infra/http/device-context'
 import { errorResponseSchema } from '#infra/http/errors/error-response'
 import { BEARER_SECURITY_SCHEME } from '#infra/http/openapi'
 import type { AuthContainer } from '#modules/auth/container'
@@ -117,6 +118,7 @@ export const changePasswordRoute: FastifyPluginAsync<{
         userId: getPrincipal(request).id,
         currentPassword: request.body.currentPassword,
         newPassword: request.body.newPassword,
+        device: buildDeviceContext(request),
       })
 
       if (request.body.refreshTransport === REFRESH_TRANSPORT_COOKIE) {

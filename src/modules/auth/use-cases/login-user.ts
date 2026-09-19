@@ -4,7 +4,10 @@ import type { IHashProvider } from '#modules/auth/ports/hash-provider'
 import type { ITokenSigner } from '#modules/auth/ports/token-signer'
 import type { IRefreshTokensRepository } from '#modules/auth/repositories/refresh-tokens-repository'
 import type { IUsersRepository } from '#modules/auth/repositories/users-repository'
-import type { RefreshTokenIssuer } from '#modules/auth/services/refresh-token-issuer'
+import type {
+  RefreshTokenIssuer,
+  SessionDevice,
+} from '#modules/auth/services/refresh-token-issuer'
 import { Email } from '#modules/auth/value-objects/email'
 import type { IClock } from '#shared/ports/clock'
 
@@ -12,6 +15,8 @@ import type { IClock } from '#shared/ports/clock'
 export interface LoginUserCommand {
   email: string
   password: string
+  /** Resolved at the edge by `buildDeviceContext`. */
+  device: SessionDevice
 }
 
 export interface LoginUserResult {
@@ -79,10 +84,17 @@ export class LoginUserUseCase {
 
     // A fresh family per login: each device owns its chain, so logging out on
     // the phone leaves the tablet signed in.
+    const now = this.clock.now()
     const issued = this.refreshTokenIssuer.issue(
       user.id,
       this.refreshTokenIssuer.newFamilyId(),
-      this.clock.now(),
+      now,
+      {
+        ip: command.device.ip,
+        deviceLabel: command.device.label,
+        // The family is being born, so this login IS the start.
+        sessionStartedAt: now,
+      },
     )
 
     await this.refreshTokensRepository.save(issued.entity)

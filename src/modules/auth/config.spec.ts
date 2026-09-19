@@ -21,7 +21,14 @@ const VALID_SECRET = 'a-test-secret-with-at-least-32-chars'
 const TOO_SHORT_SECRET = 'a'.repeat(31)
 const VALID_GOOGLE_CLIENT_ID = 'client.apps.googleusercontent.com'
 /** The two required, no-default fields — spread into every otherwise-minimal env. */
-const MINIMAL_ENV = { JWT_SECRET: VALID_SECRET, GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID }
+const VALID_ISSUER = 'api-clean-platform'
+const VALID_AUDIENCE = 'api-clean-platform'
+const MINIMAL_ENV = {
+  JWT_SECRET: VALID_SECRET,
+  GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
+  JWT_ISSUER: VALID_ISSUER,
+  JWT_AUDIENCE: VALID_AUDIENCE,
+}
 
 describe('authEnvSchema', () => {
   it('rejects a secret shorter than 32 characters', () => {

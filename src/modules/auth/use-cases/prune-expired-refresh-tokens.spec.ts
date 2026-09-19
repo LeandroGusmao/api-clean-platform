@@ -14,6 +14,9 @@ const FAMILY_ID = '11112222-3333-4444-8555-666677778888'
 const PRUNED_TWO = 2
 const KEPT_ONE = 1
 const NONE = 0
+const IP = '203.0.113.7'
+const DEVICE_LABEL = 'Chrome on Android'
+const SESSION_STARTED_AT = new Date('2026-08-01T09:00:00.000Z')
 
 const at = (id: string, expiresAt: Date) =>
   RefreshToken.fromTrusted({
@@ -25,6 +28,9 @@ const at = (id: string, expiresAt: Date) =>
     revokedAt: null,
     replacedBy: null,
     createdAt: expiresAt,
+    ip: IP,
+    deviceLabel: DEVICE_LABEL,
+    sessionStartedAt: SESSION_STARTED_AT,
   })
 
 let repository: InMemoryRefreshTokensRepository

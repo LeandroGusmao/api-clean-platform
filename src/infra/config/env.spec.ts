@@ -55,12 +55,16 @@ import {
 const VALID_DATABASE_URL = 'postgres://user:pass@localhost:5432/app'
 const VALID_JWT_SECRET = 'a-test-secret-with-at-least-32-chars'
 const VALID_GOOGLE_CLIENT_ID = 'client.apps.googleusercontent.com'
+const VALID_JWT_ISSUER = 'api-clean-platform'
+const VALID_JWT_AUDIENCE = 'api-clean-platform'
 
 describe('parseEnv', () => {
   it('rejects an empty PORT instead of coercing it to zero', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      JWT_ISSUER: VALID_JWT_ISSUER,
+      JWT_AUDIENCE: VALID_JWT_AUDIENCE,
       GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       PORT: '',
     })
@@ -82,10 +86,27 @@ describe('parseEnv', () => {
     expect(result.success).toBe(false)
   })
 
+  it.each(['JWT_ISSUER', 'JWT_AUDIENCE'])('rejects a missing %s', (missing) => {
+    // No default on purpose: a shared one would stamp two deployments alike,
+    // and a token from one would keep verifying in the other.
+    const complete: Record<string, string> = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      JWT_SECRET: VALID_JWT_SECRET,
+      GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
+      JWT_ISSUER: VALID_JWT_ISSUER,
+      JWT_AUDIENCE: VALID_JWT_AUDIENCE,
+    }
+    delete complete[missing]
+
+    expect(parseEnv(complete).success).toBe(false)
+  })
+
   it('applies defaults when only the required variables are provided', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      JWT_ISSUER: VALID_JWT_ISSUER,
+      JWT_AUDIENCE: VALID_JWT_AUDIENCE,
       GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
     })
 
@@ -98,6 +119,8 @@ describe('parseEnv', () => {
       LOG_LEVEL: DEFAULT_LOG_LEVEL,
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      JWT_ISSUER: VALID_JWT_ISSUER,
+      JWT_AUDIENCE: VALID_JWT_AUDIENCE,
       GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       GOOGLE_JWKS_URI: DEFAULT_GOOGLE_JWKS_URI,
       GOOGLE_SIGN_IN_RATE_LIMIT_MAX_REQUESTS:
@@ -176,6 +199,8 @@ describe('parseEnv', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      JWT_ISSUER: VALID_JWT_ISSUER,
+      JWT_AUDIENCE: VALID_JWT_AUDIENCE,
       GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       DATABASE_STATEMENT_TIMEOUT_MS: '',
     })
@@ -191,6 +216,8 @@ describe('parseEnv', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      JWT_ISSUER: VALID_JWT_ISSUER,
+      JWT_AUDIENCE: VALID_JWT_AUDIENCE,
       GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       DATABASE_STATEMENT_TIMEOUT_MS: '0',
     })
@@ -203,6 +230,8 @@ describe('parseEnv', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      JWT_ISSUER: VALID_JWT_ISSUER,
+      JWT_AUDIENCE: VALID_JWT_AUDIENCE,
       GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       DATABASE_LOCK_TIMEOUT_MS: '-1',
     })
@@ -217,6 +246,8 @@ describe('parseEnv', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      JWT_ISSUER: VALID_JWT_ISSUER,
+      JWT_AUDIENCE: VALID_JWT_AUDIENCE,
       GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       DATABASE_POOL_MAX: '0',
     })
@@ -231,6 +262,8 @@ describe('parseEnv', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      JWT_ISSUER: VALID_JWT_ISSUER,
+      JWT_AUDIENCE: VALID_JWT_AUDIENCE,
       GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       TRUST_PROXY: 'true',
     })
@@ -245,6 +278,8 @@ describe('parseEnv', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      JWT_ISSUER: VALID_JWT_ISSUER,
+      JWT_AUDIENCE: VALID_JWT_AUDIENCE,
       GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       TRUST_PROXY: '1',
     })
@@ -261,6 +296,8 @@ describe('parseEnv', () => {
       const result = parseEnv({
         DATABASE_URL: VALID_DATABASE_URL,
         JWT_SECRET: VALID_JWT_SECRET,
+        JWT_ISSUER: VALID_JWT_ISSUER,
+        JWT_AUDIENCE: VALID_JWT_AUDIENCE,
         GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
         ...(value === undefined ? {} : { TRUST_PROXY: value }),
       })
@@ -274,6 +311,8 @@ describe('parseEnv', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      JWT_ISSUER: VALID_JWT_ISSUER,
+      JWT_AUDIENCE: VALID_JWT_AUDIENCE,
       GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       TRUST_PROXY: ' 10.0.0.0/8,loopback ',
     })
@@ -303,6 +342,8 @@ describe('mail configuration in production', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      JWT_ISSUER: VALID_JWT_ISSUER,
+      JWT_AUDIENCE: VALID_JWT_AUDIENCE,
       GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       NODE_ENV: NODE_ENV_PRODUCTION,
     })
@@ -314,6 +355,8 @@ describe('mail configuration in production', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      JWT_ISSUER: VALID_JWT_ISSUER,
+      JWT_AUDIENCE: VALID_JWT_AUDIENCE,
       GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       NODE_ENV: NODE_ENV_PRODUCTION,
       MAIL_HOST: VALID_PRODUCTION_MAIL_HOST,
@@ -329,6 +372,8 @@ describe('mail configuration in production', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      JWT_ISSUER: VALID_JWT_ISSUER,
+      JWT_AUDIENCE: VALID_JWT_AUDIENCE,
       GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       NODE_ENV: NODE_ENV_PRODUCTION,
       MAIL_HOST: VALID_PRODUCTION_MAIL_HOST,
@@ -353,6 +398,8 @@ describe('MAIL_USER and MAIL_PASSWORD must travel together', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      JWT_ISSUER: VALID_JWT_ISSUER,
+      JWT_AUDIENCE: VALID_JWT_AUDIENCE,
       GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       MAIL_USER: MAIL_USER_VALUE,
     })
@@ -364,6 +411,8 @@ describe('MAIL_USER and MAIL_PASSWORD must travel together', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      JWT_ISSUER: VALID_JWT_ISSUER,
+      JWT_AUDIENCE: VALID_JWT_AUDIENCE,
       GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       MAIL_PASSWORD: MAIL_PASSWORD_VALUE,
     })
@@ -375,6 +424,8 @@ describe('MAIL_USER and MAIL_PASSWORD must travel together', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      JWT_ISSUER: VALID_JWT_ISSUER,
+      JWT_AUDIENCE: VALID_JWT_AUDIENCE,
       GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
       MAIL_USER: MAIL_USER_VALUE,
       MAIL_PASSWORD: MAIL_PASSWORD_VALUE,
@@ -387,6 +438,8 @@ describe('MAIL_USER and MAIL_PASSWORD must travel together', () => {
     const result = parseEnv({
       DATABASE_URL: VALID_DATABASE_URL,
       JWT_SECRET: VALID_JWT_SECRET,
+      JWT_ISSUER: VALID_JWT_ISSUER,
+      JWT_AUDIENCE: VALID_JWT_AUDIENCE,
       GOOGLE_CLIENT_ID: VALID_GOOGLE_CLIENT_ID,
     })
 

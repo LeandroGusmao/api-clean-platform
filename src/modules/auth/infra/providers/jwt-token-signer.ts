@@ -18,6 +18,8 @@ export class JwtTokenSigner implements ITokenSigner {
   readonly #secret: Uint8Array
   readonly #ttlSeconds: number
   readonly #clock: IClock
+  readonly #issuer: string
+  readonly #audience: string
 
   /**
    * Takes the SLICE of the config it reads, not the whole of `AuthConfig` — the
@@ -28,12 +30,17 @@ export class JwtTokenSigner implements ITokenSigner {
    * or its spec by merely existing.
    */
   constructor(
-    config: Pick<AuthConfig, 'JWT_SECRET' | 'ACCESS_TOKEN_TTL_SECONDS'>,
+    config: Pick<
+      AuthConfig,
+      'JWT_SECRET' | 'ACCESS_TOKEN_TTL_SECONDS' | 'JWT_ISSUER' | 'JWT_AUDIENCE'
+    >,
     clock: IClock,
   ) {
     this.#secret = new TextEncoder().encode(config.JWT_SECRET)
     this.#ttlSeconds = config.ACCESS_TOKEN_TTL_SECONDS
     this.#clock = clock
+    this.#issuer = config.JWT_ISSUER
+    this.#audience = config.JWT_AUDIENCE
   }
 
   async sign(payload: AccessTokenPayload): Promise<string> {
@@ -44,6 +51,8 @@ export class JwtTokenSigner implements ITokenSigner {
       .setSubject(payload.sub)
       .setIssuedAt(issuedAt)
       .setExpirationTime(issuedAt + this.#ttlSeconds)
+      .setIssuer(this.#issuer)
+      .setAudience(this.#audience)
       .sign(this.#secret)
   }
 
@@ -56,6 +65,10 @@ export class JwtTokenSigner implements ITokenSigner {
       // Without this, jose checks `exp` against its own clock and the injected
       // one would only affect signing.
       currentDate: this.#clock.now(),
+      // Rejects a token that verifies cryptographically but was minted by, or
+      // for, another deployment that shares this secret.
+      issuer: this.#issuer,
+      audience: this.#audience,
     })
 
     if (typeof payload.sub !== 'string') throw new Error(MISSING_SUBJECT_MESSAGE)

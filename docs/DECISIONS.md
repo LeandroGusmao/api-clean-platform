@@ -2364,6 +2364,8 @@ dispositivo em `refresh_tokens`" da auditoria de 2026-09-07 (§6, tabela da
 auditoria), que exige migration. Sem ele, a resposta é só `{ id (family_id),
 createdAt, expiresAt }`: dá pra saber **quantas** sessões existem e desde
 quando, não **qual** é qual.
+**Fechado pela decisão 38**, que trouxe `ip`, `device_label` e
+`session_started_at` — o parágrafo acima descreve o estado anterior.
 
 **Sem flag de "sessão atual".** Não é derivável só do access token: o guard
 só enxerga o `sub` do JWT, nunca o `family_id` — que nem é devolvido ao
@@ -2441,6 +2443,80 @@ fatia que define a primeira senha numa conta federada segue fora do roteiro.
 
 Desenho completo em
 [`2026-09-18-account-deletion-design.md`](superpowers/specs/2026-09-18-account-deletion-design.md).
+
+---
+
+### 38 — Contexto de dispositivo na sessão, `iss`/`aud`, e o recorte por reversibilidade
+
+Fecha três achados da auditoria de 2026-09-07 — "Contexto de dispositivo em
+`refresh_tokens`", "Headers de segurança (`helmet`)" e "TTL do access token" —
+e o item `iss`/`aud` do achado que também pedia `kid`. Gatilho: o primeiro app
+derivado será um agregador de gastos e investimentos ou um app de alimentação
+e calorias, e **os dois** disparam o gatilho da §6.
+
+**O critério que decidiu o recorte é reversibilidade, não gravidade.** O
+access token vive 900s, então mudar o formato dele custa uma janela de TTL:
+sobe a versão, espera, pronto. Uma coluna não tem essa propriedade — o dado
+que não foi registrado no instante em que existia não volta, e um backfill de
+`ip` ou `user_agent` não tem de onde ler. Por isso as colunas entraram agora,
+com a tabela vazia, e os claims especulativos não.
+
+**`kid` ficou de fora, e a justificativa que o `TODO.md` dava para ele era
+falsa.** Ela dizia que trocar o `JWT_SECRET` "desloga todo mundo de uma vez".
+`POST /auth/refresh` não passa pelo guard e não lê o access token: consome só
+o refresh token opaco, que é persistido e não tem relação com o segredo.
+Trocar o segredo ao vivo produz um `401` por cliente ativo, seguido de um
+refresh transparente. O que o `kid` compraria é evitar que todos corram ao
+`/refresh` no mesmo instante — estampida, não logout. Sem usuário em
+produção, não há estampida a evitar. A linha do `TODO.md` foi corrigida.
+
+**`auth_time`/`amr` também ficaram de fora**, pela regra que o próprio
+`ports/token-signer.ts` já enuncia: um contrato nasce com o consumidor dele, e
+nenhuma rota pergunta hoje há quanto tempo ou por qual método o usuário se
+autenticou.
+
+**Rótulo derivado, nunca o `User-Agent` cru.** A coluna guarda `"Chrome on
+Android"`. A string crua identifica o aparelho muito além do que a pergunta
+"fui eu?" precisa, e ficaria em repouso por até 60 dias. **A biblioteca é
+`bowser` (2.14.1, MIT)**: a escolha reflexa, `ua-parser-js`, está em `2.0.10`
+sob AGPL-3.0-or-later — verificado no registry, não assumido —, e licença
+viral de rede num boilerplate destinado a produtos fechados é custo
+desproporcional para interpretar uma string.
+
+**A rotação herda.** O `ip` vem do request atual, então acompanha o cliente
+trocando de wi-fi para 4G; `device_label` e `session_started_at` são copiados
+da linha substituída, porque nomeiam a **sessão** e não o request. Uma linha
+anterior às colunas adota o próprio `createdAt` como início na primeira
+renovação: mais tarde que o início real, estável dali em diante, e melhor que
+uma sessão que nunca consegue reportar um.
+
+**Sem tabela de sessão própria, e isso não tem prazo.** Seria o modelo mais
+honesto — o `family_id` É a sessão —, mas `LoginUserUseCase` passaria a fazer
+duas escritas onde a documentação da classe afirma que faz uma, arrastando
+poda, `logout-all` e deleção junto. Migrar depois é barato: `ip`, rótulo e
+início já estarão nas linhas, então o backfill tem de onde ler.
+
+**O endereço que não parseia vira `null`, não o sentinel do rate limit.**
+`client-ip.ts` passou a expor duas saídas sobre a **mesma** validação:
+`clientIpKey`, que devolve `UNPARSEABLE_CLIENT_IP_KEY` e é o que o limiter
+consome — colapsar endereços forjados num balde só é o que impede o atacante de
+abrir baldes infinitos —, e `parsedClientIp`, que devolve `null` e é o que a
+sessão grava. O sentinel significa "um balde compartilhado", e esse significado
+não sobrevive a ser gravado numa coluna e devolvido ao dono da conta, onde ele
+se lê como um host. Manter o sentinel no banco também acoplaria a resposta de
+`/auth/sessions` a uma constante que pertence ao rate limit: mudá-la ali — uma
+decisão legítima de quem conta requisições — quebraria a tradução em silêncio.
+
+**`iss` e `aud` são obrigatórios, sem default.** Um default derrotaria o
+propósito: os dois apps derivados subiriam com o mesmo carimbo e um token de
+um continuaria valendo no outro.
+
+**TTL do access token: 3600 → 900.** Só o default; a variável já existia. O
+número é a latência real de revogação do `logout-all`. Custo aceito: o
+`/refresh` passa a ser chamado 4× mais por cliente ativo.
+
+Desenho completo em
+[`2026-09-18-session-device-context-design.md`](superpowers/specs/2026-09-18-session-device-context-design.md).
 
 ---
 

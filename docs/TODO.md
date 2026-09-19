@@ -1,5 +1,25 @@
 # O que falta
 
+> **Reorganizado em 2026-09-19.** A fila viva agora é "Pendências do
+> boilerplate", logo abaixo, e vem antes do histórico de propósito: quem abre
+> este arquivo quer saber o que fazer, não o que já foi feito. O critério da
+> separação está na própria seção.
+>
+> **Fatia 21 (2026-09-19) entregou o contexto de dispositivo na sessão, os
+> claims `iss`/`aud`, o `helmet` e o TTL de 900s** (decisão 38). É a primeira
+> fatia puxada pela auditoria de 2026-09-07 em vez da lista genérica — hoje
+> "Entregues — a lista genérica original" —, que ficou sem item desbloqueado
+> na fatia 20. O gatilho foi levantado: o primeiro
+> app derivado será um agregador de gastos e investimentos ou um app de
+> alimentação e calorias, e os dois disparam o critério da §6.
+>
+> O recorte foi por **reversibilidade**: coluna que o banco não registrou não
+> volta, enquanto claim de access token se conserta sozinho numa janela de
+> TTL. Por isso as três colunas entraram agora, com a tabela vazia, e `kid` e
+> `auth_time`/`amr` não. **A justificativa que esta lista dava para o `kid`
+> estava errada** e foi corrigida: trocar o `JWT_SECRET` não desloga ninguém,
+> porque `/auth/refresh` não lê o access token.
+>
 > **Fatia 20 (2026-09-18) entregou a deleção de conta** (decisão 37).
 > `DELETE /auth/me` com hard delete da linha de `users`; a cascata que o schema
 > já declarava leva `refresh_tokens`, `federated_identities` e
@@ -67,6 +87,32 @@
 > app que trate dado sensível. Nada nelas invalida o acima; elas somam. O furo
 > foi fechado em 2026-09-08.
 
+## Pendências do boilerplate
+
+**Reorganizado em 2026-09-19.** A lista anterior arquivava quase tudo sob "o que
+falta para dado sensível", que é uma lente de **produto**: pergunta o que o app
+vai guardar. Faltava a outra pergunta — **o que todo app derivado vai precisar,
+faça ele o que fizer** —, e sob essa lente alguns itens arquivados como produto
+são do boilerplate, e um não estava aqui de jeito nenhum (o furo do dispatch do
+outbox, que vivia só na spec da fatia 16).
+
+O critério desta seção: entra se **todo** app derivado bate nele, e se resolver
+uma vez aqui sai mais barato que resolver N vezes lá na frente. O que depende do
+que o produto é foi para "Decisões que cada produto toma", adiante.
+
+Os dois primeiros não são "falta uma feature": são **o boilerplate deixando de
+cumprir o que ele mesmo promete** assim que sai de uma instância só.
+
+| # | Item | Depende de | Nota |
+|---|---|---|---|
+| 1 | **Store do rate limit é in-process** | decisão: store compartilhado ou teto de borda | o contador vive na memória do processo, então com N réplicas o teto real do login é N × 10/min — e nenhuma réplica faz nada errado. Não tem relação com dado sensível: quebra na segunda instância de qualquer app. O comentário de [`rate-limit.ts`](../src/infra/http/rate-limit.ts) já registra o fato; falta a saída |
+| 2 | **Dispatch do outbox sem trava** | nada | `findPendingBatch` é um `SELECT` comum, sem `FOR UPDATE SKIP LOCKED` e sem coluna de posse. Duas execuções que se sobreponham leem as mesmas linhas e **mandam o mesmo e-mail duas vezes**. Está como custo aceito na §7 da [spec do outbox](superpowers/specs/2026-09-15-transactional-outbox-design.md) — **e era só lá**, num arquivo que ninguém abre para escolher a próxima fatia |
+| 3 | **Notificar o dono quando a detecção de reuso dispara** | nada (o log foi fechado em 2026-09-08) | troca e recuperação de senha já mandam e-mail; roubo de sessão detectado não manda nada — e é a única defesa que sobra quando o atacante já tem a sessão. A fatia 21 melhorou o que dá para dizer: o aviso pode nomear aparelho e endereço |
+| 4 | **Sessão sem teto absoluto** | decisão de produto nunca tomada | os 60 dias são deslizantes, então quem der refresh toda semana nunca reautentica. Rotação e detecção de reuso cobrem roubo, então não é furo — mas **não decidir também é decidir**, e a não-decisão viaja para todo app derivado. A saída usual é um `max_lifetime` por família, com idle timeout junto |
+| 5 | Checagem de senha vazada | decisão: API externa (HIBP) ou lista embarcada | o piso é 8 caracteres e não há blocklist. Como o lockout foi recusado, o custo do argon2 e a qualidade da senha são as duas únicas defesas contra força bruta — e uma delas está no piso |
+| 6 | Trilha de auditoria — **só o mecanismo** | nada | a tabela e a porta são genéricas; *o que* registrar e por quanto tempo é produto. O boilerplate entrega o encanamento. É o que a LGPD art. 37 cobra, e a **deleção de conta** (fatia 20) é um dos eventos a capturar quando for retomada |
+| 7 | `kid` no JWT | nada | genérico, mas compra pouco hoje: `iss` e `aud` foram entregues pela fatia 21 (decisão 38), e trocar o `JWT_SECRET` **não desloga ninguém** — `POST /auth/refresh` não lê o access token, então cada cliente ativo toma um `401` e renova de forma transparente. O que o `kid` evita é todos renovarem no mesmo instante: estampida, não logout |
+
 ## ✅ Sequestro de conta antes da verificação — fechado pela fatia 11
 
 Era o único item da lista que era **falha**, não ausência. A fatia 11 moveu a
@@ -116,7 +162,10 @@ Os dois documentos que afirmavam o contrário — o comentário em
 `refresh-token-reused-error.ts` e a tabela de cobertura da decisão 15 — foram
 emendados junto, para não voltar a ler como coberto.
 
-## O resto, em ordem decrescente de urgência
+## Entregues — a lista genérica original
+
+Todos riscados. Ela é histórico, não fila: a fila viva é
+"Pendências do boilerplate", abaixo.
 
 | Item | Depende de | Nota |
 |---|---|---|
@@ -129,6 +178,7 @@ emendados junto, para não voltar a ler como coberto.
 | ~~Invalidar sessões + notificar o dono na verificação~~ | — | **fechada pela fatia 19.** Faltava só a invalidação no vínculo do Google — troca e recuperação de senha já derrubavam sessão. Decisão 36 |
 | ~~Deleção de conta~~ | — | **fechada pela fatia 20.** `DELETE /auth/me`, hard delete apoiado na cascata; varre os `pending_registrations` do endereço. Decisão 37 |
 | ~~Revogação por usuário deletado/banido~~ | — | **fechada pela fatia 20**, sem código próprio: a cascata apaga os `refresh_tokens` junto com a conta |
+| ~~Contexto de dispositivo + `iss`/`aud` + `helmet` + TTL~~ | — | **fechados pela fatia 21.** Ver a tabela da auditoria abaixo e a decisão 38 |
 
 ## Auditoria de 2026-09-07 — o que falta para dado sensível
 
@@ -141,20 +191,31 @@ financeiro. **Nada aqui declara que o produto é esse** — é o cenário contra
 qual os itens estão avaliados, e é o mesmo cenário que a §6 do
 [`DECISIONS.md`](DECISIONS.md) já nomeia como gatilho.
 
+Os itens desta auditoria que valem **independente** do produto subiram para
+"Pendências do boilerplate", acima. O que sobra aqui é o que a escolha do app
+decide.
+
 ### Achados que não estavam rastreados em lugar nenhum
 
 | Item | Depende de | Nota |
 |---|---|---|
-| Headers de segurança (`helmet`) | nada | não está nas dependências nem no código. Sem HSTS, `X-Content-Type-Options` nem `Referrer-Policy` — e o modo cookie da decisão 12 é justamente quem mais depende de HSTS |
-| Contexto de dispositivo em `refresh_tokens` | nada | sem `ip`, `user_agent` e `last_used_at`, "listar sessões ativas" (abaixo) mostra só UUID opaco e o dono não consegue responder "fui eu?". Migration de graça enquanto não há usuário; depois é backfill sem dado para preencher |
-| Notificar o dono quando a detecção de reuso dispara | o log do furo acima | troca e recuperação de senha já mandam e-mail; roubo de sessão detectado não manda nada — e é a única defesa que sobra quando o atacante já tem a sessão |
-| `iss` / `aud` / `kid` no JWT | nada | sem `kid` não há rotação de `JWT_SECRET` com janela de duas chaves: trocar o segredo desloga todo mundo de uma vez. Em app financeiro rotação de chave é rotina, não incidente |
-| Trilha de auditoria | nada | não existe tabela nem evento de login, troca de senha ou revogação. É o que a LGPD art. 37 cobra, e o que decide disputa depois — e a **deleção de conta** (fatia 20) é um dos eventos que ela deve capturar quando for retomada |
-| Checagem de senha vazada | nada | o piso é 8 caracteres e não há blocklist. Como o lockout foi recusado, o custo do argon2 e a qualidade da senha são as duas únicas defesas contra força bruta — e uma delas está no piso |
+| ~~Headers de segurança (`helmet`)~~ | — | **fechado pela fatia 21.** `@fastify/helmet` nos defaults, registrado como `registerHelmet` no molde de `registerCors`. Decisão 38 |
+| ~~Contexto de dispositivo em `refresh_tokens`~~ | — | **fechado pela fatia 21.** `ip`, `device_label` e `session_started_at`, os três nuláveis; a rotação herda rótulo e início. `last_used_at` ficou **de fora**: a rotação descarta a linha, então o `createdAt` da linha viva já é o instante da última renovação. Decisão 38 |
+| ~~Notificar o dono quando a detecção de reuso dispara~~ | — | **movido para "Pendências do boilerplate" (#3)**: vale para todo app com sessão, não só para dado sensível |
+| ~~`kid` no JWT~~ | — | **movido para "Pendências do boilerplate" (#7)**, com o motivo real: evita estampida de refresh, não logout |
+| ~~Trilha de auditoria~~ | — | **o mecanismo virou "Pendências do boilerplate" (#6)**; *o que* registrar e a retenção continuam sendo do produto, e é aqui que a LGPD art. 37 pesa |
+| ~~Checagem de senha vazada~~ | — | **movida para "Pendências do boilerplate" (#5)**: todo app com senha bate nela |
 | Custo do argon2 acima do mínimo | máquina alvo | 7,3 ms / 19 MB é o **mínimo** recomendado pela OWASP; o comentário do adapter já registra que tunar é "hardening, once there is a target machine" |
 | Step-up / reautenticação | decisão em aberto | o access token não carrega `auth_time` nem `amr`, então operação de valor alto não tem em que se apoiar. Sentar o claim agora é barato; depois é migração de token |
 | MFA / TOTP | decisão em aberto | não aparece em nenhum documento do repositório. É a maior ausência de produto para financeiro |
 | Criptografia em repouso | fora do `auth` | nada de column-level nem `pgcrypto` no projeto. O `auth` não guarda o dado sensível, mas estabelece o precedente para o módulo que guardar |
+
+### Decisões que cada produto toma
+
+Nada aqui é lacuna do boilerplate. São escolhas que dependem do que o app faz,
+de quem usa e de qual é o risco — e a escolha entre os dois apps derivados
+(agregador financeiro ou app de alimentação) muda a ordem: o financeiro sobe
+MFA, o de saúde sobe trilha de auditoria.
 
 ### O que a auditoria promove de "decisão aceita" para "pendência"
 
@@ -165,12 +226,14 @@ contexto, não a análise:
   reabrir como *"o primeiro app derivado que trate dado sensível (saúde,
   financeiro)"*. O custo aceito está lá com todas as letras: mil IPs somam dez
   mil tentativas por minuto e **nada no servidor nota**.
-- **Store do rate limit é in-process.** Com N réplicas o teto real do login é
-  N × 10/min. Precisa de store compartilhado, ou de teto de borda de verdade.
-- **Teto absoluto de sessão, mais idle timeout.** Os 60 dias deslizantes viram
-  sessão perpétua — ver a pergunta registrada logo abaixo.
-- **TTL do access token.** 1h é a latência de revogação do `logout-all`. Em
-  financeiro o usual é 5–15 min, e aqui é só variável de ambiente.
+- ~~**Store do rate limit é in-process.**~~ **Subiu para "Pendências do
+  boilerplate" (#1)** em 2026-09-19: não precisa de dado sensível para doer,
+  basta uma segunda réplica.
+- ~~**Teto absoluto de sessão, mais idle timeout.**~~ **Subiu para "Pendências
+  do boilerplate" (#4)**: a não-decisão viaja para todo app derivado.
+- ~~**TTL do access token.**~~ **Fechado pela fatia 21:** o default caiu de
+  3600s para 900s (decisão 38). Continua variável de ambiente para quem quiser
+  outro valor. Custo aceito: o `/refresh` é chamado 4× mais por cliente ativo.
 
 ## Perguntas registradas, não pendências
 
@@ -207,12 +270,26 @@ acesso diferenciado por usuário. `DECISIONS.md` §6.
 
 ## O que eu faria a seguir
 
-**Se o alvo tratar dado sensível, a ordem muda**, e a auditoria de 2026-09-07
-propõe esta: ~~(1) log de evento de segurança — sem ele nada mais é
-observável~~ fechado em 2026-09-08; (2) `helmet` e TTL do access token; (3)
-colunas de dispositivo e notificação de reuso, enquanto a migration ainda é de
-graça; (4) reabrir o lockout; (5) trilha de auditoria e teto absoluto de
-sessão; (6) MFA. Para o boilerplate genérico, segue valendo o que está abaixo.
+**Pegue a fila de "Pendências do boilerplate" na ordem.** Ela existe desde
+2026-09-19 justamente para que a próxima fatia seja escolhível **sem** decidir
+antes qual app vem primeiro — os sete itens valem para qualquer um deles.
+
+Os dois primeiros têm natureza diferente dos outros cinco. **Store do rate
+limit** e **dispatch do outbox sem trava** não são features ausentes: são
+promessas que o boilerplate faz e deixa de cumprir na segunda instância. Um app
+de alimentação rodando dois contêineres sofre os dois, e dado sensível não entra
+na conta.
+
+**Se o alvo tratar dado sensível, entra a ordem da auditoria de 2026-09-07 por
+cima desta**: ~~(1) log de evento de segurança~~ fechado em 2026-09-08;
+~~(2) `helmet` e TTL do access token~~ fechados pela fatia 21; (3) colunas de
+dispositivo — **fechadas pela fatia 21** — e notificação de reuso, que é o #3
+da fila do boilerplate; (4) reabrir o lockout; (5) trilha de auditoria e teto
+absoluto de sessão; (6) MFA.
+
+**A escolha do app continua pendente** e muda só a ordem do que está em
+"Decisões que cada produto toma": o financeiro sobe MFA, o de saúde sobe
+trilha de auditoria.
 
 ~~Login social / OAuth com Google~~ — **entregue pela fatia 14** (decisão 31).
 O `auth` agora tem identidade federada: cadastro, verificação, login por senha
@@ -242,9 +319,10 @@ abaixo e `DECISIONS.md` §6.
 ~~Deleção de conta~~ — **entregue pela fatia 20** (decisão 37), e com ela
 ~~revogação por usuário deletado~~, que a cascata resolve sem código próprio.
 
-A tabela genérica fica sem item desbloqueado. O que resta são os achados da
-auditoria de 2026-09-07, que sobem de prioridade pelo gatilho de dado
-sensível, e o miúdo da fatia 14 — listar provedores vinculados no `/me`.
+~~Contexto de dispositivo, `iss`/`aud`, `helmet` e TTL~~ — **entregues pela
+fatia 21** (decisão 38). `GET /auth/sessions` passou a devolver `ip`,
+`deviceLabel` e `startedAt`, fechando a limitação que a decisão 35 registrou
+como deliberada e dependente de migration.
 
 Miúdo que ficou da fatia 14: listar provedores vinculados no `/me` — em espera
 até o front ter necessidade disso.

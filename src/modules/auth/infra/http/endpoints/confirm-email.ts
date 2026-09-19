@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import type { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
+import { buildDeviceContext } from '#infra/http/device-context'
 import { errorResponseSchema } from '#infra/http/errors/error-response'
 import type { AuthContainer } from '#modules/auth/container'
 import {
@@ -115,9 +116,10 @@ export const confirmEmailRoute: FastifyPluginAsync<{ container: AuthContainer }>
       },
     },
     async (request, reply) => {
-      const { accessToken, refreshToken } = await container.confirmEmail.execute(
-        request.body,
-      )
+      const { accessToken, refreshToken } = await container.confirmEmail.execute({
+        ...request.body,
+        device: buildDeviceContext(request),
+      })
 
       if (request.body.refreshTransport === REFRESH_TRANSPORT_COOKIE) {
         setRefreshCookie(reply, refreshToken, container.refreshTokenTtlSeconds)
