@@ -18,7 +18,7 @@ import type { ITokenDigest } from '#shared/ports/token-digest'
  * row being replaced. A row older than the columns adopts its own `createdAt`:
  * later than the true start, but stable from then on.
  */
-function inherit(current: RefreshToken, ip: string): IssuedSessionContext {
+function inherit(current: RefreshToken, ip: string | null): IssuedSessionContext {
   return {
     ip,
     deviceLabel: current.deviceLabel,
@@ -34,7 +34,7 @@ export interface RefreshTokenCommand {
    * and the session start name the FAMILY, so they come from the row being
    * replaced, not from this request.
    */
-  ip: string
+  ip: string | null
 }
 
 export interface RefreshTokenResult {

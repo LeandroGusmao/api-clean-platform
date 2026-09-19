@@ -1,6 +1,6 @@
 import Bowser from 'bowser'
 import type { FastifyRequest } from 'fastify'
-import { clientIpKey } from './client-ip.js'
+import { parsedClientIp } from './client-ip.js'
 
 /**
  * What the owner sees when the User-Agent names nothing recognisable.
@@ -22,7 +22,8 @@ const LABEL_SEPARATOR = ' on '
 
 /** What a session row records about the client that opened it. */
 export interface DeviceContext {
-  ip: string
+  /** Null when the address did not parse — see `parsedClientIp`. */
+  ip: string | null
   label: string
 }
 
@@ -38,15 +39,16 @@ function labelFor(userAgent: string | undefined): string {
 
 /**
  * The only place a request becomes session context, for the same reason
- * `clientIpKey` is the only place `request.ip` becomes a key: the conversion
- * has rules, and a second copy of them is a second thing to get wrong.
+ * `clientIpKey` is the only place `request.ip` becomes a rate-limit key: the
+ * conversion has rules, and a second copy of them is a second thing to get
+ * wrong.
  *
  * The raw User-Agent is deliberately not returned — §3.2 of
  * `docs/superpowers/specs/2026-09-18-session-device-context-design.md`.
  */
 export function buildDeviceContext(request: FastifyRequest): DeviceContext {
   return {
-    ip: clientIpKey(request),
+    ip: parsedClientIp(request),
     label: labelFor(request.headers[USER_AGENT_HEADER]),
   }
 }

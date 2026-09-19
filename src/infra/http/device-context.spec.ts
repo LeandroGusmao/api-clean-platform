@@ -1,6 +1,5 @@
 import type { FastifyRequest } from 'fastify'
 import { describe, expect, it } from 'vitest'
-import { UNPARSEABLE_CLIENT_IP_KEY } from '#infra/http/client-ip'
 import {
   buildDeviceContext,
   MAX_DEVICE_LABEL_LENGTH,
@@ -67,9 +66,11 @@ describe('buildDeviceContext address', () => {
     expect(buildDeviceContext(requestWith(IP, CHROME_ON_ANDROID)).ip).toBe(IP)
   })
 
-  it('collapses an unusable address onto the shared sentinel', () => {
-    expect(buildDeviceContext(requestWith(UNPARSEABLE_IP, CHROME_ON_ANDROID)).ip).toBe(
-      UNPARSEABLE_CLIENT_IP_KEY,
-    )
+  it('reports no address at all when it does not parse', () => {
+    // NOT the rate-limit sentinel: that value means "one shared bucket", and
+    // the meaning does not survive being stored and shown to an account owner.
+    expect(
+      buildDeviceContext(requestWith(UNPARSEABLE_IP, CHROME_ON_ANDROID)).ip,
+    ).toBeNull()
   })
 })

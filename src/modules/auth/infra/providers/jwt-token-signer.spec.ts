@@ -6,7 +6,10 @@ import type { IClock } from '#shared/ports/clock'
 
 const SECRET = 'a-test-secret-with-at-least-32-chars'
 const OTHER_SECRET = 'a-different-secret-with-32-chars-ok'
+const ALGORITHM = 'HS256'
 const OTHER_ALGORITHM = 'HS512'
+/** Long enough that expiry never decides one of these cases. */
+const FOREIGN_TOKEN_LIFETIME = '1h'
 const TTL_SECONDS = 3600
 const USER_ID = '3f2a1b4c-5d6e-4f70-8192-a3b4c5d6e7f8'
 const ISSUER = 'api-clean-platform'
@@ -50,10 +53,10 @@ function makeConfig(
 /** A token this system did not mint, shaped exactly like one it would. */
 const foreignToken = (issuer: string | undefined, audience: string | undefined) => {
   let builder = new SignJWT({})
-    .setProtectedHeader({ alg: 'HS256' })
+    .setProtectedHeader({ alg: ALGORITHM })
     .setSubject(USER_ID)
     .setIssuedAt()
-    .setExpirationTime('1h')
+    .setExpirationTime(FOREIGN_TOKEN_LIFETIME)
 
   if (issuer !== undefined) builder = builder.setIssuer(issuer)
   if (audience !== undefined) builder = builder.setAudience(audience)

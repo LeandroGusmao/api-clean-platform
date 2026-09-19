@@ -33,7 +33,19 @@ const clientIpSchema = z.union([z.ipv4(), z.ipv6()])
  *    the limiter does not limit IPv6 clients at all.
  */
 export function clientIpKey(request: FastifyRequest): string {
+  return parsedClientIp(request) ?? UNPARSEABLE_CLIENT_IP_KEY
+}
+
+/**
+ * The same validation without the shared bucket, for callers that store or
+ * display the address instead of counting against it.
+ *
+ * Null rather than the sentinel: the sentinel exists so that forged addresses
+ * collapse into ONE rate-limit key, and that meaning does not survive being
+ * written to a column and rendered back to an account owner.
+ */
+export function parsedClientIp(request: FastifyRequest): string | null {
   const parsed = clientIpSchema.safeParse(request.ip)
 
-  return parsed.success ? normalizeIP(parsed.data) : UNPARSEABLE_CLIENT_IP_KEY
+  return parsed.success ? normalizeIP(parsed.data) : null
 }

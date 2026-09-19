@@ -9,7 +9,7 @@ import type { ITokenGenerator } from '#shared/ports/token-generator'
  * request object the pure layer must not see.
  */
 export interface SessionDevice {
-  ip: string
+  ip: string | null
   label: string
 }
 
