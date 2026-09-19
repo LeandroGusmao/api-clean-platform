@@ -24,6 +24,10 @@ const FAMILY_ID = '11112222-3333-4444-8555-666677778888'
 const EXPIRES_AT = new Date('2026-12-31T00:00:00.000Z')
 const CREATED_AT = new Date('2026-08-31T00:00:00.000Z')
 
+const IP = '203.0.113.7'
+const DEVICE_LABEL = 'Chrome on Android'
+const SESSION_STARTED_AT = new Date('2026-08-01T09:00:00.000Z')
+
 const NO_ROWS = 0
 const TWO_ROWS = 2
 
@@ -102,6 +106,31 @@ describe('refresh_tokens table', () => {
 
     expect(stored?.revokedAt).toBeNull()
     expect(stored?.replacedBy).toBeNull()
+  })
+
+  it('stores the device context as nullable, and defaults none of it', async () => {
+    // A row written before these columns existed has no context, and nothing
+    // may invent one for it: an inserted default would make "never recorded"
+    // read exactly like "recorded and unrecognised".
+    await db.insert(refreshTokens).values(row())
+
+    const [stored] = await db.select().from(refreshTokens)
+
+    expect(stored?.ip).toBeNull()
+    expect(stored?.deviceLabel).toBeNull()
+    expect(stored?.sessionStartedAt).toBeNull()
+  })
+
+  it('round-trips the device context', async () => {
+    await db.insert(refreshTokens).values(
+      row({ ip: IP, deviceLabel: DEVICE_LABEL, sessionStartedAt: SESSION_STARTED_AT }),
+    )
+
+    const [stored] = await db.select().from(refreshTokens)
+
+    expect(stored?.ip).toBe(IP)
+    expect(stored?.deviceLabel).toBe(DEVICE_LABEL)
+    expect(stored?.sessionStartedAt).toEqual(SESSION_STARTED_AT)
   })
 
   it('accepts a second live token in the same family', async () => {

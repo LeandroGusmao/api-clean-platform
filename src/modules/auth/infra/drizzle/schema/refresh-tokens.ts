@@ -48,6 +48,24 @@ export const refreshTokens = pgTable(
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
     replacedBy: uuid('replaced_by'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    /**
+     * The request that created THIS row, so a rotation records where the client
+     * is now. Null only on a row older than the column: an address that does
+     * not parse becomes the shared sentinel, never null.
+     */
+    ip: text('ip'),
+    /**
+     * Derived from the User-Agent when the family opened, and inherited by
+     * every rotation — it names the DEVICE, which does not change mid session.
+     * The raw header is deliberately not stored: §3.2 of
+     * `docs/superpowers/specs/2026-09-18-session-device-context-design.md`.
+     */
+    deviceLabel: text('device_label'),
+    /**
+     * When the family opened. Carried across rotations because rotation
+     * discards the row that knew it.
+     */
+    sessionStartedAt: timestamp('session_started_at', { withTimezone: true }),
   },
   (table) => [
     uniqueIndex(REFRESH_TOKENS_TOKEN_HASH_UNIQUE_INDEX).on(table.tokenHash),
