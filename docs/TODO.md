@@ -140,7 +140,7 @@ cumprir o que ele mesmo promete** assim que sai de uma instância só.
 | 2 | ~~Dispatch do outbox sem trava~~ | — | **fechado pela fatia 23.** Cada mensagem é pega com uma etiqueta de prazo (`claimed_until`) por uma instrução única com `FOR UPDATE SKIP LOCKED`; execuções concorrentes trabalham em mensagens diferentes. Decisão 40 |
 | 3 | ~~Notificar o dono quando a detecção de reuso dispara~~ | — | **fechado pela fatia 24.** `revokeFamily` devolve a contagem e só a chamada que matou a família grava o aviso, pelo outbox, na mesma transação. Decisão 41 |
 | 4 | ~~Sessão sem teto absoluto~~ | — | **fechado pela fatia 25.** Todo token novo vence em `min(agora + TTL, início da sessão + teto)`, com padrão de 90 dias; o idle timeout já era o TTL deslizante. Decisão 42 |
-| 5 | Checagem de senha vazada | decisão: API externa (HIBP) ou lista embarcada | o piso é 8 caracteres e não há blocklist. Como o lockout foi recusado, o custo do argon2 e a qualidade da senha são as duas únicas defesas contra força bruta — e uma delas está no piso |
+| 5 | Checagem de senha vazada — **adiada em 2026-09-19** | decisão: API externa (HIBP) ou lista embarcada | o piso é 8 caracteres e não há blocklist. Como o lockout foi recusado, o custo do argon2 e a qualidade da senha são as duas únicas defesas contra força bruta — e uma delas está no piso. **Adiada de propósito, não esquecida.** Gatilho para reabrir: os primeiros usuários reais, ou o primeiro app derivado que trate dado sensível (o financeiro), o que vier primeiro. Um aviso por notificação, quando o app tiver esse canal, cobriria só a checagem no login (contas que já existem); não substitui a validação na criação da senha, que é o que protege |
 | 6 | Trilha de auditoria — **só o mecanismo** | nada | a tabela e a porta são genéricas; *o que* registrar e por quanto tempo é produto. O boilerplate entrega o encanamento. É o que a LGPD art. 37 cobra, e a **deleção de conta** (fatia 20) é um dos eventos a capturar quando for retomada |
 | 7 | `kid` no JWT | nada | genérico, mas compra pouco hoje: `iss` e `aud` foram entregues pela fatia 21 (decisão 38), e trocar o `JWT_SECRET` **não desloga ninguém** — `POST /auth/refresh` não lê o access token, então cada cliente ativo toma um `401` e renova de forma transparente. O que o `kid` evita é todos renovarem no mesmo instante: estampida, não logout |
 
@@ -310,8 +310,9 @@ antes qual app vem primeiro — os sete itens valem para qualquer um deles.
 ~~Notificar o dono quando a detecção de reuso dispara~~ — **fechado pela fatia
 24** (decisão 41).
 ~~Sessão sem teto absoluto~~ — **fechado pela fatia 25** (decisão 42). Restam o
-#5 (checagem de senha vazada, que espera a escolha entre API externa e lista
-embarcada), o #6 (trilha de auditoria, só o mecanismo) e o #7 (`kid` no JWT).
+#6 (trilha de auditoria, só o mecanismo) e o #7 (`kid` no JWT); o #5
+(checagem de senha vazada) foi **adiado em 2026-09-19** com gatilho próprio, na
+tabela acima.
 
 **Se o alvo tratar dado sensível, entra a ordem da auditoria de 2026-09-07 por
 cima desta**: ~~(1) log de evento de segurança~~ fechado em 2026-09-08;
