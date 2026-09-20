@@ -5,9 +5,11 @@ import { env } from '#infra/config/env'
 import { createDatabase, type Database } from '#infra/database/client'
 import { createLogger } from '#infra/observability/logger'
 import { makeContainer } from '#main/container'
+import { AuditEvent, AuditEventType } from '#modules/auth/entities/audit-event'
 import { User } from '#modules/auth/entities/user'
 import { EmailAlreadyInUseError } from '#modules/auth/errors/email-already-in-use-error'
 import { authRepositories } from '#modules/auth/infra/drizzle/auth-repositories'
+import { auditEvents } from '#modules/auth/infra/drizzle/schema/audit-events'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
 import type { AuthRepos } from '#modules/auth/repositories/unit-of-work'
 import { Email } from '#modules/auth/value-objects/email'
@@ -24,6 +26,11 @@ const PASSWORD_HASH = '$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHQ$hash'
 const NOW = new Date('2026-08-29T12:00:00.000Z')
 
 const BOOM_MESSAGE = 'boom — abort the unit of work'
+
+const AUDIT_EVENT_ID = '5c4b3a29-1807-4f6e-9d5c-4b3a29180716'
+const AUDIT_USER_ID = '7d6c5b4a-3928-4170-8e6d-5c4b3a291807'
+const NO_EVENTS = 0
+const ONE_EVENT = 1
 
 let db: Database
 let pool: Pool
@@ -57,6 +64,7 @@ afterAll(async () => {
 })
 
 beforeEach(async () => {
+  await db.delete(auditEvents)
   await db.delete(users)
 })
 
@@ -65,6 +73,16 @@ function makeUser(id: string, email: string) {
     id,
     email: Email.create(email),
     passwordHash: PASSWORD_HASH,
+    now: NOW,
+  })
+}
+
+function makeAuditEvent() {
+  return AuditEvent.create({
+    id: AUDIT_EVENT_ID,
+    type: AuditEventType.PasswordChanged,
+    userId: AUDIT_USER_ID,
+    device: { ip: null, label: null },
     now: NOW,
   })
 }
@@ -94,6 +112,29 @@ describe('unit of work (integration — real Postgres)', () => {
 
     expect(await autocommit.users.findById(ID)).toBeNull()
     expect(await autocommit.users.findById(OTHER_ID)).toBeNull()
+  })
+
+  it('rolls back an audit event written in the same unit of work', async () => {
+    const boom = new Error(BOOM_MESSAGE)
+
+    await expect(
+      unitOfWork(async (repos) => {
+        await repos.auditEvents.save(makeAuditEvent())
+
+        throw boom
+      }),
+    ).rejects.toBe(boom)
+
+    // Read through the pool handle: the row must not exist for anyone.
+    expect(await db.select().from(auditEvents)).toHaveLength(NO_EVENTS)
+  })
+
+  it('commits an audit event when the work resolves', async () => {
+    await unitOfWork(async (repos) => {
+      await repos.auditEvents.save(makeAuditEvent())
+    })
+
+    expect(await db.select().from(auditEvents)).toHaveLength(ONE_EVENT)
   })
 
   it('hides uncommitted writes from a read outside the transaction', async () => {

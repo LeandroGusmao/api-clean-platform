@@ -51,5 +51,9 @@ export function noopAuthRepos(): AuthRepos {
       recordFailure: async () => {},
       deleteDispatchedOrFailedBefore: async () => 0,
     },
+    auditEvents: {
+      save: async () => {},
+      deleteOccurredBefore: async () => 0,
+    },
   }
 }

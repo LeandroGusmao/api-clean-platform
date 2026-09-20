@@ -1,4 +1,5 @@
 import type { IUnitOfWork } from '#shared/ports/unit-of-work'
+import type { IAuditEventsRepository } from './audit-events-repository.js'
 import type { IFederatedIdentitiesRepository } from './federated-identities-repository.js'
 import type { IOutboxMessagesRepository } from './outbox-messages-repository.js'
 import type { IPasswordResetTokensRepository } from './password-reset-tokens-repository.js'
@@ -28,6 +29,9 @@ import type { IUsersRepository } from './users-repository.js'
  * detected): the row that promises the
  * e-mail is written in the SAME transaction as the state change it describes —
  * one fact, either both land or neither does.
+ *
+ * `auditEvents` for the same reason: the event of a security-relevant change is
+ * written in the SAME transaction as the change, beside its outbox notice.
  */
 export interface AuthRepos {
   users: IUsersRepository
@@ -36,6 +40,7 @@ export interface AuthRepos {
   passwordResetTokens: IPasswordResetTokensRepository
   federatedIdentities: IFederatedIdentitiesRepository
   outboxMessages: IOutboxMessagesRepository
+  auditEvents: IAuditEventsRepository
 }
 
 export type IAuthUnitOfWork = IUnitOfWork<AuthRepos>

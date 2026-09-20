@@ -1,5 +1,6 @@
 import type { Database } from '#infra/database/client'
 import type { AuthRepos } from '#modules/auth/repositories/unit-of-work'
+import { DrizzleAuditEventsRepository } from './drizzle-audit-events-repository.js'
 import { DrizzleFederatedIdentitiesRepository } from './drizzle-federated-identities-repository.js'
 import { DrizzleOutboxMessagesRepository } from './drizzle-outbox-messages-repository.js'
 import { DrizzlePasswordResetTokensRepository } from './drizzle-password-reset-tokens-repository.js'
@@ -23,5 +24,6 @@ export function authRepositories(db: Database): AuthRepos {
     passwordResetTokens: new DrizzlePasswordResetTokensRepository(db),
     federatedIdentities: new DrizzleFederatedIdentitiesRepository(db),
     outboxMessages: new DrizzleOutboxMessagesRepository(db),
+    auditEvents: new DrizzleAuditEventsRepository(db),
   }
 }
