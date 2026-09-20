@@ -195,9 +195,11 @@ não o alcança.
 
 Dentro do `if (revoked > 0)`, ao lado do aviso:
 `type: RefreshTokenReuseDetected`, `userId: current.userId`, `ip: command.ip`,
-`label: current.deviceLabel`. Fica **fora** do `if (owner !== null)`: o aviso
-precisa do e-mail do dono, o evento não, e a trilha não deve depender de a leitura
-do dono ter sucesso.
+`label: current.deviceLabel`. Fica **fora** do `if (owner !== null)`, e é gravado
+antes da busca do dono: o aviso precisa do e-mail, o evento não, então ele não
+mora sob uma condição que é sobre o e-mail. O `owner === null` é só a guarda de
+tipo de `users.findById` (a FK com cascata e o `FOR UPDATE` da rotação garantem que
+o dono existe), e por isso não há caso de teste para ele.
 
 ## 7. Config e poda
 
@@ -216,8 +218,7 @@ vazio). `PruneAuditEventsUseCase(auditEvents, clock, retentionMs)` calcula
   imutável e não enumerável.
 - Cada um dos cinco use cases grava **exatamente um** evento, com `type`,
   `userId`, `ip` e rótulo certos, na mesma chamada do aviso.
-- Reuso: um replay contra a família já morta não grava evento; o evento é gravado
-  mesmo quando o dono não é encontrado.
+- Reuso: um replay contra a família já morta não grava evento.
 - Poda: calcula o corte e devolve a contagem; a config tem o padrão de 1 ano e
   rejeita vazio.
 - Repositório em memória: `deleteOccurredBefore` respeita o corte, inclusive na
