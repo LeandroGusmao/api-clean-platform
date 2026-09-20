@@ -229,8 +229,9 @@ vazio). `PruneAuditEventsUseCase(auditEvents, clock, retentionMs)` calcula
   anterior ou igual ao corte.
 - **A prova do problema:** deletar a conta deixa o evento `ACCOUNT_DELETED` vivo
   depois que a cascata apaga o `users`.
-- Atomicidade: uma troca de senha cuja transação falha não deixa evento; uma que
-  passa deixa exatamente um.
+- Atomicidade: pela unit of work do container real, um evento gravado e seguido de
+  falha é desfeito, e sem falha é confirmado. Prova que `auditEvents` está ligado à
+  transação; forçar a falha dentro de um use case exigiria um fake artificial.
 - Os dois endpoints novos (`reset-password`, `DELETE /auth/me`) gravam `ip` e
   rótulo na linha.
 - A poda pelo `cron`: um evento antigo some e um recente fica.

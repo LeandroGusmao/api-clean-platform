@@ -5,6 +5,14 @@
 > este arquivo quer saber o que fazer, não o que já foi feito. O critério da
 > separação está na própria seção.
 >
+> **Fatia 26 (2026-09-20) entregou a trilha de auditoria** (decisão 43). Fecha o
+> item #6 de "Pendências do boilerplate". Tabela `audit_events` dentro do `auth`,
+> sem FK em `user_id` para sobreviver à conta apagada, e um evento gravado nos
+> cinco pontos que já avisam o dono (senha alterada, senha redefinida, Google
+> vinculado, reuso detectado, conta deletada), na mesma transação, com IP e
+> aparelho. A retenção é `AUDIT_EVENT_PRUNE_RETENTION_SECONDS` (1 ano, marcador).
+> Sem leitura pela API: o operador consulta por SQL.
+>
 > **Fatia 25 (2026-09-19) entregou o teto absoluto de sessão** (decisão 42).
 > Fecha o item #4 de "Pendências do boilerplate". Todo refresh token novo vence
 > no menor entre o TTL deslizante e o início da sessão mais 90 dias
@@ -141,7 +149,7 @@ cumprir o que ele mesmo promete** assim que sai de uma instância só.
 | 3 | ~~Notificar o dono quando a detecção de reuso dispara~~ | — | **fechado pela fatia 24.** `revokeFamily` devolve a contagem e só a chamada que matou a família grava o aviso, pelo outbox, na mesma transação. Decisão 41 |
 | 4 | ~~Sessão sem teto absoluto~~ | — | **fechado pela fatia 25.** Todo token novo vence em `min(agora + TTL, início da sessão + teto)`, com padrão de 90 dias; o idle timeout já era o TTL deslizante. Decisão 42 |
 | 5 | Checagem de senha vazada — **adiada em 2026-09-19** | decisão: API externa (HIBP) ou lista embarcada | o piso é 8 caracteres e não há blocklist. Como o lockout foi recusado, o custo do argon2 e a qualidade da senha são as duas únicas defesas contra força bruta — e uma delas está no piso. **Adiada de propósito, não esquecida.** Gatilho para reabrir: os primeiros usuários reais, ou o primeiro app derivado que trate dado sensível (o financeiro), o que vier primeiro. Um aviso por notificação, quando o app tiver esse canal, cobriria só a checagem no login (contas que já existem); não substitui a validação na criação da senha, que é o que protege |
-| 6 | Trilha de auditoria — **só o mecanismo** | nada | a tabela e a porta são genéricas; *o que* registrar e por quanto tempo é produto. O boilerplate entrega o encanamento. É o que a LGPD art. 37 cobra, e a **deleção de conta** (fatia 20) é um dos eventos a capturar quando for retomada |
+| 6 | ~~Trilha de auditoria — só o mecanismo~~ | — | **fechado pela fatia 26.** `audit_events` no `auth`, cinco eventos de segurança gravados no `uow`, poda pelo cron. Decisão 43 |
 | 7 | `kid` no JWT | nada | genérico, mas compra pouco hoje: `iss` e `aud` foram entregues pela fatia 21 (decisão 38), e trocar o `JWT_SECRET` **não desloga ninguém** — `POST /auth/refresh` não lê o access token, então cada cliente ativo toma um `401` e renova de forma transparente. O que o `kid` evita é todos renovarem no mesmo instante: estampida, não logout |
 
 ## ✅ Sequestro de conta antes da verificação — fechado pela fatia 11
@@ -309,17 +317,18 @@ antes qual app vem primeiro — os sete itens valem para qualquer um deles.
 ~~Dispatch do outbox sem trava~~ — **fechado pela fatia 23** (decisão 40).
 ~~Notificar o dono quando a detecção de reuso dispara~~ — **fechado pela fatia
 24** (decisão 41).
-~~Sessão sem teto absoluto~~ — **fechado pela fatia 25** (decisão 42). Restam o
-#6 (trilha de auditoria, só o mecanismo) e o #7 (`kid` no JWT); o #5
-(checagem de senha vazada) foi **adiado em 2026-09-19** com gatilho próprio, na
-tabela acima.
+~~Sessão sem teto absoluto~~ — **fechado pela fatia 25** (decisão 42). ~~Trilha de
+auditoria~~ — **fechada pela fatia 26** (decisão 43). Resta o #7 (`kid` no JWT),
+que compra pouco; o #5 (checagem de senha vazada) foi **adiado em 2026-09-19**
+com gatilho próprio, na tabela acima.
 
 **Se o alvo tratar dado sensível, entra a ordem da auditoria de 2026-09-07 por
 cima desta**: ~~(1) log de evento de segurança~~ fechado em 2026-09-08;
 ~~(2) `helmet` e TTL do access token~~ fechados pela fatia 21; (3) colunas de
 dispositivo — **fechadas pela fatia 21** — e ~~notificação de reuso~~,
-**fechada pela fatia 24**; (4) reabrir o lockout; (5) trilha de auditoria e
-~~teto absoluto de sessão~~, fechado pela fatia 25; (6) MFA.
+**fechada pela fatia 24**; (4) reabrir o lockout; (5) ~~trilha de
+auditoria~~, fechada pela fatia 26, e ~~teto absoluto de sessão~~, fechado pela
+fatia 25; (6) MFA.
 
 **A escolha do app continua pendente** e muda só a ordem do que está em
 "Decisões que cada produto toma": o financeiro sobe MFA, o de saúde sobe

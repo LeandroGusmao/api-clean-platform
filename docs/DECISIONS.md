@@ -2427,6 +2427,8 @@ adiada, com gatilho próprio, desde a auditoria de 2026-09-07. Criar uma tabela
 agora só para a deleção resolveria esse problema maior pela metade e para um
 evento só — o mesmo erro que a decisão 33 e a reclassificação do RBAC
 evitaram. Quando o gatilho disparar, a deleção é um dos eventos a capturar.
+**Emenda (decisão 43):** o mecanismo veio com a fatia 26, e a deleção é gravada como
+`ACCOUNT_DELETED`.
 
 **Duas escritas explícitas, porque a cascata não as alcança.**
 `pending_registrations` é indexada por e-mail e não tem FK (um pendente nasce
@@ -2737,6 +2739,74 @@ decisão de cada app derivado, por variável de ambiente.
 4. Reduzir o teto derruba as sessões vivas na próxima rotação delas.
 
 Spec: [`specs/2026-09-19-session-absolute-lifetime-design.md`](superpowers/specs/2026-09-19-session-absolute-lifetime-design.md).
+
+### 43 — Trilha de auditoria: o mecanismo e os cinco avisos de segurança
+
+Fecha o item #6 de "Pendências do boilerplate". Os eventos de segurança do `auth`
+deixavam três rastros e nenhum era uma trilha: o aviso por e-mail (vai para o dono
+e é podado em 7 dias), a linha de log `securityEvent` (sem retenção garantida e sem
+consulta por conta) e o próprio estado (uma senha trocada não diz quando nem de
+onde). Não havia onde responder "o que aconteceu com esta conta, quando e de
+onde", que é o que a LGPD art. 37 cobra de quem opera dados pessoais.
+
+**O desenho.** Tabela `audit_events` dentro do módulo `auth`: `id`, `type`,
+`user_id`, `ip`, `device_label`, `occurred_at`. Porta `IAuditEventsRepository`
+(`save`, `deleteOccurredBefore`) exposta no `AuthRepos`, então cada use case grava
+o evento dentro do `uow` que já existe, ao lado do aviso do outbox.
+
+**Nasce dentro do `auth`, e com cinco consumidores.** A decisão 33 recusou o outbox
+genérico em `shared/` antes de um segundo módulo, e a decisão 37 recusou criar a
+tabela só para a deleção ("resolveria o problema maior pela metade e para um
+evento só"). O #6 entra com os cinco pontos que já gravam um aviso de segurança:
+senha alterada, senha redefinida, Google vinculado, reuso detectado e conta
+deletada. Nenhum evento foi inventado.
+
+**`user_id` sem FK**, para a trilha sobreviver à conta apagada: uma FK bloquearia
+o delete ou levaria a evidência junto na cascata. O evento `ACCOUNT_DELETED` é a
+prova, e o teste de integração a mede: a conta e a cascata somem, o evento fica.
+
+**IP e aparelho nos cinco.** Só três dos cinco use cases já recebiam o contexto do
+cliente. A redefinição de senha e a deleção de conta passaram a receber `device`
+(os endpoints chamam `buildDeviceContext`), porque uma trilha que não diz de onde
+veio a deleção é fraca para o que a LGPD cobra. O `User-Agent` cru continua fora
+(decisão 38); o rótulo é o derivado.
+
+**O reuso grava só na transição**, como o aviso da decisão 41 (`revoked > 0`), e
+o evento é gravado antes da busca do dono e fora do `if (owner !== null)`: ele não
+precisa do e-mail, então não mora sob uma condição que é sobre o e-mail. Os replays
+seguem só no log `securityEvent`.
+
+**Retenção por variável:** `AUDIT_EVENT_PRUNE_RETENTION_SECONDS`, padrão 1 ano, com
+um job de poda no cron. O número é **marcador**, não conselho jurídico: quanto
+guardar é decisão de produto e de compliance.
+
+**Medido:** três reapresentações do mesmo token gasto deixam **um** evento em
+`audit_events`; com a condição removida de propósito, deixam três. E um evento
+gravado numa unit of work que depois falha é desfeito, e sem falha é confirmado
+(prova o `auditEvents` ligado à transação e não ao pool).
+
+**Recusado.** *Um mecanismo em `shared/`:* nenhum segundo módulo consome. *Só a
+tabela, sem eventos:* contrato sem consumidor, não valida a forma. *Coluna JSON
+livre de metadados:* sem consumidor, sem forma validada; cada evento novo que
+precise de um dado ganha uma coluna. *E-mail do usuário na linha:* dado pessoal que
+sobreviveria à conta. *Eventos de login e logout:* volume alto, e a decisão de
+quanto guardar deixa de ser trivial.
+
+**Custos aceitos.**
+
+1. O `user_id` continua na trilha depois da conta apagada: é identificador
+   pseudonimizado, e a trilha existe justamente para provar o que aconteceu.
+2. IP e aparelho ficam em repouso pelo tempo da retenção, que é maior que os 7 dias
+   do outbox. O mesmo dado já vive 60 dias em `refresh_tokens` (decisão 38).
+3. O reuso registra só a primeira detecção.
+4. Sem leitura pela API: o operador consulta por SQL. Uma rota é o passo natural
+   seguinte e é decisão de produto.
+5. O padrão de 1 ano é um marcador, não uma resposta de compliance.
+6. O banco não impede escrever um `type` fora do conjunto: a validação está no
+   tipo da entidade e a coluna é `text`. Um `CHECK` custaria uma migration por
+   evento novo.
+
+Spec: [`specs/2026-09-20-audit-trail-design.md`](superpowers/specs/2026-09-20-audit-trail-design.md).
 
 ---
 
