@@ -3,10 +3,45 @@
 Documentação do que **existe neste repositório**. Nada aqui é plano ou intenção —
 se está escrito, está construído e verificável rodando os comandos da §10.
 
-Este é o único documento de arquitetura versionado. O material de referência em
-`docs/` é rascunho local, fora do git — nada depende dele.
+Esta é a **referência única** da estrutura: o mapa do que existe, as fronteiras
+e como adicionar código sem quebrá-las. Cada fato mora em exatamente um
+documento, e os outros apontam:
+
+| Documento | Responde |
+|---|---|
+| este | como o código está organizado, e o que vale |
+| [`docs/DECISIONS.md`](docs/DECISIONS.md) | **por que** cada escolha, e o que foi recusado |
+| [`docs/PRODUCT-CHOICES.md`](docs/PRODUCT-CHOICES.md) | o que cada produto derivado ainda precisa decidir |
+| [`README.md`](README.md) | por onde começar |
+
+Os comentários do código citam as decisões por número (`decisão 11`), nunca
+re-argumentam.
 
 **Stack hoje:** Node 24 LTS (Krypton) · TypeScript 7 ESM · Fastify 5 · Zod 4 · PostgreSQL · Drizzle · OpenAPI · Vitest · Biome · pnpm
+
+---
+
+## Índice
+
+- [1. O princípio](#1-o-principio)
+- [2. A árvore](#2-a-arvore)
+- [3. Imports](#3-imports)
+- [4. Regras com dente](#4-regras-com-dente)
+- [5. Configuração e log](#5-configuracao-e-log)
+- [6. Banco de dados](#6-banco-de-dados)
+- [7. HTTP e documentação da API](#7-http-e-documentacao-da-api)
+- [8. Erros](#8-erros)
+- [9. Testes](#9-testes)
+- [10. Comandos](#10-comandos)
+- [11. Versões](#11-versoes)
+- [12. Decisões travadas](#12-decisoes-travadas)
+- [13. O que ainda não existe](#13-o-que-ainda-nao-existe)
+- [14. Fluxo de uma requisição](#14-fluxo-de-uma-requisicao)
+- [15. Como adicionar um módulo novo](#15-como-adicionar-um-modulo-novo)
+
+> As seções **14** e **15** vieram depois das outras e por isso estão no fim: os
+> comentários do código citam este arquivo por número de seção, e renumerar
+> quebraria os ponteiros.
 
 ---
 
@@ -449,6 +484,43 @@ o schema no merge passaria despercebido — a variável simplesmente não seria
 validada e chegaria `undefined` em produção. Com o acesso restrito e a config
 injetada tipada, esquecer o merge vira erro de compilação.
 
+### Quando a fronteira ganhar dente: as três armadilhas
+
+O mecanismo previsto é **`dependency-cruiser`**, não um plugin de boundaries do
+ESLint — plugin de boundaries **ignora em silêncio todo import que o resolver não
+resolve**, e nenhum resolver de ESLint entende o campo `imports` do
+`package.json`. Como todos os imports entre diretórios usam `#` (§3), o lint
+passaria verde sem enxergar nada.
+
+E há três configurações sem as quais ele enforça **zero**. Cada uma sozinha
+desliga a regra **com exit 0** — verificado empiricamente, não deduzido:
+
+1. **`tsPreCompilationDeps: true`** — sem isso, `import type` fica invisível.
+   Numa arquitetura contract-first, onde quase toda dependência entre camadas é
+   uma interface, some ~42% das dependências: exatamente a metade da fronteira
+   que a regra existe para proteger.
+2. **`conditionNames` incluindo `development`** — sem isso, `#modules/*` resolve
+   para `./dist/*.js` e as regras, escritas contra `^src/`, param de casar.
+   Medido na mesma árvore: **com** a condition, 5 violações em 49 módulos, exit
+   5; **sem**, zero violações em 82 módulos, exit 0. Note o detalhe traiçoeiro —
+   sem a condition ele cruza *mais* módulos e acha *menos* violações.
+3. **TypeScript pinado em `<7`** — o `dependency-cruiser` suporta
+   `>=2.0.0 <7.0.0`. Com o TypeScript 7 ele emite um **aviso**, não um erro:
+   zero módulos cruzados, exit 0, CI verde. Este projeto usa TypeScript 7 (§11),
+   então esta é a armadilha que já está armada.
+
+> **A guarda contra as três de uma vez:** o script deve **falhar se
+> `modules cruised === 0`**. É a única checagem que pega qualquer um dos três
+> modos de falha silenciosa.
+
+E a configuração só vale acompanhada de fixtures que provem que funciona — **3
+negativos que precisam falhar e 2 positivos que precisam passar**: use case →
+logger (falha), `auth/infra/` → outro módulo `infra/` (falha), `infra/` global →
+in-memory de módulo (falha), `.spec.ts` colocado → in-memory (passa), `main/` →
+implementações concretas (passa). O positivo de `test` não é decorativo: é o
+teste de regressão da **ordem de avaliação** — removendo a exclusão de `test` do
+padrão de `pure`, ele passa a ser acusado.
+
 ### Legal / não legal
 
 | ✅ | ❌ |
@@ -521,6 +593,38 @@ se faltar, mesma regra das demais variáveis.
 
 ### Limites de conexão, e por que subir o pool é a alavanca errada
 
+**A aritmética que decide a topologia.** O instinto ao ver "10 conexões" é subir
+o número; num sistema com várias instâncias isso é a alavanca errada, porque o
+custo é **multiplicativo**:
+
+```text
+instâncias × DATABASE_POOL_MAX  ≤  max_connections − reserva
+```
+
+Com os defaults do Postgres — `max_connections` 100, 3 reservadas para superuser
+— **9 instâncias × 10 já flerta com o teto**. Vinte instâncias com `max` 50 pedem
+1000 conexões e o servidor recusa.
+
+E conexão do Postgres não é thread: cada uma é um **processo backend**, com
+memória própria e contenção em estruturas compartilhadas. Passado o ponto em que
+os cores do banco saturam, aumentar o pool só troca "fila no app" por "thrash no
+banco" — pior, porque o banco é compartilhado entre as instâncias enquanto a fila
+é local.
+
+**Quando a resposta deixa de ser o pool.** Quando `instâncias × max` encosta no
+teto, a saída é um **pooler em transaction mode** entre app e Postgres, com pool
+modesto por instância. E aqui o projeto já está do lado certo:
+
+> Verificado em `drizzle-orm@1.0.0-rc.4`, `node-postgres/session.js:39`:
+> `queryName` só é definido quando alguém pede `.prepare()` explicitamente. Por
+> default o Drizzle manda **prepared statements anônimos**, que é exatamente o
+> que sobrevive a um pooler em transaction mode.
+>
+> **A armadilha:** quem "otimizar" uma query com `.prepare()` um dia quebra o
+> pooler, e a falha aparece longe da causa. Se o `.prepare()` for necessário, o
+> pooler precisa sair de transaction mode — ou a query volta a ser anônima.
+
+
 Cinco variáveis governam o pool e os timeouts, todas com default em `env.ts`:
 `DATABASE_POOL_MAX` (10), `DATABASE_CONNECTION_TIMEOUT_MS` (5000),
 `DATABASE_STATEMENT_TIMEOUT_MS` (10000), `DATABASE_LOCK_TIMEOUT_MS` (5000) e
@@ -555,8 +659,8 @@ Duas armadilhas registradas:
 - **Valor em branco é recusado no boot.** Sem isso, `VAR=` viraria `0` pela
   coerção e desligaria a proteção em silêncio — falha aberta.
 
-Desenho completo em
-[`specs/2026-08-30-connection-limits-design.md`](docs/superpowers/specs/2026-08-30-connection-limits-design.md).
+A aritmética que decide a topologia, e a armadilha do `.prepare()`, estão acima
+nesta mesma seção.
 
 Localmente, o Postgres sobe via `docker-compose.yml` (`postgres:18.4-alpine3.24`),
 infra apenas — a aplicação roda no host:
@@ -711,9 +815,8 @@ nome do arquivo não repete. Uma foreign key
 só atravessa arquivos **do mesmo módulo**; entre módulos, referencia-se por id
 sem constraint, e a integridade fica na aplicação. Todas as tabelas vivem em
 `public` — um schema do Postgres por módulo foi considerado e adiado.
-Raciocínio completo em
-[`docs/superpowers/specs/2026-08-25-users-schema-first-migration-design.md`](docs/superpowers/specs/2026-08-25-users-schema-first-migration-design.md)
-§5 (decisão 24).
+Raciocínio completo na decisão 24 do
+[`docs/DECISIONS.md`](docs/DECISIONS.md).
 
 ---
 
@@ -1322,11 +1425,96 @@ do mesmo pacote.
 
 ## 13. O que ainda não existe
 
-Listado para não ser confundido com omissão, sem detalhar o que não foi construído:
+**Reescrito na fatia 27.** A versão anterior listava verificação de e-mail, troca
+de senha, `cron.ts`, poda de `refresh_tokens`, rate limiting, CORS e Docker como
+inexistentes — **os sete existem** e alguns havia semanas. A lista era mantida à
+mão e parou de ser atualizada, que é o argumento desta fatia inteira.
 
-verificação de e-mail · troca de senha · módulos de negócio · entrypoints
-`worker.ts` e `cron.ts` · poda de `refresh_tokens` expirados · rate limiting ·
-CORS · regra de fronteira no lint · Docker
+O que de fato não existe, hoje:
 
-> **Corrigido em 2026-09-01:** esta lista dizia que o Unit of Work não existia,
-> e a fatia 4 o construiu em 2026-08-29. Ele saiu daqui.
+- **Módulos de negócio.** O `auth` é o único módulo. Toda regra sobre
+  comunicação entre módulos (§2) é desenho não exercitado por um segundo caso.
+- **Entrypoint `worker.ts`.** O `cron.ts` existe; um worker de fila não.
+- **Dente na fronteira e em R7** — ver §4, que nomeia isso como dívida e não
+  como desenho.
+
+O que é **escolha de produto**, e não ausência, está em
+[`docs/PRODUCT-CHOICES.md`](docs/PRODUCT-CHOICES.md): MFA, lockout, RBAC,
+multi-tenancy, senha vazada, `kid` no JWT, criptografia em repouso e outras.
+
+---
+
+## 14. Fluxo de uma requisição
+
+Ciclo de vida de `POST /auth/login`. Cada passo nomeia o arquivo real.
+
+```text
+1. main/http.ts
+   Valida o env, abre o banco, monta o container.
+   Pede a instância Fastify a infra/http/server.ts e registra os plugins
+   de módulo, cada um com seu prefixo e SUA FATIA do container (decisão 23).
+
+2. modules/auth/infra/http/routes.ts
+   Agrega os endpoints do módulo e repassa a fatia recebida.
+
+3. modules/auth/infra/http/endpoints/login.ts
+   Valida corpo e resposta por schema Zod, declara o teto da rota,
+   chama o use case e traduz o retorno em resposta HTTP.
+   NÃO contém regra de negócio.
+
+4. modules/auth/use-cases/login-user.ts
+   Busca o usuário por IUsersRepository.
+   Compara o hash por IHashProvider — SEMPRE, inclusive quando a conta
+     não existe, contra hashProvider.dummyHash (ver abaixo).
+   Assina o access token por ITokenSigner e emite o refresh opaco,
+     persistido dentro de uow.run.
+   Ou lança InvalidCredentialsError.
+   Não conhece HTTP, não conhece Drizzle, não loga, não chama new Date().
+
+5. modules/auth/infra/drizzle/drizzle-users-repository.ts
+   Executa o SQL e converte a row em entidade pelo mapper.
+
+   Se 3, 4 ou 5 lançarem:
+6. infra/http/errors/error-handler.ts
+   Mapeia para status e monta o corpo com o traceId.
+```
+
+> **Passo 4 — a comparação é obrigatória mesmo sem conta.** Se o use case
+> retornasse cedo quando o e-mail não existe, e-mail inexistente responderia em
+> ~1 ms enquanto e-mail existente pagaria o argon2id. Isso é um **oráculo de
+> enumeração de usuários** trivialmente mensurável. Por isso o
+> `IHashProvider` expõe `dummyHash`, e a comparação acontece nos dois caminhos.
+
+> **Passo 4 — o hash fica FORA da transação.** Um hash de ~100 ms dentro do
+> `uow.run` reteria a conexão do pool por todo esse tempo, e o pool tem 10 (§6).
+
+**O handler HTTP é um tradutor.** Qualquer `if` de regra de negócio nele está no
+lugar errado.
+
+---
+
+## 15. Como adicionar um módulo novo
+
+A ordem não é burocracia: força o domínio a ser desenhado antes de qualquer
+decisão de infraestrutura, que é o que mantém a fronteira honesta.
+
+1. `mkdir src/modules/<modulo>` com a anatomia do §2 — crie só as pastas que vai
+   usar.
+2. **Domínio primeiro:** entidade e value objects. Sem pensar em banco nem HTTP.
+3. **Contratos:** `repositories/` e `providers/` com o que o domínio precisa do
+   mundo externo.
+4. **Use cases por TDD**, contra o repositório in-memory. Aqui o módulo já tem
+   valor e já está testado, sem nenhuma infra real.
+5. **Infra depois:** schema Drizzle, mapper, repositório concreto. Os testes de
+   use case não mudam.
+6. **HTTP por último:** `endpoints/` e `routes.ts`.
+7. **`config.ts`** se o módulo tiver env vars próprias, e registre o schema no
+   merge de `infra/config/env.ts` (§5). Um módulo nunca lê `process.env` — R6.
+8. **`container.ts`** montando o grafo, e registre a fatia em `main/container.ts`.
+9. **Revise a fronteira à mão.** Hoje ela não tem dente (§4): nenhum arquivo de
+   `modules/<modulo>/` pode importar de outro módulo, e a camada pura não pode
+   importar de `infra/`.
+
+**Antes do passo 1, leia [`docs/PRODUCT-CHOICES.md`](docs/PRODUCT-CHOICES.md).**
+Um módulo que guarde dado sensível reabre decisões que o `auth` deixou em aberto
+de propósito — criptografia em repouso, retenção, MFA.

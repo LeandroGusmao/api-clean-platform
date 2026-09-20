@@ -57,8 +57,7 @@ export const refreshTokens = pgTable(
     /**
      * Derived from the User-Agent when the family opened, and inherited by
      * every rotation — it names the DEVICE, which does not change mid session.
-     * The raw header is deliberately not stored: §3.2 of
-     * `docs/superpowers/specs/2026-09-18-session-device-context-design.md`.
+     * The raw header is deliberately not stored (decision 38).
      */
     deviceLabel: text('device_label'),
     /**

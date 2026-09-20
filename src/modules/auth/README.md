@@ -6,8 +6,9 @@ refresh token), troca e recuperação de senha e logout. Outros módulos só rec
 o `id` do usuário já autenticado — não importam nada daqui.
 
 Este documento é para quem **consome** ou **lê** o `auth` e quer entender o
-fluxo. Detalhe de implementação e o porquê de cada decisão estão em
-`docs/superpowers/specs/` e no `DECISIONS.md`.
+fluxo. O porquê de cada decisão está em
+[`docs/DECISIONS.md`](../../../docs/DECISIONS.md); a estrutura que o código
+segue, em [`ARCHITECTURE.md`](../../../ARCHITECTURE.md).
 
 ---
 

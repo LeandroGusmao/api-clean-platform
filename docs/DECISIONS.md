@@ -8,6 +8,60 @@ re-litigar escolha já fechada e não perder o raciocínio que levou a ela.
 
 ---
 
+## Índice das decisões
+
+Os comentários de `src/` citam estas decisões **por número** (`decision 11`), e a numeração é imutável por isso.
+
+| # | Decisão |
+|---|---|
+| [01](#01-module-first-em-vez-de-layer-first) | Module-first em vez de layer-first |
+| [02](#02-dentro-do-modulo-achatado-com-infra-separado) | Dentro do módulo: achatado, com `infra/` separado |
+| [03](#03-http-um-arquivo-por-endpoint) | HTTP: um arquivo por endpoint |
+| [04](#04-fastify) | Fastify |
+| [05](#05-postgresql) | PostgreSQL |
+| [06](#06-drizzle-em-vez-de-prisma) | Drizzle em vez de Prisma |
+| [07](#07-pin-exato-em-100-rc4) | Pin exato em `1.0.0-rc.4` |
+| [08](#08-container-manual-tipado) | Container manual tipado |
+| [09](#09-estrategia-de-testes) | Estratégia de testes |
+| [10](#10-main-com-multiplos-entrypoints) | `main/` com múltiplos entrypoints |
+| [11](#11-auth-access-jwt-curto-refresh-opaco-rotativo) | Auth: access JWT curto + refresh opaco rotativo |
+| [12](#12-transporte-bearer-na-api-cookie-httponly-so-no-refresh) | Transporte: Bearer na API, cookie `httpOnly` só no refresh |
+| [13](#13-erros-taxonomia-semantica-handler-global) | Erros: taxonomia semântica + handler global |
+| [14](#14-env-modulo-declara-boot-valida-tudo-de-uma-vez) | Env: módulo declara, boot valida tudo de uma vez |
+| [15](#15-logging-camada-pura-muda-correlacao-por-asynclocalstorage) | Logging: camada pura muda, correlação por AsyncLocalStorage |
+| [16](#16-docker-compose-so-para-infra-aplicacao-no-host) | Docker: compose só para infra, aplicação no host |
+| [17](#17-ci-no-github-actions-testes-de-integracao-em-banco-app_test-revisada-em-2026-08-21) | CI no GitHub Actions; testes de integração em banco `app_test` (revisada em 2026-08-21) |
+| [18](#18-lint-de-fronteira-dependency-cruiser-revisada-em-2026-08-20) | Lint de fronteira: `dependency-cruiser` (revisada em 2026-08-20) |
+| [19](#19-path-alias-subpath-imports-do-node-build-e-tsc-puro) | Path alias: subpath imports do Node; build é `tsc` puro |
+| [20](#20-mappers-funcoes-puras-na-camada-de-infra) | Mappers: funções puras na camada de infra |
+| [21](#21-providers-contrato-em-ports-implementacao-em-infraproviders) | Providers: contrato em `ports/`, implementação em `infra/providers/` |
+| [22](#22-atomicidade-unit-of-work-explicito) | Atomicidade: Unit of Work explícito |
+| [23](#23-o-plugin-do-modulo-recebe-a-fatia-dele-do-container) | O plugin do módulo recebe **a fatia dele** do container |
+| [24](#24-schema-mora-no-modulo-fk-so-dentro-do-modulo) | Schema mora no módulo; FK só dentro do módulo |
+| [25](#25-register-responde-202-sempre-quebra-deliberada-do-contrato-publicado) | `register` responde `202`, sempre — quebra deliberada do contrato publicado |
+| [26](#26-sem-backfill-de-email_verified_at-e-ressalva-normativa-para-apps-derivados) | Sem backfill de `email_verified_at`, e ressalva normativa para apps derivados |
+| [27](#27-a-conta-nasce-na-confirmacao-com-a-senha-do-request-de-confirm-fecha-o-account-pre-hijacking) | A conta nasce na confirmação, com a senha do request de confirm — fecha o account pre-hijacking |
+| [28](#28-excecao-pontual-a-r4-a-migration-de-email_verification_tokens-foi-apagada) | Exceção pontual a R4: a migration de `email_verification_tokens` foi apagada |
+| [29](#29-recuperacao-de-senha-cinco-decisoes-tomadas-no-brainstorming) | Recuperação de senha: cinco decisões tomadas no brainstorming |
+| [30](#30-cron-cronts-one-shot-registry-de-jobs-por-modulo-poda-com-retencao) | Cron: `cron.ts` one-shot, registry de jobs por módulo, poda com retenção |
+| [31](#31-login-com-google-client-driven-verificacao-de-id-token-sem-merge-silencioso) | Login com Google: client-driven, verificação de ID token, sem merge silencioso |
+| [32](#32-seed-de-dev-cenarios-por-modulo-runner-no-composition-root-so-banco-local) | Seed de dev: cenários por módulo, runner no composition root, só banco local |
+| [33](#33-outbox-transacional-tres-avisos-pos-commit-estado-por-timestamp-retry-com-teto-simples) | Outbox transacional: três avisos pós-commit, estado por timestamp, retry com teto simples |
+| [34](#34-throttle-de-confirm-por-e-mail-o-cooldown-de-reenvio-passa-a-valer-tambem-sobre-pending-esgotado) | Throttle de `confirm` por e-mail: o cooldown de reenvio passa a valer também sobre pending esgotado |
+| [35](#35-listar-sessoes-ativas-sem-group-by-sem-info-de-dispositivo-sem-flag-de-sessao-atual) | Listar sessões ativas: sem `GROUP BY`, sem info de dispositivo, sem flag de "sessão atual" |
+| [36](#36-invalidacao-de-sessao-no-vinculo-do-google-fechando-a-ultima-rota-sensivel-sem-essa-defesa) | Invalidação de sessão no vínculo do Google, fechando a última rota sensível sem essa defesa |
+| [37](#37-delecao-de-conta-hard-delete-apoiado-na-cascata-que-o-schema-ja-declara) | Deleção de conta: hard delete, apoiado na cascata que o schema já declara |
+| [38](#38-contexto-de-dispositivo-na-sessao-issaud-e-o-recorte-por-reversibilidade) | Contexto de dispositivo na sessão, `iss`/`aud`, e o recorte por reversibilidade |
+| [39](#39-rate-limit-compartilhado-no-redis-por-rota-com-fail-closed) | Rate limit compartilhado no Redis, por rota, com fail-closed |
+| [40](#40-dispatch-do-outbox-com-etiqueta-por-mensagem) | Dispatch do outbox com etiqueta por mensagem |
+| [41](#41-aviso-ao-dono-quando-a-deteccao-de-reuso-dispara) | Aviso ao dono quando a detecção de reuso dispara |
+| [42](#42-teto-absoluto-de-sessao) | Teto absoluto de sessão |
+| [43](#43-trilha-de-auditoria-o-mecanismo-e-os-cinco-avisos-de-seguranca) | Trilha de auditoria: o mecanismo e os cinco avisos de segurança |
+| [44](#44-kid-no-jwt-adiado-e-a-fila-do-boilerplate-fechada) | `kid` no JWT adiado, e a fila do boilerplate fechada |
+| [45](#45-a-documentacao-passa-a-descrever-o-estado-nao-a-jornada) | A documentação passa a descrever o estado, não a jornada |
+
+---
+
 ## 1. Contexto do projeto
 
 **O que é:** um boilerplate de API em Node.js + TypeScript que servirá de base
@@ -457,7 +511,7 @@ Esse requisito foi o que eliminou o `decorate` do Fastify como DI.
 > a detecção dispara, responde 401, e a família roubada continua viva. O reuso
 > sai da transação como **dado**, e o `throw` acontece depois do commit. Isso
 > foi encontrado pelo teste de integração, não pela revisão — desenho completo
-> em [`specs/2026-08-31-refresh-token-design.md`](superpowers/specs/2026-08-31-refresh-token-design.md) §4.2.
+> em a spec da fatia (removida na fatia 27; ver `git log`) §4.2.
 
 > **Emendada em 2026-09-03, pela fatia 9.** A troca de senha é o primeiro
 > consumidor real da revogação: ela revoga **todas** as famílias e emite um par
@@ -628,6 +682,30 @@ Transporte: ver decisão 12.
 
 ---
 
+**A janela de graça permite bifurcar uma família sem detecção — e a saída 1 é a
+que esta decisão manda.** Dentro dos 30s, reapresentar o token já rotacionado
+emite um par novo **sem** matar o sucessor anterior, então um token roubado usado
+nessa janela cria uma segunda cadeia viva na mesma família e a detecção de reuso
+nunca dispara para nenhuma das duas. É por isso que o single-flight do cliente é
+exigência escrita, e não recomendação.
+
+**Não confundir com multi-device:** cada login abre família própria, e é isso que
+sustenta vários aparelhos. Fechar o fork não afeta isso.
+
+As três saídas, que continuam sendo o mapa de quem reabrir isto:
+
+1. Emitir par novo e não tocar no irmão — **a atual**. Perdoa a resposta perdida,
+   permite o fork.
+2. Falhar 401 dentro da janela sem revogar a família. Fecha o buraco ao custo de
+   reintroduzir o logout aleatório que a janela existe para evitar.
+3. Emitir par novo **e** revogar o sucessor anterior — um ativo por família.
+   Perdoa a resposta perdida *e* faz o fork disparar detecção na próxima rotação
+   da vítima. Custo: um duplo-toque genuíno, em que o cliente já recebeu o
+   sucessor e mesmo assim reenvia o antecessor, mata o token que ele tem. É a
+   candidata mais forte se isto for reaberto.
+
+---
+
 ### 12 — Transporte: Bearer na API, cookie `httpOnly` só no refresh
 
 > **Emendada em 2026-09-01.** O `Path` do cookie passa de `/auth/refresh` para
@@ -729,7 +807,7 @@ entre sessões, ampliando a janela de roubo.
 > existe para dar ao cliente.
 >
 > É a única categoria que acrescenta header. Desenho em
-> [`specs/2026-08-30-transient-failures-design.md`](superpowers/specs/2026-08-30-transient-failures-design.md) §6.
+> a spec da fatia (removida na fatia 27; ver `git log`) §6.
 
 > **Emendada em 2026-09-04, pela fatia 10.** Ela precisou de duas categorias
 > novas, cada uma resolvendo um confronto com uma decisão já tomada.
@@ -1465,7 +1543,7 @@ torna determinístico o teste de expiração, janela de graça e detecção de r
 > faz rollback, e as duas travam de vez quando a de fora segura um lock de linha
 > que a de dentro pede — impasse que o Postgres não quebra, porque a transação
 > externa não espera lock, espera JavaScript. Desenho completo em
-> [`specs/2026-08-29-unit-of-work-design.md`](superpowers/specs/2026-08-29-unit-of-work-design.md) §4.
+> a spec da fatia (removida na fatia 27; ver `git log`) §4.
 
 > **Emendada em 2026-09-01.** Há uma **segunda razão legítima** para receber o
 > UoW, e ela não é atomicidade: o **retry de deadlock**. `logout` e `logout-all`
@@ -1608,7 +1686,7 @@ de mover arquivos.
 passa a ser regra de aplicação ou evento de domínio, não constraint.
 
 Desenho completo em
-[`specs/2026-08-25-users-schema-first-migration-design.md`](superpowers/specs/2026-08-25-users-schema-first-migration-design.md) §5.
+a spec da fatia (removida na fatia 27; ver `git log`) §5.
 
 ---
 
@@ -1642,7 +1720,7 @@ que se pretende fechar, entregando o identificador interno de uma conta alheia
 a qualquer anônimo.
 
 Desenho completo em
-[`specs/2026-09-03-email-verification-design.md`](superpowers/specs/2026-09-03-email-verification-design.md) §6.1.
+a spec da fatia (removida na fatia 27; ver `git log`) §6.1.
 
 ### 26 — Sem backfill de `email_verified_at`, e ressalva normativa para apps derivados
 
@@ -1668,7 +1746,7 @@ seria resolver um problema que este repositório não tem.
 > cenário que as verifica — nenhum teste representa uma conta antiga.
 
 Desenho completo em
-[`specs/2026-09-03-email-verification-design.md`](superpowers/specs/2026-09-03-email-verification-design.md) §6.4.
+a spec da fatia (removida na fatia 27; ver `git log`) §6.4.
 
 ---
 
@@ -1720,7 +1798,7 @@ login social.
 - **Expirar conta não verificada** — não fecha, só limita a janela de squatting.
 
 Desenho completo em
-[`specs/2026-09-06-account-pre-hijacking-design.md`](superpowers/specs/2026-09-06-account-pre-hijacking-design.md).
+a spec da fatia (removida na fatia 27; ver `git log`).
 
 ---
 
@@ -1743,7 +1821,7 @@ repete. A alternativa R4-limpa (uma migration nova de `DROP TABLE`) deixaria um
 tombstone permanente no histórico para uma tabela que nunca chegou a produção.
 
 Desenho em
-[`specs/2026-09-06-account-pre-hijacking-design.md`](superpowers/specs/2026-09-06-account-pre-hijacking-design.md) §12.
+a spec da fatia (removida na fatia 27; ver `git log`) §12.
 
 ---
 
@@ -1788,7 +1866,7 @@ tokens). Cinco decisões do desenho:
    ambos passar. Primeira vez que o padrão aparece no repo.
 
 Desenho completo em
-[`specs/2026-09-07-password-recovery-design.md`](superpowers/specs/2026-09-07-password-recovery-design.md).
+a spec da fatia (removida na fatia 27; ver `git log`).
 
 ---
 
@@ -1886,7 +1964,7 @@ TTL.
 repouso no banco, e o §5.3 da fatia 10 adiou isso de propósito.
 
 Desenho completo em
-[`specs/2026-09-07-token-pruning-cron-design.md`](superpowers/specs/2026-09-07-token-pruning-cron-design.md).
+a spec da fatia (removida na fatia 27; ver `git log`).
 
 ---
 
@@ -1929,7 +2007,38 @@ nasce verificada, pendentes apagados no mesmo `uow`); Google sobre conta-senha
 exige a senha.
 
 Desenho completo em
-[`specs/2026-09-08-google-sign-in-design.md`](superpowers/specs/2026-09-08-google-sign-in-design.md).
+a spec da fatia (removida na fatia 27; ver `git log`).
+
+---
+
+**Os três itens que o desenho fixou, e que continuam sendo o mapa dele:**
+
+1. **Não haverá troca de e-mail.** Com identidade federada o endereço deixa de
+   ser um campo que o usuário possui e passa a ser **asserção do provedor**. Um
+   endpoint de troca criaria a pergunta "quem é a autoridade, o IdP ou a nossa
+   coluna?", que não tem resposta boa. O endpoint sai do roteiro; não é omissão.
+2. **Sign-in do Google sobre um cadastro pendente e não confirmado: o Google
+   ganha e a conta nasce verificada.** O IdP provou o endereço; o pendente não
+   provou nada. Os pendentes daquele endereço são descartados **de modo que não
+   possam mais definir senha depois** — um pendente que sobrevivesse e ainda
+   aplicasse a senha dele na confirmação seria o sequestro da decisão 27 por
+   outra porta.
+3. **Sign-in do Google sobre conta verificada com senha: recusa o merge
+   silencioso e exige a senha cadastrada**, e só então vincula a identidade em
+   definitivo. Merge silencioso é a variante *Classic-Federated Merge* do
+   pre-hijacking: o atacante cadastra o endereço da vítima com senha, a vítima
+   entra com Google meses depois, o app funde, e a senha do atacante continua
+   valendo.
+
+**Uma assimetria a preservar, e não "corrigir".** A recusa do item 3 pode ser
+**específica** — "este endereço já tem conta com senha" — sem virar oráculo de
+enumeração, porque no callback do OAuth o IdP já provou que quem está ali é o
+dono do endereço. É a única porta do `auth` onde contar a verdade não vaza nada,
+e destoa de propósito do `202` genérico do `register`.
+
+**Fora do escopo desta decisão, para fatias próprias:** fluxo redirect/BFF,
+desvincular provedor, definir a primeira senha numa conta só-Google, listar
+provedores no `/me`, e restrição de domínio `hd`.
 
 ---
 
@@ -1971,10 +2080,661 @@ só-Google sem fake, e não cabe numa transação — cada use case abre a sua, 
 runner recusa aninhamento.
 
 Desenho completo em
-[`specs/2026-09-14-dev-database-seed-design.md`](superpowers/specs/2026-09-14-dev-database-seed-design.md).
+a spec da fatia (removida na fatia 27; ver `git log`).
 
 ---
 
+### 33 — Outbox transacional: três avisos pós-commit, estado por timestamp, retry com teto simples
+
+Fecha o furo "crash entre o `COMMIT` e o envio SMTP perde o e-mail em silêncio",
+para os três avisos que o encerram: `passwordChangedEmail`,
+`passwordResetCompletedEmail`, `googleAccountLinkedEmail`.
+
+**Escopo deliberadamente parcial.** `verificationEmail` e `passwordResetEmail`
+seguem fora — carregam segredo em texto claro, e colocar a linha em repouso no
+banco até o despacho é exatamente o motivo que adiou o outbox inteiro na fatia
+10. `accountAlreadyExistsEmail` também fica fora: sem escrita transacional
+precedente, não há buraco de atomicidade ali para fechar.
+
+**Estado por timestamp nulável, não enum.** `dispatched_at`/`failed_at` seguem
+o mesmo idioma de `consumed_at`/`revoked_at`.
+
+**Retry: contador simples com teto, sem backoff explícito.** O intervalo do
+scheduler externo que já invoca `cron.ts` (decisão 30) cumpre esse papel.
+
+**Rejeitados:** um outbox genérico em `shared/`, antes de um segundo módulo
+para validar a forma certa (YAGNI); um worker de longa duração com
+LISTEN/NOTIFY do Postgres em vez do poll one-shot do `cron.ts` (contradiria a
+decisão 16 e o modelo one-shot da decisão 30).
+
+Desenho completo em
+a spec da fatia (removida na fatia 27; ver `git log`).
+
+---
+
+### 34 — Throttle de `confirm` por e-mail: o cooldown de reenvio passa a valer também sobre pending esgotado
+
+Fecha o item "Throttle de `confirm` por e-mail" do `PRODUCT-CHOICES.md`. Sem isso, esgotar
+as cinco tentativas de um `pending_registration` liberava a criação de outro na
+hora: o cooldown de 60s (`EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS`) só se
+aplicava a um pending que ainda passasse em `isUsable` (que exige `attempts <
+maxAttempts`), então um atacante nunca precisava esperar — bastava esgotar e
+chamar `register` de novo. Distribuído em vários IPs, o teto por endereço da
+decisão de rate limiting (§6) não segurava isso.
+
+**Rejeitado: contador de falhas por e-mail com bloqueio.** É a saída óbvia,
+mas reproduz o padrão já descartado em §6 para o rate limiting do login — um
+balde por e-mail que bloqueia dá a quem só conhece o endereço da vítima um
+jeito de trancá-la de fora, só que aqui travando o cadastro em vez do login.
+
+**O que entrou:** o cooldown de `RegisterUserUseCase` passa a olhar o pending
+mais recente da fila (`findUnconsumedByEmail`, mais recente primeiro), sem
+filtrar por `isUsable`. Esgotado ou não, um código pedido há menos de 60s
+ainda segura um pedido novo. Isso limita qualquer atacante a cinco chutes por
+e-mail a cada 60s, **de qualquer IP** — sem bloqueio novo: o pior caso para o
+dono legítimo é o mesmo que já existia ao clicar "reenviar" duas vezes
+seguidas.
+
+**Custo aceito:** um atacante que já sabe o e-mail da vítima ainda consegue
+atrasar a confirmação dela em até 60s por rodada — não é bloqueio indefinido,
+é o mesmo atraso que o cooldown já impunha ao dono legítimo antes desta fatia.
+
+O parâmetro `maxAttempts` do construtor de `RegisterUserUseCase` foi removido
+por ter ficado sem uso; `RequestEmailVerificationUseCase` (o endpoint de
+reenvio explícito, que só reemite sobre um pending ainda usável e nunca cria
+linha nova) continua precisando do seu, sem mudança. Sem migração, sem
+variável de ambiente nova: reusa `EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS`.
+
+---
+
+### 35 — Listar sessões ativas: sem `GROUP BY`, sem info de dispositivo, sem flag de "sessão atual"
+
+Fecha o item "Listar sessões ativas" do `PRODUCT-CHOICES.md`. `GET /auth/sessions`
+(Bearer, guardado como `/me`) devolve uma entrada por família de refresh token
+com linha ainda viva.
+
+**Sem `GROUP BY`.** A rotação sempre revoga a linha que substitui na mesma
+escrita (decisão 11), então uma família tem no máximo uma linha não revogada
+a qualquer instante — e essa linha já É o estado atual da sessão. A query é
+`WHERE user_id = ? AND revoked_at IS NULL AND expires_at > ?`, plana.
+
+**Sem informação de dispositivo, de propósito.** `refresh_tokens` não tem
+`ip`/`user_agent`/`last_used_at` — isso é o item separado "Contexto de
+dispositivo em `refresh_tokens`" da auditoria de 2026-09-07 (§6, tabela da
+auditoria), que exige migration. Sem ele, a resposta é só `{ id (family_id),
+createdAt, expiresAt }`: dá pra saber **quantas** sessões existem e desde
+quando, não **qual** é qual.
+**Fechado pela decisão 38**, que trouxe `ip`, `device_label` e
+`session_started_at` — o parágrafo acima descreve o estado anterior.
+
+**Sem flag de "sessão atual".** Não é derivável só do access token: o guard
+só enxerga o `sub` do JWT, nunca o `family_id` — que nem é devolvido ao
+cliente em nenhuma resposta hoje. Marcar "essa sou eu" exigiria também ler o
+refresh token/cookie nesta rota GET, misturando os dois mecanismos de
+transporte fora do padrão do resto do módulo. Fica para quando (se) houver um
+pedido concreto.
+
+Sem migração, sem variável de ambiente nova, sem spec dedicado — mudança
+pequena o bastante para caber inteira nesta entrada.
+
+---
+
+### 36 — Invalidação de sessão no vínculo do Google, fechando a última rota sensível sem essa defesa
+
+Fecha o item "Invalidar sessões + notificar o dono na verificação" do
+`PRODUCT-CHOICES.md`. O texto original vinha do §4.4 do handoff da fatia 11 — na época,
+antes da conta nascer só na confirmação e antes do login social existirem, a
+"verificação" em questão era o `confirm-email`. Hoje esse ponto não se aplica
+mais ali: uma confirmação sempre cria uma conta nova, e não existe sessão
+anterior pra derrubar.
+
+**Reinterpretação, verificada no código, não suposta:** das três rotas que
+mudam algo sensível numa conta já existente, duas já tinham a defesa —
+`change-password.ts` e `reset-password.ts` já chamavam
+`refreshTokens.revokeAllForUser` e já mandavam aviso por e-mail (fatia 16,
+outbox). A terceira, `SignInWithGoogleUseCase` no ramo que vincula Google a
+uma conta que já tinha senha, já mandava o aviso (`googleAccountLinkedEmail`,
+decisão 31) mas nunca derrubava as sessões existentes. Era a única porta sem
+essa segunda trava — se uma senha vazada fosse usada pra plugar um Google
+como porta dos fundos, o dono era avisado, mas o invasor continuava logado
+pelas sessões que já tinha.
+
+**O que entrou:** uma chamada a `refreshTokens.revokeAllForUser(existing.id,
+now)` dentro da mesma transação que salva o vínculo, na mesma ordem que
+`change-password.ts` já usa e pela mesma razão — ANTES de salvar a sessão
+nova, porque `revokeAllForUser` só derruba linhas com `revoked_at IS NULL` e,
+feito depois, derrubaria a sessão que a própria chamada acabou de abrir.
+
+Sem migração, sem variável de ambiente nova, sem spec dedicado.
+
+---
+
+### 37 — Deleção de conta: hard delete, apoiado na cascata que o schema já declara
+
+`DELETE /auth/me` apaga a linha de `users` de verdade. As FKs com
+`onDelete: 'cascade'` — escritas antes desta fatia — levam junto
+`refresh_tokens`, `federated_identities` e `password_reset_tokens`, e é isso
+que **fecha também o item "Revogação por usuário deletado/banido"** sem código
+próprio: um refresh de conta apagada não acha linha e já responde 401.
+
+**Hard delete, não soft delete.** O schema já assumia isso: cascata só dispara
+quando a linha-pai some, e com soft delete as três tabelas ficariam com linhas
+vivas — inclusive refresh tokens rotacionando — apontando para uma conta que o
+app considera morta.
+
+**Sem tabela de eventos de auditoria.** A trilha de auditoria já é pendência
+adiada, com gatilho próprio, desde a auditoria de 2026-09-07. Criar uma tabela
+agora só para a deleção resolveria esse problema maior pela metade e para um
+evento só — o mesmo erro que a decisão 33 e a reclassificação do RBAC
+evitaram. Quando o gatilho disparar, a deleção é um dos eventos a capturar.
+**Emenda (decisão 43):** o mecanismo veio com a fatia 26, e a deleção é gravada como
+`ACCOUNT_DELETED`.
+
+**Duas escritas explícitas, porque a cascata não as alcança.**
+`pending_registrations` é indexada por e-mail e não tem FK (um pendente nasce
+antes de existir conta): um irmão não consumido sobreviveria e confirmaria uma
+conta NOVA no mesmo endereço. Varrido com `deleteAllByEmail`, que já existia
+desde a fatia 14. O aviso de deleção também não tem FK, e é isso que o deixa
+sobreviver à conta que ele descreve — gravado no outbox na mesma transação.
+
+**Confirmação em um passo, com a senha atual.** Molde de `change-password.ts`,
+não o de recuperação de senha: um segundo passo não torna a ação reversível, só
+a atrasa, e custaria tabela, TTL e cooldown novos repetindo infra existente.
+Conta só-Google apaga com a sessão válida — não tem senha a reapresentar, e a
+fatia que define a primeira senha numa conta federada segue fora do roteiro.
+
+Desenho completo em
+a spec da fatia (removida na fatia 27; ver `git log`).
+
+---
+
+### 38 — Contexto de dispositivo na sessão, `iss`/`aud`, e o recorte por reversibilidade
+
+Fecha três achados da auditoria de 2026-09-07 — "Contexto de dispositivo em
+`refresh_tokens`", "Headers de segurança (`helmet`)" e "TTL do access token" —
+e o item `iss`/`aud` do achado que também pedia `kid`. Gatilho: o primeiro app
+derivado será um agregador de gastos e investimentos ou um app de alimentação
+e calorias, e **os dois** disparam o gatilho da §6.
+
+**O critério que decidiu o recorte é reversibilidade, não gravidade.** O
+access token vive 900s, então mudar o formato dele custa uma janela de TTL:
+sobe a versão, espera, pronto. Uma coluna não tem essa propriedade — o dado
+que não foi registrado no instante em que existia não volta, e um backfill de
+`ip` ou `user_agent` não tem de onde ler. Por isso as colunas entraram agora,
+com a tabela vazia, e os claims especulativos não.
+
+**`kid` ficou de fora, e a justificativa que o `PRODUCT-CHOICES.md` dava para ele era
+falsa.** Ela dizia que trocar o `JWT_SECRET` "desloga todo mundo de uma vez".
+`POST /auth/refresh` não passa pelo guard e não lê o access token: consome só
+o refresh token opaco, que é persistido e não tem relação com o segredo.
+Trocar o segredo ao vivo produz um `401` por cliente ativo, seguido de um
+refresh transparente. O que o `kid` compraria é evitar que todos corram ao
+`/refresh` no mesmo instante — estampida, não logout. Sem usuário em
+produção, não há estampida a evitar. A linha do `PRODUCT-CHOICES.md` foi corrigida.
+
+**`auth_time`/`amr` também ficaram de fora**, pela regra que o próprio
+`ports/token-signer.ts` já enuncia: um contrato nasce com o consumidor dele, e
+nenhuma rota pergunta hoje há quanto tempo ou por qual método o usuário se
+autenticou.
+
+**Rótulo derivado, nunca o `User-Agent` cru.** A coluna guarda `"Chrome on
+Android"`. A string crua identifica o aparelho muito além do que a pergunta
+"fui eu?" precisa, e ficaria em repouso por até 60 dias. **A biblioteca é
+`bowser` (2.14.1, MIT)**: a escolha reflexa, `ua-parser-js`, está em `2.0.10`
+sob AGPL-3.0-or-later — verificado no registry, não assumido —, e licença
+viral de rede num boilerplate destinado a produtos fechados é custo
+desproporcional para interpretar uma string.
+
+**A rotação herda.** O `ip` vem do request atual, então acompanha o cliente
+trocando de wi-fi para 4G; `device_label` e `session_started_at` são copiados
+da linha substituída, porque nomeiam a **sessão** e não o request. Uma linha
+anterior às colunas adota o próprio `createdAt` como início na primeira
+renovação: mais tarde que o início real, estável dali em diante, e melhor que
+uma sessão que nunca consegue reportar um.
+
+**Sem tabela de sessão própria, e isso não tem prazo.** Seria o modelo mais
+honesto — o `family_id` É a sessão —, mas `LoginUserUseCase` passaria a fazer
+duas escritas onde a documentação da classe afirma que faz uma, arrastando
+poda, `logout-all` e deleção junto. Migrar depois é barato: `ip`, rótulo e
+início já estarão nas linhas, então o backfill tem de onde ler.
+
+**O endereço que não parseia vira `null`, não o sentinel do rate limit.**
+`client-ip.ts` passou a expor duas saídas sobre a **mesma** validação:
+`clientIpKey`, que devolve `UNPARSEABLE_CLIENT_IP_KEY` e é o que o limiter
+consome — colapsar endereços forjados num balde só é o que impede o atacante de
+abrir baldes infinitos —, e `parsedClientIp`, que devolve `null` e é o que a
+sessão grava. O sentinel significa "um balde compartilhado", e esse significado
+não sobrevive a ser gravado numa coluna e devolvido ao dono da conta, onde ele
+se lê como um host. Manter o sentinel no banco também acoplaria a resposta de
+`/auth/sessions` a uma constante que pertence ao rate limit: mudá-la ali — uma
+decisão legítima de quem conta requisições — quebraria a tradução em silêncio.
+
+**`iss` e `aud` são obrigatórios, sem default.** Um default derrotaria o
+propósito: os dois apps derivados subiriam com o mesmo carimbo e um token de
+um continuaria valendo no outro.
+
+**TTL do access token: 3600 → 900.** Só o default; a variável já existia. O
+número é a latência real de revogação do `logout-all`. Custo aceito: o
+`/refresh` passa a ser chamado 4× mais por cliente ativo.
+
+Desenho completo em
+a spec da fatia (removida na fatia 27; ver `git log`).
+
+### 39 — Rate limit compartilhado no Redis, por rota, com fail-closed
+
+Fecha o item #1 de "Pendências do boilerplate". O contador do limitador vivia
+na memória de cada processo, então com N réplicas o teto efetivo de qualquer
+rota era N× o configurado. O balanceador já reparte as requisições entre as
+réplicas, então um único endereço recebia N baldes sem tentar nada. E como a §6
+recusou o bloqueio por conta, o teto por endereço e o custo do argon2 são as
+duas únicas defesas contra chute de senha: multiplicar uma delas por N cortava
+metade do que sobrava.
+
+**A divisão.** Rota que **declara o próprio teto** (`config.rateLimit`) conta no
+Redis, compartilhado entre as réplicas. Rota sem teto próprio segue no teto
+global de 300/min, **em memória, por réplica**. O plugin já faz essa separação:
+chama `store.child()` só para as rotas com configuração própria, e é por esse
+método que o Redis entra. Nenhum módulo recebe o cliente Redis. Hoje são nove
+rotas, todas do `auth`; uma rota de produto que um dia declarar um teto
+apertado entra no Redis sem tocar no store.
+
+**Fail-closed.** Com o Redis fora, essas rotas respondem **503 com
+`Retry-After`** (`RateLimitStoreUnavailableError`, uma `TransientError`) e as
+demais seguem no ar. A escolha é de segurança: numa rota que carrega palpite de
+senha, degradar para "sem teto" é o pior lugar, e sem teto cada tentativa custa
+um argon2 (7,3 ms, 19 MB), o que expõe a CPU além das senhas. O erro nasce com
+`securityEvent = true`: sem isso o handler devolve o 503 sem uma linha de log, e
+um controle que parou de controlar passaria por tráfego comum.
+
+**A premissa que sustenta o fail-closed, dita claramente:** o Redis é operado
+por quem opera o app, e cai só em manutenção programada. Ela reabre a decisão
+quando um app derivado (a) roda num ambiente em que o Redis não é confiável, ou
+(b) exige disponibilidade de login acima da proteção contra chute. A saída é
+fail-open por rota, com alerta — nunca desligar o teto em silêncio.
+
+**Store nosso, não o `RedisStore` do plugin.** O erro do Redis precisa virar
+`TransientError`, o `RedisStore` não é exportado (o pacote não tem `exports`) e
+traz recursos que o projeto não usa. O incremento e a expiração rodam num único
+script Lua, atômico: em dois comandos, uma queda entre `INCR` e `PEXPIRE`
+deixaria a chave sem validade e aquele endereço bloqueado para sempre.
+
+**O cliente falha rápido.** `ioredis` com fila offline desligada e
+`commandTimeout`. Medido na versão 6.0.0: com as opções padrão, um comando
+contra um Redis fora do ar ficou pendurado por mais de 12 s; com a fila
+desligada, falha em 0 ms. Sem isso o "recusar" viraria requisição pendurada.
+
+**`/health` mostra o Redis e não decide o 503.** Se decidisse, o orquestrador
+tiraria todas as réplicas de circulação e a API inteira cairia, inclusive as
+rotas que nunca tocam o Redis.
+
+**Custos aceitos.**
+
+1. O teto global é N×: 300/min com três réplicas são 900/min. Ele é uma rede de
+   segurança grossa, não a defesa contra chute.
+2. As nove rotas caem juntas quando o Redis cai: login, cadastro, confirmação e
+   reenvio de e-mail, esquecer e redefinir senha, trocar senha, deletar conta e
+   Google.
+3. Um `warn` por requisição recusada durante a queda: ruído aceito em troca de a
+   queda ser visível.
+4. Importação de um arquivo interno do plugin (`LocalStore`), com o pacote em
+   versão exata; um spec quebra se ele sumir.
+5. Uma ida de rede a mais nessas nove rotas: 0,20 ms em loopback.
+6. O endereço do cliente fica no Redis pelo tempo da janela — dado pessoal, com
+   validade de segundos.
+7. Todo entrypoint valida o mesmo env: o `cron` e o seed passam a exigir
+   `REDIS_URL` mesmo sem usar o Redis.
+
+### 40 — Dispatch do outbox com etiqueta por mensagem
+
+Fecha o item #2 de "Pendências do boilerplate". O `findPendingBatch` era um
+`SELECT` comum e o `markDispatched` só rodava depois do `send`: duas execuções
+que se sobrepusessem liam as mesmas linhas e mandavam o mesmo e-mail duas vezes.
+A janela era a duração da execução inteira. A spec do outbox aceitou isso
+apoiada em "one-shot agendado pela plataforma não sobrepõe execução", premissa
+que depende de onde o app roda, e isso ainda não está decidido.
+
+**Medido de ponta a ponta:** três processos `cron` concorrentes sobre 100
+mensagens, com SMTP de verdade (Mailpit), entregaram **300 e-mails** com o
+código antigo e **100** com o novo.
+
+**O desenho.** Cada mensagem ganha `claimed_until`. `claimNext(now, leaseUntil)`
+é uma instrução única (`UPDATE … WHERE id = (SELECT … LIMIT 1 FOR UPDATE SKIP
+LOCKED) RETURNING`) que pega a mais antiga pendente e sem etiqueta vigente e a
+etiqueta. É uma mensagem por vez, então a etiqueta só precisa cobrir um envio, e
+uma execução que some prende no máximo uma mensagem. Se o processo morre, a
+etiqueta vence e outra execução assume. O padrão é de 120 s
+(`OUTBOX_DISPATCH_LEASE_SECONDS`).
+
+**Falha mantém a etiqueta.** Uma mensagem cujo envio falhou só é oferecida de
+novo quando a etiqueta vence: soltá-la a devolveria ao mesmo laço na hora (é a
+mais antiga) e gastaria as tentativas em segundos. O prazo da etiqueta vira o
+intervalo entre tentativas; com o padrão e 5 tentativas, uma mensagem que sempre
+falha desiste em cerca de 8 minutos.
+
+**Timeouts no SMTP.** A etiqueta só é confiável se o envio tem limite. O
+transporte não configurava nenhum (padrões do nodemailer: 2 min para conectar,
+30 s para a saudação, 10 min de inatividade no socket) e passou a ter 10 s, 10 s
+e 30 s. Medido: as opções cortam um servidor mudo em exatamente o configurado.
+Vale também para os caminhos de requisição, que deixam de ficar presos por até
+10 minutos num SMTP pendurado.
+
+**Rejeitado.** *Lock consultivo do Postgres por execução:* serializaria as
+execuções sem coluna nova, mas quebra atrás de um pooler em modo transação e um
+envio pendurado bloquearia todas as seguintes. *`FOR UPDATE SKIP LOCKED` numa
+transação que engloba o envio:* segura uma conexão parada durante o SMTP, e o
+`DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS` mataria a transação de um envio lento
+(§8 do desenho da unit of work: sem I/O externo em transação). *Etiquetar um
+lote inteiro:* a etiqueta teria de durar cem envios ou venceria no meio.
+
+**Custos aceitos.**
+
+1. Uma execução que morre entre o `send` e o `markDispatched` reenvia depois do
+   prazo: inerente a e-mail. A decisão elimina a duplicata por concorrência, não
+   a por queda.
+2. O timeout corta uma conexão parada, não um servidor que responde devagar a
+   cada comando; nesse caso a etiqueta pode vencer com o envio em curso.
+3. A etiqueta compara relógios de réplicas diferentes; um desvio de segundos é
+   irrelevante frente a 120 s.
+4. Uma mensagem que derruba o processo antes do `recordFailure` nunca soma
+   tentativas. Igual a antes.
+
+### 41 — Aviso ao dono quando a detecção de reuso dispara
+
+Fecha o item #3 de "Pendências do boilerplate". A detecção de reuso revogava a
+família e respondia 401, e o único rastro era uma linha de log: o dono só
+descobria pelo app mandando-o para o login. Troca e recuperação de senha e o
+vínculo do Google já avisam; o roubo de sessão detectado, que é a única defesa
+que sobra quando o atacante já tem a sessão, não avisava.
+
+**O aviso sai só na transição.** O token gasto continua gasto para sempre, então
+cada reapresentação cai no mesmo ramo. Um aviso gravado ali sem condição vira um
+e-mail por tentativa, e quem tem um token velho passaria a encher a caixa do
+dono. `revokeFamily` passou a devolver quantas linhas revogou; só maior que zero
+grava o aviso. Um replay contra a família já morta revoga zero e não grava.
+`logout`, `logout-all` e as trocas de senha ficam sem aviso pelo mesmo caminho:
+foi o dono quem revogou, ou ele já foi avisado por outro e-mail.
+
+**Pelo outbox, na mesma transação da revogação**, pela razão da decisão 33: uma
+queda entre a revogação e o envio não perde o aviso, e o SMTP não prende a
+requisição. `REUSE_DETECTED` continua retornado e não lançado, senão o rollback
+desfaria a revogação e o aviso.
+
+**O texto diz "suspeito", nunca "roubo".** O endereço é o de quem apresentou o
+token gasto, que pode ser o ladrão ou o cliente do próprio dono num retry fora da
+janela de graça. O e-mail nomeia o aparelho e o início da sessão derrubada (da
+linha do token) e esse endereço, e cobre os dois casos.
+
+**Recusado.** *Cooldown com "último aviso enviado":* exige estado novo e não
+compra segurança, porque a família já está morta.
+
+**Medido:** três reapresentações do mesmo token gasto deixam **uma** linha em
+`outbox_messages`; com a condição removida de propósito, deixam três.
+
+**Custos aceitos.**
+
+1. Um segundo ataque à mesma família não avisa de novo.
+2. O endereço do aviso pode ser o do próprio dono.
+3. O e-mail leva um IP a um endereço cadastrado: o mesmo dado que
+   `GET /auth/sessions` já devolve ao dono (decisão 38). O IP também fica em
+   repouso no `outbox_messages.text` até a poda (7 dias por padrão, contra os 60
+   de `refresh_tokens`), então não abre uma classe nova de exposição.
+4. Uma família cujo último token expirou sem ser revogado ainda conta 1 na
+   primeira reapresentação e avisa, uma vez.
+5. O aviso herda as garantias do outbox: pode chegar atrasado, e uma queda entre
+   o `send` e o registro pode repeti-lo (decisão 40).
+
+### 42 — Teto absoluto de sessão
+
+Fecha o item #4 de "Pendências do boilerplate". Os 60 dias do refresh token são
+deslizantes: cada rotação emite um token novo que vale mais 60 dias. Quem renova
+ao menos uma vez a cada 60 dias nunca reautentica, e uma sessão roubada e nunca
+detectada (malware que lê o token e renova em segredo, sem replay de token
+gasto) vive para sempre. A detecção de reuso só pega o roubo quando os dois lados
+usam a mesma cadeia.
+
+**O idle timeout já existia.** O TODO pedia "`max_lifetime` por família, com idle
+timeout junto", mas o TTL deslizante é exatamente um idle timeout: token sem uso
+por 60 dias morre. Faltava só o teto absoluto.
+
+**O desenho.** Todo token novo vence em `min(agora + TTL, início da sessão +
+REFRESH_TOKEN_MAX_LIFETIME_SECONDS)`, com padrão de 90 dias. O início é o
+`session_started_at` que a decisão 38 já grava e que cada rotação herda, então
+não há coluna nem migration. A regra mora em `RefreshToken.create`; o
+`RefreshTokenIssuer` calcula o teto a partir do contexto da sessão. O parâmetro é
+obrigatório nos dois lugares: um teto esquecido viraria uma sessão sem teto em
+silêncio.
+
+**Sem ramo novo e sem código de erro novo.** O token que chega ao teto expira pelo
+caminho de expiração que já existe: 401 `INVALID_REFRESH_TOKEN`, sem passar pela
+detecção de reuso, sem revogar a família e sem gerar o aviso da decisão 41.
+
+**Reduzir o teto derruba sessões vivas.** Um token ainda vivo pode ter o teto da
+família no passado se a variável for reduzida depois. Emitir o sucessor o faria
+nascer expirado, então `#issueInto` recusa com `InvalidRefreshTokenError` antes
+de escrever. As duas ramificações de emissão da rotação passam por ali.
+
+**Medido:** com a sessão além do teto, o refresh responde 401 e deixa a família
+intacta e o outbox vazio; com a guarda enfraquecida de propósito, responde 200.
+
+**Recusado.** *Código de erro próprio para "sessão encerrada por teto":* exigiria
+um ramo que não é reuso nem expiração comum, e o cliente age do mesmo jeito em
+todo 401. *Coluna `max_lifetime` por família:* o teto é global e o valor é
+decisão de cada app derivado, por variável de ambiente.
+
+**Custos aceitos.**
+
+1. O cliente não distingue "teto de sessão" de qualquer outro 401, e o usuário é
+   deslogado sem aviso prévio.
+2. O cookie de refresh mantém `maxAge` de 60 dias a cada rotação, então perto do
+   teto o cookie sobrevive ao token: o navegador manda um token expirado e toma o
+   401 normal.
+3. Sessões anteriores à decisão 38 ganham uma prorrogação única: o início nulo
+   adota o `createdAt` da linha viva, e o teto conta dali.
+4. Reduzir o teto derruba as sessões vivas na próxima rotação delas.
+
+### 43 — Trilha de auditoria: o mecanismo e os cinco avisos de segurança
+
+Fecha o item #6 de "Pendências do boilerplate". Os eventos de segurança do `auth`
+deixavam três rastros e nenhum era uma trilha: o aviso por e-mail (vai para o dono
+e é podado em 7 dias), a linha de log `securityEvent` (sem retenção garantida e sem
+consulta por conta) e o próprio estado (uma senha trocada não diz quando nem de
+onde). Não havia onde responder "o que aconteceu com esta conta, quando e de
+onde", que é o que a LGPD art. 37 cobra de quem opera dados pessoais.
+
+**O desenho.** Tabela `audit_events` dentro do módulo `auth`: `id`, `type`,
+`user_id`, `ip`, `device_label`, `occurred_at`. Porta `IAuditEventsRepository`
+(`save`, `deleteOccurredBefore`) exposta no `AuthRepos`, então cada use case grava
+o evento dentro do `uow` que já existe, ao lado do aviso do outbox.
+
+**Nasce dentro do `auth`, e com cinco consumidores.** A decisão 33 recusou o outbox
+genérico em `shared/` antes de um segundo módulo, e a decisão 37 recusou criar a
+tabela só para a deleção ("resolveria o problema maior pela metade e para um
+evento só"). O #6 entra com os cinco pontos que já gravam um aviso de segurança:
+senha alterada, senha redefinida, Google vinculado, reuso detectado e conta
+deletada. Nenhum evento foi inventado.
+
+**`user_id` sem FK**, para a trilha sobreviver à conta apagada: uma FK bloquearia
+o delete ou levaria a evidência junto na cascata. O evento `ACCOUNT_DELETED` é a
+prova, e o teste de integração a mede: a conta e a cascata somem, o evento fica.
+
+**IP e aparelho nos cinco.** Só três dos cinco use cases já recebiam o contexto do
+cliente. A redefinição de senha e a deleção de conta passaram a receber `device`
+(os endpoints chamam `buildDeviceContext`), porque uma trilha que não diz de onde
+veio a deleção é fraca para o que a LGPD cobra. O `User-Agent` cru continua fora
+(decisão 38); o rótulo é o derivado.
+
+**O reuso grava só na transição**, como o aviso da decisão 41 (`revoked > 0`), e
+o evento é gravado antes da busca do dono e fora do `if (owner !== null)`: ele não
+precisa do e-mail, então não mora sob uma condição que é sobre o e-mail. Os replays
+seguem só no log `securityEvent`.
+
+**Retenção por variável:** `AUDIT_EVENT_PRUNE_RETENTION_SECONDS`, padrão 1 ano, com
+um job de poda no cron. O número é **marcador**, não conselho jurídico: quanto
+guardar é decisão de produto e de compliance.
+
+**Medido:** três reapresentações do mesmo token gasto deixam **um** evento em
+`audit_events`; com a condição removida de propósito, deixam três. E um evento
+gravado numa unit of work que depois falha é desfeito, e sem falha é confirmado
+(prova o `auditEvents` ligado à transação e não ao pool).
+
+**Recusado.** *Um mecanismo em `shared/`:* nenhum segundo módulo consome. *Só a
+tabela, sem eventos:* contrato sem consumidor, não valida a forma. *Coluna JSON
+livre de metadados:* sem consumidor, sem forma validada; cada evento novo que
+precise de um dado ganha uma coluna. *E-mail do usuário na linha:* dado pessoal que
+sobreviveria à conta. *Eventos de login e logout:* volume alto, e a decisão de
+quanto guardar deixa de ser trivial.
+
+**Custos aceitos.**
+
+1. O `user_id` continua na trilha depois da conta apagada: é identificador
+   pseudonimizado, e a trilha existe justamente para provar o que aconteceu.
+2. IP e aparelho ficam em repouso pelo tempo da retenção, que é maior que os 7 dias
+   do outbox. O mesmo dado já vive 60 dias em `refresh_tokens` (decisão 38).
+3. O reuso registra só a primeira detecção.
+4. Sem leitura pela API: o operador consulta por SQL. Uma rota é o passo natural
+   seguinte e é decisão de produto.
+5. O padrão de 1 ano é um marcador, não uma resposta de compliance.
+6. O banco não impede escrever um `type` fora do conjunto: a validação está no
+   tipo da entidade e a coluna é `text`. Um `CHECK` custaria uma migration por
+   evento novo.
+
+---
+
+### 44 — `kid` no JWT adiado, e a fila do boilerplate fechada
+
+Fecha o item #7 de "Pendências do boilerplate" **sem construí-lo**, e com isso
+fecha a fila inteira: cinco entregues (#1 a #4 e #6, fatias 22 a 26) e dois
+adiados de propósito, com gatilho próprio (#5, senha vazada, adiado em
+2026-09-19; #7 aqui).
+
+**O fato, verificado no código.** `infra/http/endpoints/refresh.ts` não declara
+`preHandler: guard` — compare com `me.ts` — e não lê o access token em ponto
+nenhum: consome só o refresh token opaco, do body ou do cookie. Trocar o
+`JWT_SECRET` ao vivo, portanto, **não desloga ninguém**. Cada cliente ativo toma
+um `401` na próxima chamada autenticada, chama `/auth/refresh`, recebe um token
+novo e repete — o mesmo caminho que todo cliente já percorre a cada 900s por
+causa do TTL da decisão 38. A decisão 38 já havia corrigido a justificativa
+falsa que o `PRODUCT-CHOICES.md` dava; esta decisão age sobre a correção.
+
+**O que o `kid` compraria é timing, não segurança.** Sem ele, todos os clientes
+batem no `401` no mesmo instante do deploy e vão ao `/refresh` juntos: um pico
+de transações de rotação. Estampida, não logout. Sem usuário em produção, o pico
+é de zero requisições, e construir agora seria pagar config nova para um
+problema que não existe.
+
+**O gatilho é anterior à necessidade, de propósito.** Reabrir **antes** do
+primeiro app derivado ir a produção, não quando a estampida aparecer. O `kid`
+muda o formato do header do token, que é barato de mudar enquanto não há cliente
+lá fora e caro depois — a mesma lógica de reversibilidade com que a decisão 38
+recortou a fatia 21. A necessidade sentida só chega quando já é o momento caro.
+
+**O desenho já explorado**, para quem retomar. Três formatos de config foram
+comparados: (A) manter `JWT_SECRET` como a chave que assina, com um
+`JWT_SECRET_KID` e uma variável verify-only com as aposentadas, compatível com
+todo `.env` existente; (B) uma lista só, `JWT_KEYS` em JSON mais
+`JWT_ACTIVE_KID`, que quebra os ambientes e põe JSON dentro de variável de
+ambiente; (C) `kid` derivado de um hash truncado do próprio segredo, sem config
+nova mas com identificador opaco que o operador não escolhe. A recomendação era
+a **A**. Existe ainda uma meia-entrega: emitir o `kid` no header agora, uma
+linha e zero config, deixando a verificação multi-chave para depois — o formato
+nasce certo sem pagar o resto.
+
+**O que isto implica para o roteiro.** Não sobra item desbloqueado de
+boilerplate. O que resta no `PRODUCT-CHOICES.md` é "Decisões que cada produto toma" — MFA,
+step-up (`auth_time`/`amr`), criptografia em repouso, tunar o custo do argon2,
+reabrir o lockout, RBAC, multi-tenancy —, e todas estão travadas no mesmo
+gatilho: **qual app derivado vem primeiro**. A próxima decisão do projeto não é
+uma fatia, é essa escolha.
+
+Sem spec: não houve implementação, e um adiamento não pede fatia.
+
+---
+
+
+---
+
+### 45 — A documentação passa a descrever o estado, não a jornada
+
+Fecha a fatia 27. Com a fila do boilerplate encerrada (decisão 44), a
+documentação era a única parte do repositório ainda organizada por **quando as
+coisas aconteceram**: 66 arquivos `.md` versionados e 61 mil linhas, das quais
+`docs/superpowers/` sozinho respondia por 55 arquivos e 53 mil linhas.
+
+**Três leitores foram escolhidos, e nenhum quer a jornada.** Quem deriva um
+produto deste boilerplate, o agente que trabalha no repo, e um segundo
+desenvolvedor humano. Os três querem porta de entrada, fronteiras, convenções e
+arquivos que caibam numa sessão. O leitor que a estrutura antiga servia — o
+próprio autor reconstruindo o passado — foi deliberadamente despriorizado.
+
+**Uma referência de arquitetura, não três.** `ARCHITECTURE.md`,
+`STRUCTURE.md` e `OLD_ARCHITECTURE.md` abriam com a mesma frase e repetiam
+princípio, árvore e imports. A divisão não era linha de falha natural: as três
+respondiam "como este código está organizado", o leitor não sabia qual abrir, e
+elas derivaram. **A prova está no próprio repo:** o `ARCHITECTURE.md` afirmava
+há semanas que `docs/` era "rascunho local, fora do git", quando eram 59
+arquivos rastreados. A segunda cópia de uma verdade é a cópia que envelhece.
+
+O problema do arquivo longo se resolve com o `README.md` — que não existia —, e
+não partindo a referência em duas. Agente lê por grep; quem sofre com arquivo
+longo é o humano que chega, e o remédio para isso é uma porta curta na frente.
+
+**Specs e planos apagados: eram previsões congeladas.** As 25 specs foram
+escritas **antes** do código de cada fatia, o código andou 26 fatias desde, e
+nada as mantinha verdadeiras — várias ainda afirmavam que `docs/` era gitignored.
+Um documento que ninguém mantém e cuja veracidade o leitor não consegue julgar é
+pior que ausência: a ausência não engana. Os 23 planos não eram referenciados por
+arquivo nenhum. As decisões, ao contrário, foram escritas **depois**, como
+destilação, e são substanciais: a 11 tem 229 linhas, a 32 tem 351.
+
+**A regra que impede a reincidência:** cada fato mora em exatamente um arquivo, e
+os outros apontam. O `README.md` não explica a fronteira — diz onde ela está
+explicada.
+
+**A numeração das decisões é imutável.** É o endereço de 88 comentários em 63
+arquivos de `src/`, e a regra do `CLAUDE.md` ("cite, never re-argue") deixa esses
+comentários finos de propósito, contando com este documento para segurar o
+argumento. Por isso os corpos ficaram intactos e a reestruturação se limitou a
+mover, indexar e remover o que estava morto: as decisões 33 a 44 estavam sob o
+título "§6 Decisões em aberto", por terem sido anexadas no fim do arquivo, e
+voltaram para a §2.
+
+**O que era escolha de produto saiu daqui.** A antiga §6 e a seção equivalente do
+`PRODUCT-CHOICES.md` eram a mesma lista mantida em dois lugares. Viraram
+[`PRODUCT-CHOICES.md`](PRODUCT-CHOICES.md), com formato fixo: o que é, por que
+não está no boilerplate, o gatilho para reabrir, e o custo aceito enquanto isso.
+
+**Perda deliberada, nomeada.** `password-change-design.md` (610 linhas) e
+`connection-limits-design.md` (245) foram apagadas **sem destilação**, por
+escolha explícita do usuário: criar decisões novas para trabalho de agosto
+tornaria a numeração não-cronológica por um ganho julgado insuficiente. São 855
+linhas cujo raciocínio não existe em nenhum documento vivo — só no git. O
+conteúdo que os comentários de `src/` citavam foi resgatado para
+`ARCHITECTURE.md` §6 (a aritmética de pool e a armadilha do `.prepare()`) e para
+o `PRODUCT-CHOICES.md` (a ausência de contagem de falha).
+
+**O resgate foi proporcional, não exaustivo**, e o motivo está declarado: o
+usuário sinalizou a intenção de remover este arquivo numa rodada futura, quando
+os 88 ponteiros saírem do código. Resgatar exaustivamente para dentro de um
+arquivo com fim previsto seria trabalho para o lixo. **O acoplamento é o que
+mantém este documento vivo hoje, não o valor histórico** — se os comentários
+passarem a carregar o próprio argumento, ou o código ficar óbvio o bastante para
+dispensá-lo, o `DECISIONS.md` perde o que o sustenta e pode cair.
+
+**Custos aceitos.**
+
+1. As specs saem do worktree. Recuperáveis por `git show`, mas ninguém vai
+   procurá-las lá.
+2. O critério do resgate foi julgamento, não processo: ao decidir o que de uma
+   spec de 914 linhas precisava sobreviver, algum item se perdeu sem que eu
+   percebesse.
+3. Este arquivo **cresceu** nesta fatia, contra o instinto de enxugar. A troca:
+   um arquivo que cresce e é mantido, em vez de 46 que encolhem por abandono.
+4. O histórico por fatia deixa de ser legível em prosa. Quem quiser "o que foi
+   feito quando" lê `git log` — pior de narrar, melhor de confiar.
+5. Qualquer link antigo para `docs/superpowers/...` chega em 404, sem redirect.
+
+Saldo: 66 → 10 arquivos `.md` versionados, dos quais 7 são documentação de
+projeto e 3 são ferramental em `.claude/`. `docs/` caiu de ~59k para ~3,5k linhas.
 ## 3. Defaults assumidos (não debatidos, abertos a objeção)
 
 | Tema | Escolha | Nota |
@@ -2139,685 +2899,3 @@ drizzle.config.ts                        # agrega os schemas por glob (06)
 
 ---
 
-## 6. Decisões em aberto
-
-**Os seis blocos do roteiro estão fechados.** O que resta são decisões menores
-mas ainda não tomadas, agrupadas pelo momento em que precisam ser resolvidas.
-
-**Nada bloqueia mais o início da implementação** — as três pendências que
-bloqueavam (lint de fronteira, build e path alias, mappers) viraram as decisões
-18, 19 e 20.
-
-**Podem esperar o primeiro módulo existir:**
-
-- ~~**Superfície pública do módulo**~~ — **RESOLVIDA em 2026-08-27**, pela fatia
-  do login. O guard é infra global genérica e recebe o verificador **injetado**
-  (`makeAuthGuard(verify)`), então `infra/http/auth-guard.ts` não importa nada de
-  `#modules/*` e nenhum módulo importa `auth` para se proteger. A exceção
-  declarada no lint que a auditoria de 2026-08-20 previu não é necessária.
-  Desenho em [`specs/2026-08-27-login-design.md`](superpowers/specs/2026-08-27-login-design.md) §4.3.
-- ~~**Rate limiting e proteção contra brute force**~~ — **RESOLVIDA em
-  2026-09-02.** Entrou teto por endereço com `@fastify/rate-limit` (global de
-  300/min, e 10/min no login), `TRUST_PROXY` explícito e `clientIpKey`. Resposta
-  `429` no envelope, com `code` próprio e **sem oitava categoria** na taxonomia:
-  o 429 nasce no transporte, então mora junto do 4xx do Fastify (decisão 13).
-
-  **A contagem de falha de autenticação NÃO entrou, e isso é decisão.** Só a
-  aplicação sabe que a senha estava errada, mas implementá-la exigiria porta de
-  store, política de dois baldes na camada pura, teto de memória com política de
-  despejo e um caminho próprio para Redis — para reimplementar, pior, o que a
-  borda já faz na metade grossa do problema. Fica delegada à borda
-  (Cloudflare/WAF/ALB) e ao custo do argon2, medido em 7,3 ms e 19 MB por
-  tentativa.
-
-  **O que a escolha custa, dito claramente:** uma conta de e-mail conhecido e
-  senha fraca pode ser quebrada por uma botnet paciente — cada IP gasta 10/min,
-  e mil IPs somam dez mil tentativas por minuto — e **nada no servidor vai
-  notar**. A proteção de borda também só vale para o tráfego que passa por ela:
-  se o IP de origem for alcançável direto, o atacante pula tudo.
-
-  **Gatilho para reabrir:** o primeiro app derivado que trate dado sensível
-  (saúde, financeiro), ou o primeiro incidente de conta comprometida por força
-  bruta.
-
-  A política do par IP + e-mail proposta pela spec do login §14.3 foi analisada
-  e **descartada com ela**: o par sozinho não detém ataque distribuído (mil IPs
-  são mil baldes), e o balde por e-mail que o deteria é vetor de DoS contra a
-  vítima. Desenho e alternativas recusadas em
-  [`specs/2026-09-02-rate-limiting-design.md`](superpowers/specs/2026-09-02-rate-limiting-design.md).
-- ~~**A janela de graça permite bifurcar uma família sem detecção.**~~
-  **RESOLVIDA em 2026-09-01**, pela saída 3 abaixo, com a exigência de
-  single-flight escrita na decisão 11. O registro do problema fica porque as
-  três saídas continuam sendo o mapa de quem reabrir isto. Texto original:
-  adiado conscientemente em 2026-09-01. Dentro dos 30s, reapresentar o token já
-  rotacionado emite um par novo **sem** matar o sucessor anterior, então um
-  token roubado usado nessa janela cria uma segunda cadeia viva na mesma
-  família e a detecção de reuso nunca dispara para nenhuma das duas.
-  **Não confundir com multi-device:** cada login abre família própria, e é isso
-  que sustenta vários aparelhos — fechar o fork não afeta isso.
-  Três saídas, e a decisão 11 hoje manda a primeira:
-  1. emitir par novo e não tocar no irmão (atual) — perdoa resposta perdida,
-     permite o fork;
-  2. falhar 401 dentro da janela sem revogar a família — é o que o
-     `~/projects/byteflow` faz, e o comentário dele nomeia o fork como o motivo;
-     fecha o buraco ao custo de reintroduzir o logout aleatório;
-  3. emitir par novo **e** revogar o sucessor anterior — um ativo por família:
-     perdoa a resposta perdida *e* faz o fork disparar detecção na próxima
-     rotação da vítima. Custo: um duplo-toque genuíno em que o cliente já
-     recebeu o sucessor e mesmo assim reenvia o antecessor mata o token que ele
-     tem. É a candidata mais forte se isto for reaberto.
-- **A sessão não tem teto absoluto.** Os 60 dias são deslizantes, então um
-  cliente que dê refresh toda semana nunca reautentica. Rotação e detecção de
-  reuso cobrem roubo, então não é furo — é decisão de produto nunca tomada. A
-  saída usual é um `max_lifetime` por família.
-- **Colisão de nome de tabela entre módulos.** Nada impede dois módulos
-  declararem `users`. O `drizzle-kit` junta os globs e gera a migration com as
-  duas — e o erro aparece no `db:migrate`, não no lint. Saídas possíveis:
-  disciplina, prefixo por módulo (`auth_users`), ou um schema do Postgres por
-  módulo (`pgSchema('auth')`). Decidido ficar em `public` por ora, já que
-  `ALTER TABLE ... SET SCHEMA` torna a migração posterior barata.
-
-**Escopo de produto, não de arquitetura — decidir o que entra no boilerplate:**
-
-- ~~Verificação de e-mail~~ — **RESOLVIDA pela fatia 10** (decisões 13, 25 e 26)
-  e **fechada contra account pre-hijacking pela fatia 11** (decisões 27 e 28): a
-  conta passou a nascer na confirmação, com a senha do request de confirm.
-  Throttle de `confirm` por e-mail e deleção de conta varrendo os pendentes
-  continuam fatias próprias. ~~Recuperação de senha~~ — **RESOLVIDA pela fatia
-  12** (decisão 29): `POST /auth/password/forgot` e `POST /auth/password/reset`
-  entregues, reusando a infraestrutura de e-mail e o padrão de tabela com
-  hash/expiração/uso único.
-- ~~**Login social / OAuth (Google primeiro)**~~ — **RESOLVIDA pela fatia 14
-  (decisão 31).** `POST /auth/google` client-driven: a API verifica o ID token
-  contra o JWKS do Google, sem client secret. Tabela `federated_identities`,
-  `users.password_hash` nulável, e os três itens abaixo implementados. O que fica
-  para fatias próprias: fluxo redirect/BFF, desvincular provedor, definir a
-  primeira senha numa conta só-Google, listar provedores no `/me`, restrição de
-  domínio `hd`. O registro dos três itens fica porque continua sendo o mapa do
-  desenho:
-
-  1. **Não haverá troca de e-mail.** Com identidade federada o endereço deixa de
-     ser um campo que o usuário possui e passa a ser **asserção do provedor**.
-     Um endpoint de troca criaria a pergunta "quem é a autoridade, o IdP ou a
-     nossa coluna?", que não tem resposta boa. O endpoint sai do roteiro; não é
-     omissão.
-  2. **Sign-in do Google sobre um cadastro pendente e não confirmado: o Google
-     ganha e a conta nasce verificada.** O IdP provou o endereço; o pendente não
-     provou nada. Os pendentes daquele endereço são descartados **de modo que
-     não possam mais definir senha depois** — um pendente que sobrevivesse e
-     ainda aplicasse a senha dele na confirmação seria o sequestro da fatia 11
-     por outra porta.
-  3. **Sign-in do Google sobre conta verificada com senha: recusa o merge
-     silencioso e exige a senha cadastrada**, e só então vincula a identidade em
-     definitivo. Merge silencioso é a variante *Classic-Federated Merge* do
-     pre-hijacking: o atacante cadastra o endereço da vítima com senha, a vítima
-     entra com Google meses depois, o app funde, e a senha do atacante continua
-     valendo.
-
-  **Uma assimetria a preservar, e não "corrigir".** A recusa do item 3 pode ser
-  **específica** — "este endereço já tem conta com senha" — sem virar oráculo de
-  enumeração, porque no callback do OAuth o IdP já provou que quem está ali é o
-  dono do endereço. É a única porta do `auth` onde contar a verdade não vaza
-  nada, e destoa de propósito do `202` genérico do `register`.
-
-  Ver também a ressalva de formato de erro na decisão 13: o endpoint de token do
-  OAuth tem corpo de erro mandatório pela RFC 6749 e fica fora da convenção
-  deste projeto.
-- **RBAC / permissões — decisão tomada de NÃO entrar no boilerplate.**
-  Reclassificada em 2026-09-17: não é decisão de arquitetura pendente, é
-  escopo de produto — pelo mesmo motivo que fechou a discussão do outbox
-  genérico (§2, decisão 33): sem um segundo consumidor real, não há como
-  validar a forma certa, e "quem pode fazer o quê" varia por produto de um
-  jeito que "como não vazar sessão" não varia. Um papel único (`admin`/`user`)
-  seria simples demais para servir de verdade; papéis com permissões
-  associadas seria decisão tomada sem produto nenhum para validar contra.
-  **Gatilho para reabrir:** o primeiro app derivado que precisar de acesso
-  diferenciado por usuário — e a decisão certa então depende do que ESSE
-  produto precisa (papel único? por recurso? por organização?), não do que
-  este documento adivinhar hoje.
-  Continua valendo o registro do trade-off, para quando a decisão for
-  retomada: se o papel for para dentro do JWT (decisão 11), mudança de
-  permissão só vale no próximo refresh — janela de até 1h, a mesma latência
-  de revogação que a decisão 11 já aceitou para autenticação, agora
-  valendo também para autorização.
-- Multi-tenancy
-
----
-
-### 33 — Outbox transacional: três avisos pós-commit, estado por timestamp, retry com teto simples
-
-Fecha o furo "crash entre o `COMMIT` e o envio SMTP perde o e-mail em silêncio",
-para os três avisos que o encerram: `passwordChangedEmail`,
-`passwordResetCompletedEmail`, `googleAccountLinkedEmail`.
-
-**Escopo deliberadamente parcial.** `verificationEmail` e `passwordResetEmail`
-seguem fora — carregam segredo em texto claro, e colocar a linha em repouso no
-banco até o despacho é exatamente o motivo que adiou o outbox inteiro na fatia
-10. `accountAlreadyExistsEmail` também fica fora: sem escrita transacional
-precedente, não há buraco de atomicidade ali para fechar.
-
-**Estado por timestamp nulável, não enum.** `dispatched_at`/`failed_at` seguem
-o mesmo idioma de `consumed_at`/`revoked_at`.
-
-**Retry: contador simples com teto, sem backoff explícito.** O intervalo do
-scheduler externo que já invoca `cron.ts` (decisão 30) cumpre esse papel.
-
-**Rejeitados:** um outbox genérico em `shared/`, antes de um segundo módulo
-para validar a forma certa (YAGNI); um worker de longa duração com
-LISTEN/NOTIFY do Postgres em vez do poll one-shot do `cron.ts` (contradiria a
-decisão 16 e o modelo one-shot da decisão 30).
-
-Desenho completo em
-[`2026-09-15-transactional-outbox-design.md`](superpowers/specs/2026-09-15-transactional-outbox-design.md).
-
----
-
-### 34 — Throttle de `confirm` por e-mail: o cooldown de reenvio passa a valer também sobre pending esgotado
-
-Fecha o item "Throttle de `confirm` por e-mail" do `TODO.md`. Sem isso, esgotar
-as cinco tentativas de um `pending_registration` liberava a criação de outro na
-hora: o cooldown de 60s (`EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS`) só se
-aplicava a um pending que ainda passasse em `isUsable` (que exige `attempts <
-maxAttempts`), então um atacante nunca precisava esperar — bastava esgotar e
-chamar `register` de novo. Distribuído em vários IPs, o teto por endereço da
-decisão de rate limiting (§6) não segurava isso.
-
-**Rejeitado: contador de falhas por e-mail com bloqueio.** É a saída óbvia,
-mas reproduz o padrão já descartado em §6 para o rate limiting do login — um
-balde por e-mail que bloqueia dá a quem só conhece o endereço da vítima um
-jeito de trancá-la de fora, só que aqui travando o cadastro em vez do login.
-
-**O que entrou:** o cooldown de `RegisterUserUseCase` passa a olhar o pending
-mais recente da fila (`findUnconsumedByEmail`, mais recente primeiro), sem
-filtrar por `isUsable`. Esgotado ou não, um código pedido há menos de 60s
-ainda segura um pedido novo. Isso limita qualquer atacante a cinco chutes por
-e-mail a cada 60s, **de qualquer IP** — sem bloqueio novo: o pior caso para o
-dono legítimo é o mesmo que já existia ao clicar "reenviar" duas vezes
-seguidas.
-
-**Custo aceito:** um atacante que já sabe o e-mail da vítima ainda consegue
-atrasar a confirmação dela em até 60s por rodada — não é bloqueio indefinido,
-é o mesmo atraso que o cooldown já impunha ao dono legítimo antes desta fatia.
-
-O parâmetro `maxAttempts` do construtor de `RegisterUserUseCase` foi removido
-por ter ficado sem uso; `RequestEmailVerificationUseCase` (o endpoint de
-reenvio explícito, que só reemite sobre um pending ainda usável e nunca cria
-linha nova) continua precisando do seu, sem mudança. Sem migração, sem
-variável de ambiente nova: reusa `EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS`.
-
----
-
-### 35 — Listar sessões ativas: sem `GROUP BY`, sem info de dispositivo, sem flag de "sessão atual"
-
-Fecha o item "Listar sessões ativas" do `TODO.md`. `GET /auth/sessions`
-(Bearer, guardado como `/me`) devolve uma entrada por família de refresh token
-com linha ainda viva.
-
-**Sem `GROUP BY`.** A rotação sempre revoga a linha que substitui na mesma
-escrita (decisão 11), então uma família tem no máximo uma linha não revogada
-a qualquer instante — e essa linha já É o estado atual da sessão. A query é
-`WHERE user_id = ? AND revoked_at IS NULL AND expires_at > ?`, plana.
-
-**Sem informação de dispositivo, de propósito.** `refresh_tokens` não tem
-`ip`/`user_agent`/`last_used_at` — isso é o item separado "Contexto de
-dispositivo em `refresh_tokens`" da auditoria de 2026-09-07 (§6, tabela da
-auditoria), que exige migration. Sem ele, a resposta é só `{ id (family_id),
-createdAt, expiresAt }`: dá pra saber **quantas** sessões existem e desde
-quando, não **qual** é qual.
-**Fechado pela decisão 38**, que trouxe `ip`, `device_label` e
-`session_started_at` — o parágrafo acima descreve o estado anterior.
-
-**Sem flag de "sessão atual".** Não é derivável só do access token: o guard
-só enxerga o `sub` do JWT, nunca o `family_id` — que nem é devolvido ao
-cliente em nenhuma resposta hoje. Marcar "essa sou eu" exigiria também ler o
-refresh token/cookie nesta rota GET, misturando os dois mecanismos de
-transporte fora do padrão do resto do módulo. Fica para quando (se) houver um
-pedido concreto.
-
-Sem migração, sem variável de ambiente nova, sem spec dedicado — mudança
-pequena o bastante para caber inteira nesta entrada.
-
----
-
-### 36 — Invalidação de sessão no vínculo do Google, fechando a última rota sensível sem essa defesa
-
-Fecha o item "Invalidar sessões + notificar o dono na verificação" do
-`TODO.md`. O texto original vinha do §4.4 do handoff da fatia 11 — na época,
-antes da conta nascer só na confirmação e antes do login social existirem, a
-"verificação" em questão era o `confirm-email`. Hoje esse ponto não se aplica
-mais ali: uma confirmação sempre cria uma conta nova, e não existe sessão
-anterior pra derrubar.
-
-**Reinterpretação, verificada no código, não suposta:** das três rotas que
-mudam algo sensível numa conta já existente, duas já tinham a defesa —
-`change-password.ts` e `reset-password.ts` já chamavam
-`refreshTokens.revokeAllForUser` e já mandavam aviso por e-mail (fatia 16,
-outbox). A terceira, `SignInWithGoogleUseCase` no ramo que vincula Google a
-uma conta que já tinha senha, já mandava o aviso (`googleAccountLinkedEmail`,
-decisão 31) mas nunca derrubava as sessões existentes. Era a única porta sem
-essa segunda trava — se uma senha vazada fosse usada pra plugar um Google
-como porta dos fundos, o dono era avisado, mas o invasor continuava logado
-pelas sessões que já tinha.
-
-**O que entrou:** uma chamada a `refreshTokens.revokeAllForUser(existing.id,
-now)` dentro da mesma transação que salva o vínculo, na mesma ordem que
-`change-password.ts` já usa e pela mesma razão — ANTES de salvar a sessão
-nova, porque `revokeAllForUser` só derruba linhas com `revoked_at IS NULL` e,
-feito depois, derrubaria a sessão que a própria chamada acabou de abrir.
-
-Sem migração, sem variável de ambiente nova, sem spec dedicado.
-
----
-
-### 37 — Deleção de conta: hard delete, apoiado na cascata que o schema já declara
-
-`DELETE /auth/me` apaga a linha de `users` de verdade. As FKs com
-`onDelete: 'cascade'` — escritas antes desta fatia — levam junto
-`refresh_tokens`, `federated_identities` e `password_reset_tokens`, e é isso
-que **fecha também o item "Revogação por usuário deletado/banido"** sem código
-próprio: um refresh de conta apagada não acha linha e já responde 401.
-
-**Hard delete, não soft delete.** O schema já assumia isso: cascata só dispara
-quando a linha-pai some, e com soft delete as três tabelas ficariam com linhas
-vivas — inclusive refresh tokens rotacionando — apontando para uma conta que o
-app considera morta.
-
-**Sem tabela de eventos de auditoria.** A trilha de auditoria já é pendência
-adiada, com gatilho próprio, desde a auditoria de 2026-09-07. Criar uma tabela
-agora só para a deleção resolveria esse problema maior pela metade e para um
-evento só — o mesmo erro que a decisão 33 e a reclassificação do RBAC
-evitaram. Quando o gatilho disparar, a deleção é um dos eventos a capturar.
-**Emenda (decisão 43):** o mecanismo veio com a fatia 26, e a deleção é gravada como
-`ACCOUNT_DELETED`.
-
-**Duas escritas explícitas, porque a cascata não as alcança.**
-`pending_registrations` é indexada por e-mail e não tem FK (um pendente nasce
-antes de existir conta): um irmão não consumido sobreviveria e confirmaria uma
-conta NOVA no mesmo endereço. Varrido com `deleteAllByEmail`, que já existia
-desde a fatia 14. O aviso de deleção também não tem FK, e é isso que o deixa
-sobreviver à conta que ele descreve — gravado no outbox na mesma transação.
-
-**Confirmação em um passo, com a senha atual.** Molde de `change-password.ts`,
-não o de recuperação de senha: um segundo passo não torna a ação reversível, só
-a atrasa, e custaria tabela, TTL e cooldown novos repetindo infra existente.
-Conta só-Google apaga com a sessão válida — não tem senha a reapresentar, e a
-fatia que define a primeira senha numa conta federada segue fora do roteiro.
-
-Desenho completo em
-[`2026-09-18-account-deletion-design.md`](superpowers/specs/2026-09-18-account-deletion-design.md).
-
----
-
-### 38 — Contexto de dispositivo na sessão, `iss`/`aud`, e o recorte por reversibilidade
-
-Fecha três achados da auditoria de 2026-09-07 — "Contexto de dispositivo em
-`refresh_tokens`", "Headers de segurança (`helmet`)" e "TTL do access token" —
-e o item `iss`/`aud` do achado que também pedia `kid`. Gatilho: o primeiro app
-derivado será um agregador de gastos e investimentos ou um app de alimentação
-e calorias, e **os dois** disparam o gatilho da §6.
-
-**O critério que decidiu o recorte é reversibilidade, não gravidade.** O
-access token vive 900s, então mudar o formato dele custa uma janela de TTL:
-sobe a versão, espera, pronto. Uma coluna não tem essa propriedade — o dado
-que não foi registrado no instante em que existia não volta, e um backfill de
-`ip` ou `user_agent` não tem de onde ler. Por isso as colunas entraram agora,
-com a tabela vazia, e os claims especulativos não.
-
-**`kid` ficou de fora, e a justificativa que o `TODO.md` dava para ele era
-falsa.** Ela dizia que trocar o `JWT_SECRET` "desloga todo mundo de uma vez".
-`POST /auth/refresh` não passa pelo guard e não lê o access token: consome só
-o refresh token opaco, que é persistido e não tem relação com o segredo.
-Trocar o segredo ao vivo produz um `401` por cliente ativo, seguido de um
-refresh transparente. O que o `kid` compraria é evitar que todos corram ao
-`/refresh` no mesmo instante — estampida, não logout. Sem usuário em
-produção, não há estampida a evitar. A linha do `TODO.md` foi corrigida.
-
-**`auth_time`/`amr` também ficaram de fora**, pela regra que o próprio
-`ports/token-signer.ts` já enuncia: um contrato nasce com o consumidor dele, e
-nenhuma rota pergunta hoje há quanto tempo ou por qual método o usuário se
-autenticou.
-
-**Rótulo derivado, nunca o `User-Agent` cru.** A coluna guarda `"Chrome on
-Android"`. A string crua identifica o aparelho muito além do que a pergunta
-"fui eu?" precisa, e ficaria em repouso por até 60 dias. **A biblioteca é
-`bowser` (2.14.1, MIT)**: a escolha reflexa, `ua-parser-js`, está em `2.0.10`
-sob AGPL-3.0-or-later — verificado no registry, não assumido —, e licença
-viral de rede num boilerplate destinado a produtos fechados é custo
-desproporcional para interpretar uma string.
-
-**A rotação herda.** O `ip` vem do request atual, então acompanha o cliente
-trocando de wi-fi para 4G; `device_label` e `session_started_at` são copiados
-da linha substituída, porque nomeiam a **sessão** e não o request. Uma linha
-anterior às colunas adota o próprio `createdAt` como início na primeira
-renovação: mais tarde que o início real, estável dali em diante, e melhor que
-uma sessão que nunca consegue reportar um.
-
-**Sem tabela de sessão própria, e isso não tem prazo.** Seria o modelo mais
-honesto — o `family_id` É a sessão —, mas `LoginUserUseCase` passaria a fazer
-duas escritas onde a documentação da classe afirma que faz uma, arrastando
-poda, `logout-all` e deleção junto. Migrar depois é barato: `ip`, rótulo e
-início já estarão nas linhas, então o backfill tem de onde ler.
-
-**O endereço que não parseia vira `null`, não o sentinel do rate limit.**
-`client-ip.ts` passou a expor duas saídas sobre a **mesma** validação:
-`clientIpKey`, que devolve `UNPARSEABLE_CLIENT_IP_KEY` e é o que o limiter
-consome — colapsar endereços forjados num balde só é o que impede o atacante de
-abrir baldes infinitos —, e `parsedClientIp`, que devolve `null` e é o que a
-sessão grava. O sentinel significa "um balde compartilhado", e esse significado
-não sobrevive a ser gravado numa coluna e devolvido ao dono da conta, onde ele
-se lê como um host. Manter o sentinel no banco também acoplaria a resposta de
-`/auth/sessions` a uma constante que pertence ao rate limit: mudá-la ali — uma
-decisão legítima de quem conta requisições — quebraria a tradução em silêncio.
-
-**`iss` e `aud` são obrigatórios, sem default.** Um default derrotaria o
-propósito: os dois apps derivados subiriam com o mesmo carimbo e um token de
-um continuaria valendo no outro.
-
-**TTL do access token: 3600 → 900.** Só o default; a variável já existia. O
-número é a latência real de revogação do `logout-all`. Custo aceito: o
-`/refresh` passa a ser chamado 4× mais por cliente ativo.
-
-Desenho completo em
-[`2026-09-18-session-device-context-design.md`](superpowers/specs/2026-09-18-session-device-context-design.md).
-
-### 39 — Rate limit compartilhado no Redis, por rota, com fail-closed
-
-Fecha o item #1 de "Pendências do boilerplate". O contador do limitador vivia
-na memória de cada processo, então com N réplicas o teto efetivo de qualquer
-rota era N× o configurado. O balanceador já reparte as requisições entre as
-réplicas, então um único endereço recebia N baldes sem tentar nada. E como a §6
-recusou o bloqueio por conta, o teto por endereço e o custo do argon2 são as
-duas únicas defesas contra chute de senha: multiplicar uma delas por N cortava
-metade do que sobrava.
-
-**A divisão.** Rota que **declara o próprio teto** (`config.rateLimit`) conta no
-Redis, compartilhado entre as réplicas. Rota sem teto próprio segue no teto
-global de 300/min, **em memória, por réplica**. O plugin já faz essa separação:
-chama `store.child()` só para as rotas com configuração própria, e é por esse
-método que o Redis entra. Nenhum módulo recebe o cliente Redis. Hoje são nove
-rotas, todas do `auth`; uma rota de produto que um dia declarar um teto
-apertado entra no Redis sem tocar no store.
-
-**Fail-closed.** Com o Redis fora, essas rotas respondem **503 com
-`Retry-After`** (`RateLimitStoreUnavailableError`, uma `TransientError`) e as
-demais seguem no ar. A escolha é de segurança: numa rota que carrega palpite de
-senha, degradar para "sem teto" é o pior lugar, e sem teto cada tentativa custa
-um argon2 (7,3 ms, 19 MB), o que expõe a CPU além das senhas. O erro nasce com
-`securityEvent = true`: sem isso o handler devolve o 503 sem uma linha de log, e
-um controle que parou de controlar passaria por tráfego comum.
-
-**A premissa que sustenta o fail-closed, dita claramente:** o Redis é operado
-por quem opera o app, e cai só em manutenção programada. Ela reabre a decisão
-quando um app derivado (a) roda num ambiente em que o Redis não é confiável, ou
-(b) exige disponibilidade de login acima da proteção contra chute. A saída é
-fail-open por rota, com alerta — nunca desligar o teto em silêncio.
-
-**Store nosso, não o `RedisStore` do plugin.** O erro do Redis precisa virar
-`TransientError`, o `RedisStore` não é exportado (o pacote não tem `exports`) e
-traz recursos que o projeto não usa. O incremento e a expiração rodam num único
-script Lua, atômico: em dois comandos, uma queda entre `INCR` e `PEXPIRE`
-deixaria a chave sem validade e aquele endereço bloqueado para sempre.
-
-**O cliente falha rápido.** `ioredis` com fila offline desligada e
-`commandTimeout`. Medido na versão 6.0.0: com as opções padrão, um comando
-contra um Redis fora do ar ficou pendurado por mais de 12 s; com a fila
-desligada, falha em 0 ms. Sem isso o "recusar" viraria requisição pendurada.
-
-**`/health` mostra o Redis e não decide o 503.** Se decidisse, o orquestrador
-tiraria todas as réplicas de circulação e a API inteira cairia, inclusive as
-rotas que nunca tocam o Redis.
-
-**Custos aceitos.**
-
-1. O teto global é N×: 300/min com três réplicas são 900/min. Ele é uma rede de
-   segurança grossa, não a defesa contra chute.
-2. As nove rotas caem juntas quando o Redis cai: login, cadastro, confirmação e
-   reenvio de e-mail, esquecer e redefinir senha, trocar senha, deletar conta e
-   Google.
-3. Um `warn` por requisição recusada durante a queda: ruído aceito em troca de a
-   queda ser visível.
-4. Importação de um arquivo interno do plugin (`LocalStore`), com o pacote em
-   versão exata; um spec quebra se ele sumir.
-5. Uma ida de rede a mais nessas nove rotas: 0,20 ms em loopback.
-6. O endereço do cliente fica no Redis pelo tempo da janela — dado pessoal, com
-   validade de segundos.
-7. Todo entrypoint valida o mesmo env: o `cron` e o seed passam a exigir
-   `REDIS_URL` mesmo sem usar o Redis.
-
-Spec: [`specs/2026-09-19-shared-rate-limit-store-design.md`](superpowers/specs/2026-09-19-shared-rate-limit-store-design.md).
-
-### 40 — Dispatch do outbox com etiqueta por mensagem
-
-Fecha o item #2 de "Pendências do boilerplate". O `findPendingBatch` era um
-`SELECT` comum e o `markDispatched` só rodava depois do `send`: duas execuções
-que se sobrepusessem liam as mesmas linhas e mandavam o mesmo e-mail duas vezes.
-A janela era a duração da execução inteira. A spec do outbox aceitou isso
-apoiada em "one-shot agendado pela plataforma não sobrepõe execução", premissa
-que depende de onde o app roda, e isso ainda não está decidido.
-
-**Medido de ponta a ponta:** três processos `cron` concorrentes sobre 100
-mensagens, com SMTP de verdade (Mailpit), entregaram **300 e-mails** com o
-código antigo e **100** com o novo.
-
-**O desenho.** Cada mensagem ganha `claimed_until`. `claimNext(now, leaseUntil)`
-é uma instrução única (`UPDATE … WHERE id = (SELECT … LIMIT 1 FOR UPDATE SKIP
-LOCKED) RETURNING`) que pega a mais antiga pendente e sem etiqueta vigente e a
-etiqueta. É uma mensagem por vez, então a etiqueta só precisa cobrir um envio, e
-uma execução que some prende no máximo uma mensagem. Se o processo morre, a
-etiqueta vence e outra execução assume. O padrão é de 120 s
-(`OUTBOX_DISPATCH_LEASE_SECONDS`).
-
-**Falha mantém a etiqueta.** Uma mensagem cujo envio falhou só é oferecida de
-novo quando a etiqueta vence: soltá-la a devolveria ao mesmo laço na hora (é a
-mais antiga) e gastaria as tentativas em segundos. O prazo da etiqueta vira o
-intervalo entre tentativas; com o padrão e 5 tentativas, uma mensagem que sempre
-falha desiste em cerca de 8 minutos.
-
-**Timeouts no SMTP.** A etiqueta só é confiável se o envio tem limite. O
-transporte não configurava nenhum (padrões do nodemailer: 2 min para conectar,
-30 s para a saudação, 10 min de inatividade no socket) e passou a ter 10 s, 10 s
-e 30 s. Medido: as opções cortam um servidor mudo em exatamente o configurado.
-Vale também para os caminhos de requisição, que deixam de ficar presos por até
-10 minutos num SMTP pendurado.
-
-**Rejeitado.** *Lock consultivo do Postgres por execução:* serializaria as
-execuções sem coluna nova, mas quebra atrás de um pooler em modo transação e um
-envio pendurado bloquearia todas as seguintes. *`FOR UPDATE SKIP LOCKED` numa
-transação que engloba o envio:* segura uma conexão parada durante o SMTP, e o
-`DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS` mataria a transação de um envio lento
-(§8 do desenho da unit of work: sem I/O externo em transação). *Etiquetar um
-lote inteiro:* a etiqueta teria de durar cem envios ou venceria no meio.
-
-**Custos aceitos.**
-
-1. Uma execução que morre entre o `send` e o `markDispatched` reenvia depois do
-   prazo: inerente a e-mail. A decisão elimina a duplicata por concorrência, não
-   a por queda.
-2. O timeout corta uma conexão parada, não um servidor que responde devagar a
-   cada comando; nesse caso a etiqueta pode vencer com o envio em curso.
-3. A etiqueta compara relógios de réplicas diferentes; um desvio de segundos é
-   irrelevante frente a 120 s.
-4. Uma mensagem que derruba o processo antes do `recordFailure` nunca soma
-   tentativas. Igual a antes.
-
-Spec: [`specs/2026-09-19-outbox-dispatch-lease-design.md`](superpowers/specs/2026-09-19-outbox-dispatch-lease-design.md).
-
-### 41 — Aviso ao dono quando a detecção de reuso dispara
-
-Fecha o item #3 de "Pendências do boilerplate". A detecção de reuso revogava a
-família e respondia 401, e o único rastro era uma linha de log: o dono só
-descobria pelo app mandando-o para o login. Troca e recuperação de senha e o
-vínculo do Google já avisam; o roubo de sessão detectado, que é a única defesa
-que sobra quando o atacante já tem a sessão, não avisava.
-
-**O aviso sai só na transição.** O token gasto continua gasto para sempre, então
-cada reapresentação cai no mesmo ramo. Um aviso gravado ali sem condição vira um
-e-mail por tentativa, e quem tem um token velho passaria a encher a caixa do
-dono. `revokeFamily` passou a devolver quantas linhas revogou; só maior que zero
-grava o aviso. Um replay contra a família já morta revoga zero e não grava.
-`logout`, `logout-all` e as trocas de senha ficam sem aviso pelo mesmo caminho:
-foi o dono quem revogou, ou ele já foi avisado por outro e-mail.
-
-**Pelo outbox, na mesma transação da revogação**, pela razão da decisão 33: uma
-queda entre a revogação e o envio não perde o aviso, e o SMTP não prende a
-requisição. `REUSE_DETECTED` continua retornado e não lançado, senão o rollback
-desfaria a revogação e o aviso.
-
-**O texto diz "suspeito", nunca "roubo".** O endereço é o de quem apresentou o
-token gasto, que pode ser o ladrão ou o cliente do próprio dono num retry fora da
-janela de graça. O e-mail nomeia o aparelho e o início da sessão derrubada (da
-linha do token) e esse endereço, e cobre os dois casos.
-
-**Recusado.** *Cooldown com "último aviso enviado":* exige estado novo e não
-compra segurança, porque a família já está morta.
-
-**Medido:** três reapresentações do mesmo token gasto deixam **uma** linha em
-`outbox_messages`; com a condição removida de propósito, deixam três.
-
-**Custos aceitos.**
-
-1. Um segundo ataque à mesma família não avisa de novo.
-2. O endereço do aviso pode ser o do próprio dono.
-3. O e-mail leva um IP a um endereço cadastrado: o mesmo dado que
-   `GET /auth/sessions` já devolve ao dono (decisão 38). O IP também fica em
-   repouso no `outbox_messages.text` até a poda (7 dias por padrão, contra os 60
-   de `refresh_tokens`), então não abre uma classe nova de exposição.
-4. Uma família cujo último token expirou sem ser revogado ainda conta 1 na
-   primeira reapresentação e avisa, uma vez.
-5. O aviso herda as garantias do outbox: pode chegar atrasado, e uma queda entre
-   o `send` e o registro pode repeti-lo (decisão 40).
-
-Spec: [`specs/2026-09-19-reuse-detection-notice-design.md`](superpowers/specs/2026-09-19-reuse-detection-notice-design.md).
-
-### 42 — Teto absoluto de sessão
-
-Fecha o item #4 de "Pendências do boilerplate". Os 60 dias do refresh token são
-deslizantes: cada rotação emite um token novo que vale mais 60 dias. Quem renova
-ao menos uma vez a cada 60 dias nunca reautentica, e uma sessão roubada e nunca
-detectada (malware que lê o token e renova em segredo, sem replay de token
-gasto) vive para sempre. A detecção de reuso só pega o roubo quando os dois lados
-usam a mesma cadeia.
-
-**O idle timeout já existia.** O TODO pedia "`max_lifetime` por família, com idle
-timeout junto", mas o TTL deslizante é exatamente um idle timeout: token sem uso
-por 60 dias morre. Faltava só o teto absoluto.
-
-**O desenho.** Todo token novo vence em `min(agora + TTL, início da sessão +
-REFRESH_TOKEN_MAX_LIFETIME_SECONDS)`, com padrão de 90 dias. O início é o
-`session_started_at` que a decisão 38 já grava e que cada rotação herda, então
-não há coluna nem migration. A regra mora em `RefreshToken.create`; o
-`RefreshTokenIssuer` calcula o teto a partir do contexto da sessão. O parâmetro é
-obrigatório nos dois lugares: um teto esquecido viraria uma sessão sem teto em
-silêncio.
-
-**Sem ramo novo e sem código de erro novo.** O token que chega ao teto expira pelo
-caminho de expiração que já existe: 401 `INVALID_REFRESH_TOKEN`, sem passar pela
-detecção de reuso, sem revogar a família e sem gerar o aviso da decisão 41.
-
-**Reduzir o teto derruba sessões vivas.** Um token ainda vivo pode ter o teto da
-família no passado se a variável for reduzida depois. Emitir o sucessor o faria
-nascer expirado, então `#issueInto` recusa com `InvalidRefreshTokenError` antes
-de escrever. As duas ramificações de emissão da rotação passam por ali.
-
-**Medido:** com a sessão além do teto, o refresh responde 401 e deixa a família
-intacta e o outbox vazio; com a guarda enfraquecida de propósito, responde 200.
-
-**Recusado.** *Código de erro próprio para "sessão encerrada por teto":* exigiria
-um ramo que não é reuso nem expiração comum, e o cliente age do mesmo jeito em
-todo 401. *Coluna `max_lifetime` por família:* o teto é global e o valor é
-decisão de cada app derivado, por variável de ambiente.
-
-**Custos aceitos.**
-
-1. O cliente não distingue "teto de sessão" de qualquer outro 401, e o usuário é
-   deslogado sem aviso prévio.
-2. O cookie de refresh mantém `maxAge` de 60 dias a cada rotação, então perto do
-   teto o cookie sobrevive ao token: o navegador manda um token expirado e toma o
-   401 normal.
-3. Sessões anteriores à decisão 38 ganham uma prorrogação única: o início nulo
-   adota o `createdAt` da linha viva, e o teto conta dali.
-4. Reduzir o teto derruba as sessões vivas na próxima rotação delas.
-
-Spec: [`specs/2026-09-19-session-absolute-lifetime-design.md`](superpowers/specs/2026-09-19-session-absolute-lifetime-design.md).
-
-### 43 — Trilha de auditoria: o mecanismo e os cinco avisos de segurança
-
-Fecha o item #6 de "Pendências do boilerplate". Os eventos de segurança do `auth`
-deixavam três rastros e nenhum era uma trilha: o aviso por e-mail (vai para o dono
-e é podado em 7 dias), a linha de log `securityEvent` (sem retenção garantida e sem
-consulta por conta) e o próprio estado (uma senha trocada não diz quando nem de
-onde). Não havia onde responder "o que aconteceu com esta conta, quando e de
-onde", que é o que a LGPD art. 37 cobra de quem opera dados pessoais.
-
-**O desenho.** Tabela `audit_events` dentro do módulo `auth`: `id`, `type`,
-`user_id`, `ip`, `device_label`, `occurred_at`. Porta `IAuditEventsRepository`
-(`save`, `deleteOccurredBefore`) exposta no `AuthRepos`, então cada use case grava
-o evento dentro do `uow` que já existe, ao lado do aviso do outbox.
-
-**Nasce dentro do `auth`, e com cinco consumidores.** A decisão 33 recusou o outbox
-genérico em `shared/` antes de um segundo módulo, e a decisão 37 recusou criar a
-tabela só para a deleção ("resolveria o problema maior pela metade e para um
-evento só"). O #6 entra com os cinco pontos que já gravam um aviso de segurança:
-senha alterada, senha redefinida, Google vinculado, reuso detectado e conta
-deletada. Nenhum evento foi inventado.
-
-**`user_id` sem FK**, para a trilha sobreviver à conta apagada: uma FK bloquearia
-o delete ou levaria a evidência junto na cascata. O evento `ACCOUNT_DELETED` é a
-prova, e o teste de integração a mede: a conta e a cascata somem, o evento fica.
-
-**IP e aparelho nos cinco.** Só três dos cinco use cases já recebiam o contexto do
-cliente. A redefinição de senha e a deleção de conta passaram a receber `device`
-(os endpoints chamam `buildDeviceContext`), porque uma trilha que não diz de onde
-veio a deleção é fraca para o que a LGPD cobra. O `User-Agent` cru continua fora
-(decisão 38); o rótulo é o derivado.
-
-**O reuso grava só na transição**, como o aviso da decisão 41 (`revoked > 0`), e
-o evento é gravado antes da busca do dono e fora do `if (owner !== null)`: ele não
-precisa do e-mail, então não mora sob uma condição que é sobre o e-mail. Os replays
-seguem só no log `securityEvent`.
-
-**Retenção por variável:** `AUDIT_EVENT_PRUNE_RETENTION_SECONDS`, padrão 1 ano, com
-um job de poda no cron. O número é **marcador**, não conselho jurídico: quanto
-guardar é decisão de produto e de compliance.
-
-**Medido:** três reapresentações do mesmo token gasto deixam **um** evento em
-`audit_events`; com a condição removida de propósito, deixam três. E um evento
-gravado numa unit of work que depois falha é desfeito, e sem falha é confirmado
-(prova o `auditEvents` ligado à transação e não ao pool).
-
-**Recusado.** *Um mecanismo em `shared/`:* nenhum segundo módulo consome. *Só a
-tabela, sem eventos:* contrato sem consumidor, não valida a forma. *Coluna JSON
-livre de metadados:* sem consumidor, sem forma validada; cada evento novo que
-precise de um dado ganha uma coluna. *E-mail do usuário na linha:* dado pessoal que
-sobreviveria à conta. *Eventos de login e logout:* volume alto, e a decisão de
-quanto guardar deixa de ser trivial.
-
-**Custos aceitos.**
-
-1. O `user_id` continua na trilha depois da conta apagada: é identificador
-   pseudonimizado, e a trilha existe justamente para provar o que aconteceu.
-2. IP e aparelho ficam em repouso pelo tempo da retenção, que é maior que os 7 dias
-   do outbox. O mesmo dado já vive 60 dias em `refresh_tokens` (decisão 38).
-3. O reuso registra só a primeira detecção.
-4. Sem leitura pela API: o operador consulta por SQL. Uma rota é o passo natural
-   seguinte e é decisão de produto.
-5. O padrão de 1 ano é um marcador, não uma resposta de compliance.
-6. O banco não impede escrever um `type` fora do conjunto: a validação está no
-   tipo da entidade e a coluna é `text`. Um `CHECK` custaria uma migration por
-   evento novo.
-
-Spec: [`specs/2026-09-20-audit-trail-design.md`](superpowers/specs/2026-09-20-audit-trail-design.md).
-
----
-
-## 7. Pendências de manutenção
-
-- [x] `ARCHITECTURE.md` reformatado (2026-08-19) — o bloco da árvore de
-      diretórios não estava fechado e vazava sobre o resto do arquivo, os títulos
-      de seção eram texto solto e os exemplos de código não estavam em fence.
-      Só formatação; nenhum conteúdo alterado.
-- [x] `ARCHITECTURE.md` reescrito em module-first (2026-08-20), preservando o
-      fluxo de execução, as três abordagens de comunicação entre módulos e os
-      antipadrões. Validado por duas auditorias independentes.
-- [x] Repositório git inicializado (2026-08-19).
-- [x] Documentos versionados em git desde 2026-08-19.

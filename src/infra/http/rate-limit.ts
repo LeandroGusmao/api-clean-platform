@@ -24,8 +24,8 @@ export type RateLimitEnv = Pick<
  * It counts REQUESTS, not failed authentications — no transport limiter can
  * know a password was wrong. That half was deliberately delegated to the edge
  * and to the cost of argon2; what it buys, what it costs and what reopens it
- * are in `docs/superpowers/specs/2026-09-02-rate-limiting-design.md` §10.1.
- * If you find yourself adding an attempt counter here, read that section first.
+ * are in `docs/PRODUCT-CHOICES.md`, under the lockout entry. If you find
+ * yourself adding an attempt counter here, read that entry first.
  *
  * Registered as a function rather than inline in `buildApp`, for the same
  * reason `registerErrorHandling` and `registerOpenApi` are: a spec can then

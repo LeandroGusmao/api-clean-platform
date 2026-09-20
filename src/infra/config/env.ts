@@ -15,9 +15,9 @@ const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'
 /**
  * Pool and connection limits. Defaults are deliberately conservative: they suit
  * development, and production tunes them from the arithmetic in
- * `docs/superpowers/specs/2026-08-30-connection-limits-design.md` §4 — the
- * ceiling is `instances × DATABASE_POOL_MAX <= max_connections - reserve`, so
- * raising this per instance is the wrong lever past a handful of replicas.
+ * `ARCHITECTURE.md` §6 — the ceiling is
+ * `instances × DATABASE_POOL_MAX <= max_connections - reserve`, so raising this
+ * per instance is the wrong lever past a handful of replicas.
  *
  * These matter more since the unit of work landed: a connection is now held for
  * the duration of a CALLBACK, not of a query.

@@ -29,7 +29,7 @@ export function createDatabase(env: Env): { db: Database; pool: Pool } {
   // how many instances run: the ceiling is
   // `instances × DATABASE_POOL_MAX <= max_connections - reserve`, so raising the
   // pool per instance is the wrong lever past a handful of replicas. The
-  // reasoning lives in `specs/2026-08-30-connection-limits-design.md` §4.
+  // reasoning lives in `ARCHITECTURE.md` §6.
   //
   // The three Postgres timeouts are sent only when truthy — `pg` guards each
   // with `if (params.x)`. A configured 0 therefore does NOT disable them; it
