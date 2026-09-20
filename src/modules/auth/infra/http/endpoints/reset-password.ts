@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import type { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
+import { buildDeviceContext } from '#infra/http/device-context'
 import { errorResponseSchema } from '#infra/http/errors/error-response'
 import type { AuthContainer } from '#modules/auth/container'
 import {
@@ -81,7 +82,10 @@ export const resetPasswordRoute: FastifyPluginAsync<{
       },
     },
     async (request, reply) => {
-      await container.resetPassword.execute(request.body)
+      await container.resetPassword.execute({
+        ...request.body,
+        device: buildDeviceContext(request),
+      })
 
       return reply.status(NO_CONTENT_STATUS).send(null)
     },

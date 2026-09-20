@@ -1,3 +1,4 @@
+import { AuditEvent, AuditEventType } from '#modules/auth/entities/audit-event'
 import { OutboxMessage } from '#modules/auth/entities/outbox-message'
 import { PasswordResetFailedError } from '#modules/auth/errors/password-reset-failed-error'
 import { passwordResetCompletedEmail } from '#modules/auth/notifications/emails'
@@ -5,6 +6,7 @@ import type { IHashProvider } from '#modules/auth/ports/hash-provider'
 import type { IPasswordResetTokensRepository } from '#modules/auth/repositories/password-reset-tokens-repository'
 import type { IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
 import type { IUsersRepository } from '#modules/auth/repositories/users-repository'
+import type { SessionDevice } from '#modules/auth/services/refresh-token-issuer'
 import { Password } from '#modules/auth/value-objects/password'
 import type { IClock } from '#shared/ports/clock'
 import type { IIdGenerator } from '#shared/ports/id-generator'
@@ -14,6 +16,8 @@ import type { ITokenDigest } from '#shared/ports/token-digest'
 export interface ResetPasswordCommand {
   token: string
   newPassword: string
+  /** Resolved at the edge by `buildDeviceContext`; the trail records where this came from. */
+  device: SessionDevice
 }
 
 /**
@@ -76,7 +80,13 @@ export class ResetPasswordUseCase {
     const passwordHash = await this.hashProvider.hash(newPassword.value)
 
     await this.uow(
-      async ({ users, refreshTokens, passwordResetTokens, outboxMessages }) => {
+      async ({
+        users,
+        refreshTokens,
+        passwordResetTokens,
+        outboxMessages,
+        auditEvents,
+      }) => {
         // First inside, always. `consume` is a conditional UPDATE, and losing it
         // means a concurrent reset already burned this token — so the throw has
         // to happen INSIDE the callback, where it aborts the transaction; a
@@ -94,6 +104,16 @@ export class ResetPasswordUseCase {
           OutboxMessage.create({
             id: this.idGenerator.generate(),
             message: passwordResetCompletedEmail(user.email),
+            now,
+          }),
+        )
+
+        await auditEvents.save(
+          AuditEvent.create({
+            id: this.idGenerator.generate(),
+            type: AuditEventType.PasswordResetCompleted,
+            userId: token.userId,
+            device: command.device,
             now,
           }),
         )

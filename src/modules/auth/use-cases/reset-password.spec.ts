@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
+import { AuditEventType } from '#modules/auth/entities/audit-event'
 import { PasswordResetToken } from '#modules/auth/entities/password-reset-token'
 import { User } from '#modules/auth/entities/user'
 import { InvalidPasswordError } from '#modules/auth/errors/invalid-password-error'
 import { PasswordResetFailedError } from '#modules/auth/errors/password-reset-failed-error'
+import { InMemoryAuditEventsRepository } from '#modules/auth/infra/in-memory/in-memory-audit-events-repository'
 import { InMemoryOutboxMessagesRepository } from '#modules/auth/infra/in-memory/in-memory-outbox-messages-repository'
 import { InMemoryRefreshTokensRepository } from '#modules/auth/infra/in-memory/in-memory-refresh-tokens-repository'
 import { InMemoryUsersRepository } from '#modules/auth/infra/in-memory/in-memory-users-repository'
@@ -28,6 +30,9 @@ const HASH_PREFIX = 'hashed:'
 const OLD_HASH = `${HASH_PREFIX}old`
 const DUMMY_HASH = `${HASH_PREFIX}dummy`
 const NEW_PASSWORD = 'ev3n-b3tter!'
+const DEVICE = { ip: '203.0.113.7', label: 'Chrome on Android' } as const
+const ONE_EVENT = 1
+const NO_EVENTS = 0
 const NEW_HASH = `${HASH_PREFIX}${NEW_PASSWORD}`
 const WEAK_PASSWORD = 'short'
 
@@ -49,6 +54,7 @@ const SAVE_OUTBOX_CALL = 'saveOutboxMessage'
 
 let callLog: string[]
 let outboxMessagesRepository: InMemoryOutboxMessagesRepository
+let auditEventsRepository: InMemoryAuditEventsRepository
 let usersRepository: InMemoryUsersRepository
 let refreshTokensRepository: InMemoryRefreshTokensRepository
 let consumeResult: boolean
@@ -103,6 +109,7 @@ const makeUseCase = (idGenerator: IIdGenerator) =>
 beforeEach(() => {
   callLog = []
   outboxMessagesRepository = new InMemoryOutboxMessagesRepository()
+  auditEventsRepository = new InMemoryAuditEventsRepository()
   usersRepository = new InMemoryUsersRepository()
   refreshTokensRepository = new InMemoryRefreshTokensRepository()
   consumeResult = true
@@ -111,6 +118,7 @@ beforeEach(() => {
   // the transaction. Order is the whole point of two of the tests below.
   const trackedRepos: AuthRepos = {
     ...noopAuthRepos(),
+    auditEvents: auditEventsRepository,
     users: {
       save: (user) => usersRepository.save(user),
       findByEmail: (email) => usersRepository.findByEmail(email),
@@ -185,7 +193,12 @@ beforeEach(() => {
 })
 
 const reset = (overrides: Partial<Parameters<typeof useCase.execute>[0]> = {}) =>
-  useCase.execute({ token: RAW_TOKEN, newPassword: NEW_PASSWORD, ...overrides })
+  useCase.execute({
+    token: RAW_TOKEN,
+    newPassword: NEW_PASSWORD,
+    device: DEVICE,
+    ...overrides,
+  })
 
 describe('ResetPasswordUseCase', () => {
   /**
@@ -238,6 +251,28 @@ describe('ResetPasswordUseCase', () => {
     expect(outboxMessagesRepository.messages.map((m) => m.toEmailMessage())).toEqual([
       passwordResetCompletedEmail(Email.fromTrusted(EMAIL)),
     ])
+  })
+
+  it('records a PASSWORD_RESET_COMPLETED audit event with the device that redeemed the token', async () => {
+    storeUser()
+
+    await reset()
+
+    expect(auditEventsRepository.events).toHaveLength(ONE_EVENT)
+    const [event] = auditEventsRepository.events
+    expect(event?.type).toBe(AuditEventType.PasswordResetCompleted)
+    expect(event?.userId).toBe(USER_ID)
+    expect(event?.ip).toBe(DEVICE.ip)
+    expect(event?.deviceLabel).toBe(DEVICE.label)
+    expect(event?.occurredAt).toEqual(NOW)
+  })
+
+  it('records nothing when the token is unusable', async () => {
+    findByHashSpy.mockResolvedValueOnce(null)
+
+    await expect(reset()).rejects.toBeInstanceOf(PasswordResetFailedError)
+
+    expect(auditEventsRepository.events).toHaveLength(NO_EVENTS)
   })
 
   it('stamps updatedAt from the injected clock', async () => {

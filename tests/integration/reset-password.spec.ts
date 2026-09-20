@@ -6,6 +6,7 @@ import { env } from '#infra/config/env'
 import { createDatabase, type Database } from '#infra/database/client'
 import { Sha256TokenDigest } from '#infra/providers/sha256-token-digest'
 import { buildApp } from '#main/app'
+import { auditEvents } from '#modules/auth/infra/drizzle/schema/audit-events'
 import { outboxMessages } from '#modules/auth/infra/drizzle/schema/outbox-messages'
 import { passwordResetTokens } from '#modules/auth/infra/drizzle/schema/password-reset-tokens'
 import { refreshTokens } from '#modules/auth/infra/drizzle/schema/refresh-tokens'
@@ -35,6 +36,13 @@ const UNPROCESSABLE_ENTITY_STATUS_CODE = 422
 const PASSWORD_RESET_FAILED_CODE = 'PASSWORD_RESET_FAILED'
 /** The exact subject of `passwordResetCompletedEmail`; spelled out, not imported. */
 const PASSWORD_RESET_COMPLETED_SUBJECT = 'Your password was reset'
+/** The exact type stored; spelled out, not imported. */
+const PASSWORD_RESET_COMPLETED_EVENT = 'PASSWORD_RESET_COMPLETED'
+const CHROME_ON_ANDROID_USER_AGENT =
+  'Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like ' +
+  'Gecko) Chrome/125.0.0.0 Mobile Safari/537.36'
+const CHROME_ON_ANDROID_LABEL = 'Chrome on Android'
+const ONE_EVENT = 1
 
 const EMAIL = 'joao@example.com'
 const PASSWORD = 'sup3r-s3cr3t!'
@@ -68,6 +76,7 @@ beforeEach(async () => {
   await db.delete(passwordResetTokens)
   await db.delete(refreshTokens)
   await db.delete(outboxMessages)
+  await db.delete(auditEvents)
   await db.delete(users)
   await clearMailpit()
   await arrangeAccount(db, { email: EMAIL, password: PASSWORD })
@@ -127,6 +136,26 @@ describe('POST /auth/password/reset', () => {
 
     expect(rows).toHaveLength(ONE_MESSAGE)
     expect(rows[0]?.dispatchedAt).toBeNull()
+  })
+
+  it('records an audit event with the address and device that redeemed the token', async () => {
+    const token = await forgotAndFetchToken()
+
+    await app.inject({
+      method: POST_METHOD,
+      url: RESET_PATH,
+      payload: { token, newPassword: NEW_PASSWORD },
+      headers: { 'user-agent': CHROME_ON_ANDROID_USER_AGENT },
+    })
+
+    const events = await db.select().from(auditEvents)
+    const [account] = await db.select().from(users)
+
+    expect(events).toHaveLength(ONE_EVENT)
+    expect(events[0]?.type).toBe(PASSWORD_RESET_COMPLETED_EVENT)
+    expect(events[0]?.userId).toBe(account?.id)
+    expect(events[0]?.deviceLabel).toBe(CHROME_ON_ANDROID_LABEL)
+    expect(events[0]?.ip).not.toBeNull()
   })
 
   it('rejects a replay of a spent token with 422 PASSWORD_RESET_FAILED', async () => {
