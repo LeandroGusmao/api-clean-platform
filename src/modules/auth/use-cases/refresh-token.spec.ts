@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS } from '#modules/auth/config'
+import { AuditEventType } from '#modules/auth/entities/audit-event'
 import { RefreshToken } from '#modules/auth/entities/refresh-token'
 import { User } from '#modules/auth/entities/user'
 import { InvalidRefreshTokenError } from '#modules/auth/errors/invalid-refresh-token-error'
 import { RefreshTokenReusedError } from '#modules/auth/errors/refresh-token-reused-error'
+import { InMemoryAuditEventsRepository } from '#modules/auth/infra/in-memory/in-memory-audit-events-repository'
 import { InMemoryOutboxMessagesRepository } from '#modules/auth/infra/in-memory/in-memory-outbox-messages-repository'
 import { InMemoryRefreshTokensRepository } from '#modules/auth/infra/in-memory/in-memory-refresh-tokens-repository'
 import { InMemoryUsersRepository } from '#modules/auth/infra/in-memory/in-memory-users-repository'
@@ -44,6 +46,8 @@ const OWNER_EMAIL = 'joao@example.com'
 const NOTICE_ID_PREFIX = 'notice-'
 const NO_MESSAGES = 0
 const ONE_MESSAGE = 1
+const ONE_EVENT = 1
+const NO_EVENTS = 0
 const ONE_TOKEN = 1
 const MAX_LIFETIME_MS =
   DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS * MILLISECONDS_PER_SECOND
@@ -65,6 +69,7 @@ const makeUow =
 let repository: InMemoryRefreshTokensRepository
 let usersRepository: InMemoryUsersRepository
 let outboxMessages: InMemoryOutboxMessagesRepository
+let auditEventsRepository: InMemoryAuditEventsRepository
 let useCase: RefreshTokenUseCase
 let clockReading: Date
 
@@ -72,6 +77,7 @@ const build = () => {
   repository = new InMemoryRefreshTokensRepository()
   usersRepository = new InMemoryUsersRepository()
   outboxMessages = new InMemoryOutboxMessagesRepository()
+  auditEventsRepository = new InMemoryAuditEventsRepository()
 
   // Counted rather than random, so every assertion below is deterministic.
   let generated = 0
@@ -94,6 +100,7 @@ const build = () => {
       refreshTokens: repository,
       users: usersRepository,
       outboxMessages,
+      auditEvents: auditEventsRepository,
     }),
     issuer,
     { sign: async () => ACCESS_TOKEN, verify: async () => ({ sub: USER_ID }) },
@@ -569,5 +576,55 @@ describe('RefreshTokenUseCase — session lifetime ceiling', () => {
     await refresh()
 
     expect(repository.tokens[1]?.expiresAt).toEqual(at(TTL_MS))
+  })
+})
+
+describe('RefreshTokenUseCase — reuse audit event', () => {
+  it('records ONE event naming the owner, the request address and the session device', async () => {
+    // No owner stored on purpose: the event does not need the e-mail.
+    store({ revokedAt: NOW, replacedBy: SUCCESSOR_ID })
+    storeSuccessor()
+    clockReading = at(PAST_GRACE)
+
+    await expect(refresh()).rejects.toBeInstanceOf(RefreshTokenReusedError)
+
+    expect(auditEventsRepository.events).toHaveLength(ONE_EVENT)
+    const [event] = auditEventsRepository.events
+    expect(event?.type).toBe(AuditEventType.RefreshTokenReuseDetected)
+    expect(event?.userId).toBe(USER_ID)
+    // The address that PRESENTED the token; the label is the session's.
+    expect(event?.ip).toBe(ROTATION_IP)
+    expect(event?.deviceLabel).toBe(DEVICE_LABEL)
+    expect(event?.occurredAt).toEqual(clockReading)
+  })
+
+  it('records nothing when the same spent token is replayed against a dead family', async () => {
+    store({ revokedAt: NOW, replacedBy: SUCCESSOR_ID })
+    storeSuccessor()
+    clockReading = at(PAST_GRACE)
+
+    await expect(refresh()).rejects.toBeInstanceOf(RefreshTokenReusedError)
+    await expect(refresh()).rejects.toBeInstanceOf(RefreshTokenReusedError)
+
+    expect(auditEventsRepository.events).toHaveLength(ONE_EVENT)
+  })
+
+  it('records nothing for a token revoked by logout, where nothing was left to revoke', async () => {
+    store({ revokedAt: NOW })
+    clockReading = at(ONE_MILLISECOND)
+
+    await expect(refresh()).rejects.toBeInstanceOf(RefreshTokenReusedError)
+
+    expect(auditEventsRepository.events).toHaveLength(NO_EVENTS)
+  })
+
+  it('records nothing inside the grace window, where the family is not revoked', async () => {
+    store({ revokedAt: NOW, replacedBy: SUCCESSOR_ID })
+    storeSuccessor()
+    clockReading = at(ONE_MILLISECOND)
+
+    await refresh()
+
+    expect(auditEventsRepository.events).toHaveLength(NO_EVENTS)
   })
 })

@@ -1,3 +1,4 @@
+import { AuditEvent, AuditEventType } from '#modules/auth/entities/audit-event'
 import { OutboxMessage } from '#modules/auth/entities/outbox-message'
 import type { RefreshToken } from '#modules/auth/entities/refresh-token'
 import { InvalidRefreshTokenError } from '#modules/auth/errors/invalid-refresh-token-error'
@@ -88,7 +89,7 @@ export class RefreshTokenUseCase {
     const now = this.clock.now()
 
     const outcome: RotationOutcome = await this.uow(async (repos) => {
-      const { refreshTokens, users, outboxMessages } = repos
+      const { refreshTokens, users, outboxMessages, auditEvents } = repos
 
       // The row lock is what makes reuse detection possible at all: without it
       // two simultaneous refreshes of the same token both read it as active,
@@ -119,6 +120,18 @@ export class RefreshTokenUseCase {
           // branch and finds nothing left to revoke: warning on those would let
           // whoever holds an old token flood the owner's inbox.
           if (revoked > 0) {
+            // The fact, before the notice: it needs the owner's id, which this row
+            // already carries, and not the address `findById` fetches.
+            await auditEvents.save(
+              AuditEvent.create({
+                id: this.idGenerator.generate(),
+                type: AuditEventType.RefreshTokenReuseDetected,
+                userId: current.userId,
+                device: { ip: command.ip, label: current.deviceLabel },
+                now,
+              }),
+            )
+
             const owner = await users.findById(current.userId)
 
             // A `refresh_tokens` row always has an owner (the cascade removes

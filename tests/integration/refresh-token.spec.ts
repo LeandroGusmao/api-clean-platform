@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { env } from '#infra/config/env'
 import { createDatabase, type Database } from '#infra/database/client'
 import { buildApp } from '#main/app'
+import { auditEvents } from '#modules/auth/infra/drizzle/schema/audit-events'
 import { outboxMessages } from '#modules/auth/infra/drizzle/schema/outbox-messages'
 import { refreshTokens } from '#modules/auth/infra/drizzle/schema/refresh-tokens'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
@@ -29,8 +30,16 @@ const UNKNOWN_TOKEN = 'a-token-that-was-never-issued'
 
 // Spelled out: the subject is what the owner reads.
 const REUSE_NOTICE_SUBJECT = 'A session on your account was signed out'
+/**
+ * Raised so the suite's own traffic never trips the login ceiling: every test
+ * logs in, and the file has more tests than the default allows a minute.
+ */
+const CEILING_ABOVE_WHAT_THIS_SUITE_SPENDS = 1000
 const REPLAY_ATTEMPTS = 3
 const ONE_NOTICE = 1
+/** The exact type stored; spelled out, not imported. */
+const REUSE_EVENT = 'REFRESH_TOKEN_REUSE_DETECTED'
+const ONE_EVENT = 1
 const NO_NOTICES = 0
 const MILLISECONDS_PER_SECOND = 1000
 const ONE_DAY_MS = 86_400_000
@@ -43,7 +52,10 @@ let db: Database
 let pool: Pool
 
 beforeAll(async () => {
-  app = await buildApp(env)
+  app = await buildApp({
+    ...env,
+    LOGIN_RATE_LIMIT_MAX_REQUESTS: CEILING_ABOVE_WHAT_THIS_SUITE_SPENDS,
+  })
   await app.ready()
   ;({ db, pool } = createDatabase(env))
 })
@@ -55,6 +67,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await db.delete(outboxMessages)
+  await db.delete(auditEvents)
   await db.delete(refreshTokens)
   await db.delete(users)
   // Inserted directly: since slice 11 `register` writes a `pending_registrations`
@@ -169,6 +182,25 @@ describe('POST /auth/refresh', () => {
 
     expect(notices).toHaveLength(ONE_NOTICE)
     expect(notices[0]?.to).toBe(EMAIL)
+  })
+
+  it('records ONE audit event however many times the spent token is replayed', async () => {
+    const { refreshToken } = (await login()).json()
+    await refresh({ refreshToken })
+
+    await ageOutTheGraceWindow()
+
+    for (let attempt = 0; attempt < REPLAY_ATTEMPTS; attempt++) {
+      const reused = await refresh({ refreshToken })
+      expect(reused.json().error.code).toBe(REFRESH_TOKEN_REUSED_CODE)
+    }
+
+    const events = await db
+      .select()
+      .from(auditEvents)
+      .where(eq(auditEvents.type, REUSE_EVENT))
+
+    expect(events).toHaveLength(ONE_EVENT)
   })
 
   it('refuses to renew a session past its ceiling, without treating it as reuse', async () => {
