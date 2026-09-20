@@ -35,7 +35,7 @@ todo token novo passa a vencer em `min(agora + TTL, início da sessão + teto)`.
 | Código de erro novo, ou ramo novo no refresh | O token que passa do teto expira pelo caminho que já existe (§3.2). Um código próprio pediria um ramo que não é reuso e não é expiração comum |
 | Campo "sua sessão acaba em X" na resposta | Nenhum cliente pede isso hoje; o contrato de fio não muda |
 | Teto por família ou por usuário | O teto é global e o valor é decisão de cada app derivado, por variável de ambiente |
-| Ajustar o `maxAge` do cookie | Ver custo 2 (§9) |
+| Ajustar o `maxAge` do cookie | Ver custo 2 (§8) |
 | Aviso ao dono quando o teto encerra a sessão | Não é evento de segurança: é o fim normal de uma sessão |
 
 ## 3. Fatos verificados que moldaram o desenho
