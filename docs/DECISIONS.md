@@ -2687,6 +2687,57 @@ compra segurança, porque a família já está morta.
 
 Spec: [`specs/2026-09-19-reuse-detection-notice-design.md`](superpowers/specs/2026-09-19-reuse-detection-notice-design.md).
 
+### 42 — Teto absoluto de sessão
+
+Fecha o item #4 de "Pendências do boilerplate". Os 60 dias do refresh token são
+deslizantes: cada rotação emite um token novo que vale mais 60 dias. Quem renova
+ao menos uma vez a cada 60 dias nunca reautentica, e uma sessão roubada e nunca
+detectada (malware que lê o token e renova em segredo, sem replay de token
+gasto) vive para sempre. A detecção de reuso só pega o roubo quando os dois lados
+usam a mesma cadeia.
+
+**O idle timeout já existia.** O TODO pedia "`max_lifetime` por família, com idle
+timeout junto", mas o TTL deslizante é exatamente um idle timeout: token sem uso
+por 60 dias morre. Faltava só o teto absoluto.
+
+**O desenho.** Todo token novo vence em `min(agora + TTL, início da sessão +
+REFRESH_TOKEN_MAX_LIFETIME_SECONDS)`, com padrão de 90 dias. O início é o
+`session_started_at` que a decisão 38 já grava e que cada rotação herda, então
+não há coluna nem migration. A regra mora em `RefreshToken.create`; o
+`RefreshTokenIssuer` calcula o teto a partir do contexto da sessão. O parâmetro é
+obrigatório nos dois lugares: um teto esquecido viraria uma sessão sem teto em
+silêncio.
+
+**Sem ramo novo e sem código de erro novo.** O token que chega ao teto expira pelo
+caminho de expiração que já existe: 401 `INVALID_REFRESH_TOKEN`, sem passar pela
+detecção de reuso, sem revogar a família e sem gerar o aviso da decisão 41.
+
+**Reduzir o teto derruba sessões vivas.** Um token ainda vivo pode ter o teto da
+família no passado se a variável for reduzida depois. Emitir o sucessor o faria
+nascer expirado, então `#issueInto` recusa com `InvalidRefreshTokenError` antes
+de escrever. As duas ramificações de emissão da rotação passam por ali.
+
+**Medido:** com a sessão além do teto, o refresh responde 401 e deixa a família
+intacta e o outbox vazio; com a guarda enfraquecida de propósito, responde 200.
+
+**Recusado.** *Código de erro próprio para "sessão encerrada por teto":* exigiria
+um ramo que não é reuso nem expiração comum, e o cliente age do mesmo jeito em
+todo 401. *Coluna `max_lifetime` por família:* o teto é global e o valor é
+decisão de cada app derivado, por variável de ambiente.
+
+**Custos aceitos.**
+
+1. O cliente não distingue "teto de sessão" de qualquer outro 401, e o usuário é
+   deslogado sem aviso prévio.
+2. O cookie de refresh mantém `maxAge` de 60 dias a cada rotação, então perto do
+   teto o cookie sobrevive ao token: o navegador manda um token expirado e toma o
+   401 normal.
+3. Sessões anteriores à decisão 38 ganham uma prorrogação única: o início nulo
+   adota o `createdAt` da linha viva, e o teto conta dali.
+4. Reduzir o teto derruba as sessões vivas na próxima rotação delas.
+
+Spec: [`specs/2026-09-19-session-absolute-lifetime-design.md`](superpowers/specs/2026-09-19-session-absolute-lifetime-design.md).
+
 ---
 
 ## 7. Pendências de manutenção

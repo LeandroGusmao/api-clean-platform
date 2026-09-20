@@ -5,6 +5,13 @@
 > este arquivo quer saber o que fazer, não o que já foi feito. O critério da
 > separação está na própria seção.
 >
+> **Fatia 25 (2026-09-19) entregou o teto absoluto de sessão** (decisão 42).
+> Fecha o item #4 de "Pendências do boilerplate". Todo refresh token novo vence
+> no menor entre o TTL deslizante e o início da sessão mais 90 dias
+> (`REFRESH_TOKEN_MAX_LIFETIME_SECONDS`), sem coluna nova: o início é o
+> `session_started_at` da decisão 38. O "idle timeout junto" que o item pedia já
+> existia, era o próprio TTL deslizante.
+>
 > **Fatia 24 (2026-09-19) entregou o aviso ao dono quando a detecção de reuso
 > dispara** (decisão 41). Fecha o item #3 de "Pendências do boilerplate". A
 > revogação da família e o aviso vão na mesma transação, pelo outbox, e o aviso
@@ -132,7 +139,7 @@ cumprir o que ele mesmo promete** assim que sai de uma instância só.
 | 1 | ~~Store do rate limit é in-process~~ | — | **fechado pela fatia 22.** Rota com teto próprio conta num Redis compartilhado e recusa com 503 quando ele cai; o teto global segue em memória, por réplica. Decisão 39 |
 | 2 | ~~Dispatch do outbox sem trava~~ | — | **fechado pela fatia 23.** Cada mensagem é pega com uma etiqueta de prazo (`claimed_until`) por uma instrução única com `FOR UPDATE SKIP LOCKED`; execuções concorrentes trabalham em mensagens diferentes. Decisão 40 |
 | 3 | ~~Notificar o dono quando a detecção de reuso dispara~~ | — | **fechado pela fatia 24.** `revokeFamily` devolve a contagem e só a chamada que matou a família grava o aviso, pelo outbox, na mesma transação. Decisão 41 |
-| 4 | **Sessão sem teto absoluto** | decisão de produto nunca tomada | os 60 dias são deslizantes, então quem der refresh toda semana nunca reautentica. Rotação e detecção de reuso cobrem roubo, então não é furo — mas **não decidir também é decidir**, e a não-decisão viaja para todo app derivado. A saída usual é um `max_lifetime` por família, com idle timeout junto |
+| 4 | ~~Sessão sem teto absoluto~~ | — | **fechado pela fatia 25.** Todo token novo vence em `min(agora + TTL, início da sessão + teto)`, com padrão de 90 dias; o idle timeout já era o TTL deslizante. Decisão 42 |
 | 5 | Checagem de senha vazada | decisão: API externa (HIBP) ou lista embarcada | o piso é 8 caracteres e não há blocklist. Como o lockout foi recusado, o custo do argon2 e a qualidade da senha são as duas únicas defesas contra força bruta — e uma delas está no piso |
 | 6 | Trilha de auditoria — **só o mecanismo** | nada | a tabela e a porta são genéricas; *o que* registrar e por quanto tempo é produto. O boilerplate entrega o encanamento. É o que a LGPD art. 37 cobra, e a **deleção de conta** (fatia 20) é um dos eventos a capturar quando for retomada |
 | 7 | `kid` no JWT | nada | genérico, mas compra pouco hoje: `iss` e `aud` foram entregues pela fatia 21 (decisão 38), e trocar o `JWT_SECRET` **não desloga ninguém** — `POST /auth/refresh` não lê o access token, então cada cliente ativo toma um `401` e renova de forma transparente. O que o `kid` evita é todos renovarem no mesmo instante: estampida, não logout |
@@ -301,15 +308,17 @@ antes qual app vem primeiro — os sete itens valem para qualquer um deles.
 ~~Store do rate limit~~ — **fechado pela fatia 22** (decisão 39).
 ~~Dispatch do outbox sem trava~~ — **fechado pela fatia 23** (decisão 40).
 ~~Notificar o dono quando a detecção de reuso dispara~~ — **fechado pela fatia
-24** (decisão 41). O próximo é o #4, **sessão sem teto absoluto**, que depende
-de uma decisão de produto ainda não tomada.
+24** (decisão 41).
+~~Sessão sem teto absoluto~~ — **fechado pela fatia 25** (decisão 42). Restam o
+#5 (checagem de senha vazada, que espera a escolha entre API externa e lista
+embarcada), o #6 (trilha de auditoria, só o mecanismo) e o #7 (`kid` no JWT).
 
 **Se o alvo tratar dado sensível, entra a ordem da auditoria de 2026-09-07 por
 cima desta**: ~~(1) log de evento de segurança~~ fechado em 2026-09-08;
 ~~(2) `helmet` e TTL do access token~~ fechados pela fatia 21; (3) colunas de
 dispositivo — **fechadas pela fatia 21** — e ~~notificação de reuso~~,
-**fechada pela fatia 24**; (4) reabrir o lockout; (5) trilha de auditoria e teto
-absoluto de sessão; (6) MFA.
+**fechada pela fatia 24**; (4) reabrir o lockout; (5) trilha de auditoria e
+~~teto absoluto de sessão~~, fechado pela fatia 25; (6) MFA.
 
 **A escolha do app continua pendente** e muda só a ordem do que está em
 "Decisões que cada produto toma": o financeiro sobe MFA, o de saúde sobe
