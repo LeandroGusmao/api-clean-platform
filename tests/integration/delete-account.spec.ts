@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { env } from '#infra/config/env'
 import { createDatabase, type Database } from '#infra/database/client'
 import { buildApp } from '#main/app'
+import { auditEvents } from '#modules/auth/infra/drizzle/schema/audit-events'
 import { federatedIdentities } from '#modules/auth/infra/drizzle/schema/federated-identities'
 import { outboxMessages } from '#modules/auth/infra/drizzle/schema/outbox-messages'
 import { pendingRegistrations } from '#modules/auth/infra/drizzle/schema/pending-registrations'
@@ -43,6 +44,12 @@ const CEILING = 1000
 const INVALID_CURRENT_PASSWORD_CODE = 'INVALID_CURRENT_PASSWORD'
 /** The exact subject of `accountDeletedEmail`; spelled out, not imported. */
 const ACCOUNT_DELETED_SUBJECT = 'Your account was deleted'
+/** The exact type stored; spelled out, not imported. */
+const ACCOUNT_DELETED_EVENT = 'ACCOUNT_DELETED'
+const CHROME_ON_ANDROID_USER_AGENT =
+  'Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like ' +
+  'Gecko) Chrome/125.0.0.0 Mobile Safari/537.36'
+const CHROME_ON_ANDROID_LABEL = 'Chrome on Android'
 
 const LEFTOVER_PENDING_ID = '77778888-9999-4aaa-8bbb-ccccddddeeee'
 const LEFTOVER_CODE_HASH = 'digest:123456'
@@ -84,6 +91,7 @@ beforeEach(async () => {
   await db.delete(federatedIdentities)
   await db.delete(pendingRegistrations)
   await db.delete(outboxMessages)
+  await db.delete(auditEvents)
   await db.delete(users)
   await arrangeAccount(db, { email: EMAIL, password: PASSWORD })
 
@@ -168,6 +176,31 @@ describe('DELETE /auth/me', () => {
     expect(rows).toHaveLength(ONE_ROW)
     expect(rows[0]?.to).toBe(EMAIL)
     expect(rows[0]?.dispatchedAt).toBeNull()
+  })
+
+  it('records an audit event that outlives the account, with the device that asked', async () => {
+    const [account] = await db.select().from(users)
+
+    await app.inject({
+      method: DELETE_METHOD,
+      url: ME_PATH,
+      payload: { password: PASSWORD },
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        'user-agent': CHROME_ON_ANDROID_USER_AGENT,
+      },
+    })
+
+    // The account and everything the cascade owns are gone…
+    expect(await db.select().from(users)).toHaveLength(NO_ROWS)
+
+    // …and the event that describes the deletion is not.
+    const events = await db.select().from(auditEvents)
+    expect(events).toHaveLength(ONE_ROW)
+    expect(events[0]?.type).toBe(ACCOUNT_DELETED_EVENT)
+    expect(events[0]?.userId).toBe(account?.id)
+    expect(events[0]?.deviceLabel).toBe(CHROME_ON_ANDROID_LABEL)
+    expect(events[0]?.ip).not.toBeNull()
   })
 
   it('answers 422 for a wrong password, keeping the account', async () => {

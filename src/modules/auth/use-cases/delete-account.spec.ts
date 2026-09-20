@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
+import { AuditEventType } from '#modules/auth/entities/audit-event'
 import { User } from '#modules/auth/entities/user'
 import { InvalidCurrentPasswordError } from '#modules/auth/errors/invalid-current-password-error'
 import { UserNotFoundError } from '#modules/auth/errors/user-not-found-error'
+import { InMemoryAuditEventsRepository } from '#modules/auth/infra/in-memory/in-memory-audit-events-repository'
 import { InMemoryOutboxMessagesRepository } from '#modules/auth/infra/in-memory/in-memory-outbox-messages-repository'
 import { InMemoryUsersRepository } from '#modules/auth/infra/in-memory/in-memory-users-repository'
 import { accountDeletedEmail } from '#modules/auth/notifications/emails'
@@ -21,6 +23,9 @@ const HASH_PREFIX = 'hashed:'
 const STORED_HASH = `${HASH_PREFIX}${PASSWORD}`
 const DUMMY_HASH = `${HASH_PREFIX}dummy`
 const GENERATED_ID = 'generated-id'
+const DEVICE = { ip: '203.0.113.7', label: 'Chrome on Android' } as const
+const ONE_EVENT = 1
+const NO_EVENTS = 0
 
 const NOW = new Date('2026-09-18T12:00:00.000Z')
 const CREATED_AT = new Date('2026-01-01T08:00:00.000Z')
@@ -42,6 +47,7 @@ const ONE_USER = 1
 let callLog: string[]
 let usersRepository: InMemoryUsersRepository
 let outboxMessages: InMemoryOutboxMessagesRepository
+let auditEventsRepository: InMemoryAuditEventsRepository
 let compareResult: boolean
 let deleteAllByEmailSpy: Mock<(email: Email) => Promise<void>>
 let uowSpy: Mock<(work: (repos: AuthRepos) => Promise<unknown>) => Promise<unknown>>
@@ -73,6 +79,7 @@ beforeEach(() => {
   compareResult = true
   usersRepository = new InMemoryUsersRepository()
   outboxMessages = new InMemoryOutboxMessagesRepository()
+  auditEventsRepository = new InMemoryAuditEventsRepository()
   deleteAllByEmailSpy = vi.fn(async () => {
     callLog.push(SWEEP_PENDINGS_CALL)
   })
@@ -81,6 +88,7 @@ beforeEach(() => {
     callLog.push(UOW_CALL)
     const repos: AuthRepos = {
       ...noopAuthRepos(),
+      auditEvents: auditEventsRepository,
       users: {
         ...noopAuthRepos().users,
         deleteById: (id) => {
@@ -121,7 +129,7 @@ describe('DeleteAccountUseCase — account with a password', () => {
   it('deletes the user, sweeps the pendings and queues the notice in one uow', async () => {
     storeUser(STORED_HASH)
 
-    await useCase.execute({ userId: USER_ID, password: PASSWORD })
+    await useCase.execute({ userId: USER_ID, password: PASSWORD, device: DEVICE })
 
     // toEqual on the whole log: argon2 must run before the transaction opens,
     // and all three writes must land inside it.
@@ -139,7 +147,7 @@ describe('DeleteAccountUseCase — account with a password', () => {
   it('sweeps the pendings of the STORED address', async () => {
     storeUser(STORED_HASH)
 
-    await useCase.execute({ userId: USER_ID, password: PASSWORD })
+    await useCase.execute({ userId: USER_ID, password: PASSWORD, device: DEVICE })
 
     expect(deleteAllByEmailSpy).toHaveBeenCalledWith(Email.fromTrusted(EMAIL))
   })
@@ -147,7 +155,7 @@ describe('DeleteAccountUseCase — account with a password', () => {
   it('queues the deletion notice addressed to the owner', async () => {
     storeUser(STORED_HASH)
 
-    await useCase.execute({ userId: USER_ID, password: PASSWORD })
+    await useCase.execute({ userId: USER_ID, password: PASSWORD, device: DEVICE })
 
     expect(outboxMessages.messages).toHaveLength(ONE_MESSAGE)
     expect(outboxMessages.messages[0]?.toEmailMessage()).toEqual(
@@ -160,7 +168,7 @@ describe('DeleteAccountUseCase — account with a password', () => {
     compareResult = false
 
     await expect(
-      useCase.execute({ userId: USER_ID, password: WRONG_PASSWORD }),
+      useCase.execute({ userId: USER_ID, password: WRONG_PASSWORD, device: DEVICE }),
     ).rejects.toBeInstanceOf(InvalidCurrentPasswordError)
     expect(uowSpy).not.toHaveBeenCalled()
     expect(usersRepository.users).toHaveLength(ONE_USER)
@@ -169,9 +177,9 @@ describe('DeleteAccountUseCase — account with a password', () => {
   it('refuses when no password is sent at all', async () => {
     storeUser(STORED_HASH)
 
-    await expect(useCase.execute({ userId: USER_ID })).rejects.toBeInstanceOf(
-      InvalidCurrentPasswordError,
-    )
+    await expect(
+      useCase.execute({ userId: USER_ID, device: DEVICE }),
+    ).rejects.toBeInstanceOf(InvalidCurrentPasswordError)
     expect(uowSpy).not.toHaveBeenCalled()
   })
 })
@@ -180,7 +188,7 @@ describe('DeleteAccountUseCase — federated-only account', () => {
   it('deletes with no password at all, and never runs argon2', async () => {
     storeUser(null)
 
-    await useCase.execute({ userId: USER_ID })
+    await useCase.execute({ userId: USER_ID, device: DEVICE })
 
     expect(callLog).not.toContain(COMPARE_CALL)
     expect(usersRepository.users).toHaveLength(NO_USERS)
@@ -189,10 +197,45 @@ describe('DeleteAccountUseCase — federated-only account', () => {
 
 describe('DeleteAccountUseCase — unknown subject', () => {
   it('throws when the token subject has no row, writing nothing', async () => {
-    await expect(useCase.execute({ userId: MISSING_USER_ID })).rejects.toBeInstanceOf(
-      UserNotFoundError,
-    )
+    await expect(
+      useCase.execute({ userId: MISSING_USER_ID, device: DEVICE }),
+    ).rejects.toBeInstanceOf(UserNotFoundError)
     expect(uowSpy).not.toHaveBeenCalled()
     expect(outboxMessages.messages).toHaveLength(NO_MESSAGES)
+  })
+})
+
+describe('DeleteAccountUseCase — audit trail', () => {
+  it('records an ACCOUNT_DELETED audit event with the device that asked', async () => {
+    storeUser(STORED_HASH)
+
+    await useCase.execute({ userId: USER_ID, password: PASSWORD, device: DEVICE })
+
+    expect(auditEventsRepository.events).toHaveLength(ONE_EVENT)
+    const [event] = auditEventsRepository.events
+    expect(event?.type).toBe(AuditEventType.AccountDeleted)
+    expect(event?.userId).toBe(USER_ID)
+    expect(event?.ip).toBe(DEVICE.ip)
+    expect(event?.deviceLabel).toBe(DEVICE.label)
+    expect(event?.occurredAt).toEqual(NOW)
+  })
+
+  it('records nothing when the password is wrong', async () => {
+    storeUser(STORED_HASH)
+    compareResult = false
+
+    await expect(
+      useCase.execute({ userId: USER_ID, password: WRONG_PASSWORD, device: DEVICE }),
+    ).rejects.toBeInstanceOf(InvalidCurrentPasswordError)
+
+    expect(auditEventsRepository.events).toHaveLength(NO_EVENTS)
+  })
+
+  it('records nothing when the account does not exist', async () => {
+    await expect(
+      useCase.execute({ userId: MISSING_USER_ID, device: DEVICE }),
+    ).rejects.toBeInstanceOf(UserNotFoundError)
+
+    expect(auditEventsRepository.events).toHaveLength(NO_EVENTS)
   })
 })

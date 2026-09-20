@@ -2,6 +2,7 @@ import type { FastifyPluginAsync, preHandlerHookHandler } from 'fastify'
 import type { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { getPrincipal } from '#infra/http/auth-guard'
+import { buildDeviceContext } from '#infra/http/device-context'
 import { errorResponseSchema } from '#infra/http/errors/error-response'
 import { BEARER_SECURITY_SCHEME } from '#infra/http/openapi'
 import type { AuthContainer } from '#modules/auth/container'
@@ -84,6 +85,7 @@ export const deleteAccountRoute: FastifyPluginAsync<{
         // anyone.
         userId: getPrincipal(request).id,
         password: request.body.password,
+        device: buildDeviceContext(request),
       })
 
       // Sent unconditionally, like `logout-all`: if a cookie came with the

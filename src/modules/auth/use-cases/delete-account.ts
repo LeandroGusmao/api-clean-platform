@@ -1,3 +1,4 @@
+import { AuditEvent, AuditEventType } from '#modules/auth/entities/audit-event'
 import { OutboxMessage } from '#modules/auth/entities/outbox-message'
 import { InvalidCurrentPasswordError } from '#modules/auth/errors/invalid-current-password-error'
 import { UserNotFoundError } from '#modules/auth/errors/user-not-found-error'
@@ -5,6 +6,7 @@ import { accountDeletedEmail } from '#modules/auth/notifications/emails'
 import type { IHashProvider } from '#modules/auth/ports/hash-provider'
 import type { IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
 import type { IUsersRepository } from '#modules/auth/repositories/users-repository'
+import type { SessionDevice } from '#modules/auth/services/refresh-token-issuer'
 import type { IClock } from '#shared/ports/clock'
 import type { IIdGenerator } from '#shared/ports/id-generator'
 
@@ -17,6 +19,8 @@ export interface DeleteAccountCommand {
    * `SignInWithGoogleCommand`.
    */
   password?: string | undefined
+  /** Resolved at the edge by `buildDeviceContext`; the trail records where this came from. */
+  device: SessionDevice
 }
 
 /**
@@ -70,7 +74,21 @@ export class DeleteAccountUseCase {
     const now = this.clock.now()
     const email = user.email
 
-    await this.uow(async ({ users, pendingRegistrations, outboxMessages }) => {
+    await this.uow(async (repos) => {
+      const { users, pendingRegistrations, outboxMessages, auditEvents } = repos
+
+      // Before the delete, in the same transaction. The trail has no foreign key
+      // to the account, so the cascade below does not reach it.
+      await auditEvents.save(
+        AuditEvent.create({
+          id: this.idGenerator.generate(),
+          type: AuditEventType.AccountDeleted,
+          userId: user.id,
+          device: command.device,
+          now,
+        }),
+      )
+
       await users.deleteById(user.id)
 
       await pendingRegistrations.deleteAllByEmail(email)
