@@ -31,6 +31,10 @@ const UNKNOWN_TOKEN = 'a-token-that-was-never-issued'
 const REUSE_NOTICE_SUBJECT = 'A session on your account was signed out'
 const REPLAY_ATTEMPTS = 3
 const ONE_NOTICE = 1
+const NO_NOTICES = 0
+const MILLISECONDS_PER_SECOND = 1000
+const ONE_DAY_MS = 86_400_000
+const MAX_LIFETIME_MS = env.REFRESH_TOKEN_MAX_LIFETIME_SECONDS * MILLISECONDS_PER_SECOND
 const ONE_FAMILY = 1
 const ONE_LIVE_TOKEN = 1
 
@@ -82,6 +86,12 @@ const ageOutTheGraceWindow = () =>
   db.execute(
     sql`UPDATE refresh_tokens SET revoked_at = now() - interval '1 hour' WHERE revoked_at IS NOT NULL`,
   )
+
+/** Moves the family's start so that its ceiling lands `remainingMs` from now. */
+const startSessionWithCeilingIn = (remainingMs: number) =>
+  db
+    .update(refreshTokens)
+    .set({ sessionStartedAt: new Date(Date.now() - MAX_LIFETIME_MS + remainingMs) })
 
 describe('POST /auth/refresh', () => {
   it('rotates: the new pair works and the old token stops working', async () => {
@@ -159,6 +169,37 @@ describe('POST /auth/refresh', () => {
 
     expect(notices).toHaveLength(ONE_NOTICE)
     expect(notices[0]?.to).toBe(EMAIL)
+  })
+
+  it('refuses to renew a session past its ceiling, without treating it as reuse', async () => {
+    const { refreshToken } = (await login()).json()
+    await startSessionWithCeilingIn(-ONE_DAY_MS)
+
+    const refused = await refresh({ refreshToken })
+
+    expect(refused.statusCode).toBe(UNAUTHORIZED_STATUS_CODE)
+    expect(refused.json().error.code).toBe(INVALID_REFRESH_TOKEN_CODE)
+
+    // Not reuse: the family is left alone and no notice is queued.
+    const [row] = await db.select().from(refreshTokens)
+    expect(row?.revokedAt).toBeNull()
+    expect(await db.select().from(outboxMessages)).toHaveLength(NO_NOTICES)
+  })
+
+  it('renews a session before its ceiling and stamps the ceiling as the expiry', async () => {
+    const { refreshToken } = (await login()).json()
+    await startSessionWithCeilingIn(ONE_DAY_MS)
+
+    const rotated = await refresh({ refreshToken })
+
+    expect(rotated.statusCode).toBe(OK_STATUS_CODE)
+
+    const successor = (await db.select().from(refreshTokens)).find(
+      (row) => row.revokedAt === null,
+    )
+    expect(successor?.expiresAt).toEqual(
+      new Date((successor?.sessionStartedAt?.getTime() ?? 0) + MAX_LIFETIME_MS),
+    )
   })
 
   it('serves two SIMULTANEOUS refreshes of the same token without a false reuse', async () => {
