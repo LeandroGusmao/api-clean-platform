@@ -24,6 +24,12 @@ export interface CreateRefreshTokenProps {
   /** Supplied by `IClock`, never by `new Date()` — R7. */
   now: Date
   ttlSeconds: number
+  /**
+   * The instant past which no token of this family may be valid: the session
+   * start plus the max lifetime. Required, not optional — a forgotten ceiling
+   * would silently give the family no ceiling at all.
+   */
+  lifetimeCeiling: Date
   /** The request that created this row. Null only on a row older than the column. */
   ip: string | null
   /** Names the device, not the request, so rotation inherits it. */
@@ -99,10 +105,14 @@ export class RefreshToken {
       userId: props.userId,
       tokenHash: props.tokenHash,
       familyId: props.familyId,
-      // `new Date(millis)` is deterministic, so it is not the R7 hazard that
-      // `new Date()` with no argument is.
+      // The TTL slides with every rotation; the ceiling does not. Whichever is
+      // sooner wins. `new Date(millis)` is deterministic, so it is not the R7
+      // hazard that `new Date()` with no argument is.
       expiresAt: new Date(
-        props.now.getTime() + props.ttlSeconds * MILLISECONDS_PER_SECOND,
+        Math.min(
+          props.now.getTime() + props.ttlSeconds * MILLISECONDS_PER_SECOND,
+          props.lifetimeCeiling.getTime(),
+        ),
       ),
       revokedAt: null,
       replacedBy: null,

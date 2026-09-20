@@ -19,6 +19,10 @@ const IP = '203.0.113.7'
 const DEVICE_LABEL = 'Chrome on Android'
 const SESSION_STARTED_AT = new Date('2026-08-01T09:00:00.000Z')
 
+/** Far enough that it never binds. */
+const FAR_CEILING = new Date('2099-01-01T00:00:00.000Z')
+const HALF_TTL_MS = TTL_MS / 2
+
 const at = (offsetMs: number) => new Date(NOW.getTime() + offsetMs)
 
 const active = () =>
@@ -29,6 +33,7 @@ const active = () =>
     familyId: FAMILY_ID,
     now: NOW,
     ttlSeconds: TTL_SECONDS,
+    lifetimeCeiling: FAR_CEILING,
     ip: IP,
     deviceLabel: DEVICE_LABEL,
     sessionStartedAt: SESSION_STARTED_AT,
@@ -127,6 +132,7 @@ describe('RefreshToken device context', () => {
       familyId: FAMILY_ID,
       now: NOW,
       ttlSeconds: TTL_SECONDS,
+      lifetimeCeiling: FAR_CEILING,
       ip: null,
       deviceLabel: null,
       sessionStartedAt: null,
@@ -135,6 +141,36 @@ describe('RefreshToken device context', () => {
     expect(token.ip).toBeNull()
     expect(token.deviceLabel).toBeNull()
     expect(token.sessionStartedAt).toBeNull()
+  })
+})
+
+describe('RefreshToken lifetime ceiling', () => {
+  const create = (lifetimeCeiling: Date) =>
+    RefreshToken.create({
+      id: TOKEN_ID,
+      userId: USER_ID,
+      tokenHash: TOKEN_HASH,
+      familyId: FAMILY_ID,
+      now: NOW,
+      ttlSeconds: TTL_SECONDS,
+      lifetimeCeiling,
+      ip: IP,
+      deviceLabel: DEVICE_LABEL,
+      sessionStartedAt: SESSION_STARTED_AT,
+    })
+
+  it('expires at now plus the TTL when the ceiling is farther away', () => {
+    expect(create(FAR_CEILING).expiresAt).toEqual(at(TTL_MS))
+  })
+
+  it('expires at the ceiling when it is closer than the TTL', () => {
+    const ceiling = at(HALF_TTL_MS)
+
+    expect(create(ceiling).expiresAt).toEqual(ceiling)
+  })
+
+  it('gives the same instant when the ceiling equals now plus the TTL', () => {
+    expect(create(at(TTL_MS)).expiresAt).toEqual(at(TTL_MS))
   })
 })
 

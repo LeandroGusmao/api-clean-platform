@@ -4,6 +4,9 @@ import { InMemoryRefreshTokensRepository } from '#modules/auth/infra/in-memory/i
 import { ListActiveSessionsUseCase } from '#modules/auth/use-cases/list-active-sessions'
 import type { IClock } from '#shared/ports/clock'
 
+/** Far enough that it never binds. */
+const FAR_CEILING = new Date('2099-01-01T00:00:00.000Z')
+
 const USER_ID = '3f2a1b4c-5d6e-4f70-8192-a3b4c5d6e7f8'
 const OTHER_USER_ID = '00000000-0000-4000-8000-000000000000'
 const FAMILY_A = '11112222-3333-4444-8555-666677778888'
@@ -36,6 +39,7 @@ const activeToken = (familyId: string, userId: string = USER_ID) =>
     familyId,
     now: NOW,
     ttlSeconds: TTL_SECONDS,
+    lifetimeCeiling: FAR_CEILING,
     ip: IP,
     deviceLabel: DEVICE_LABEL,
     sessionStartedAt: SESSION_STARTED_AT,
@@ -82,6 +86,7 @@ describe('ListActiveSessionsUseCase', () => {
         familyId: FAMILY_A,
         now: NOW,
         ttlSeconds: TTL_SECONDS,
+        lifetimeCeiling: FAR_CEILING,
         ip: null,
         deviceLabel: null,
         sessionStartedAt: null,

@@ -3,6 +3,8 @@ import type { IIdGenerator } from '#shared/ports/id-generator'
 import type { ITokenDigest } from '#shared/ports/token-digest'
 import type { ITokenGenerator } from '#shared/ports/token-generator'
 
+const MILLISECONDS_PER_SECOND = 1000
+
 /**
  * The client opening a session, as the edge resolved it. Carried on the command
  * of every use case that starts a family, so none of them has to reach for a
@@ -50,6 +52,7 @@ export class RefreshTokenIssuer {
     private readonly tokenDigest: ITokenDigest,
     private readonly idGenerator: IIdGenerator,
     private readonly ttlSeconds: number,
+    private readonly maxLifetimeSeconds: number,
   ) {}
 
   issue(
@@ -59,6 +62,9 @@ export class RefreshTokenIssuer {
     context: IssuedSessionContext,
   ): IssuedRefreshToken {
     const token = this.tokenGenerator.opaque()
+    // A context with no start (a row older than the column) is counted from
+    // `now`, the same choice `inherit` makes one level up.
+    const sessionStartedAt = context.sessionStartedAt ?? now
 
     return {
       token,
@@ -69,11 +75,19 @@ export class RefreshTokenIssuer {
         familyId,
         now,
         ttlSeconds: this.ttlSeconds,
+        lifetimeCeiling: this.ceilingFor(sessionStartedAt),
         ip: context.ip,
         deviceLabel: context.deviceLabel,
         sessionStartedAt: context.sessionStartedAt,
       }),
     }
+  }
+
+  /** The instant a session that opened at `sessionStartedAt` can no longer renew. */
+  ceilingFor(sessionStartedAt: Date): Date {
+    return new Date(
+      sessionStartedAt.getTime() + this.maxLifetimeSeconds * MILLISECONDS_PER_SECOND,
+    )
   }
 
   /** A login starts a new chain, so revoking one device never touches another. */

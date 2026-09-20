@@ -112,6 +112,7 @@ export function makeAuthContainer(
     tokenDigest,
     idGenerator,
     config.REFRESH_TOKEN_TTL_SECONDS,
+    config.REFRESH_TOKEN_MAX_LIFETIME_SECONDS,
   )
   /**
    * One transport for the process — `smtpTransportOptions` sets `pool: true`,

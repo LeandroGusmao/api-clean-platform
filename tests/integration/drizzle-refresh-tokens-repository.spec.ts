@@ -13,6 +13,9 @@ import { refreshTokens } from '#modules/auth/infra/drizzle/schema/refresh-tokens
 import { users } from '#modules/auth/infra/drizzle/schema/users'
 import type { IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
 
+/** Far enough that it never binds. */
+const FAR_CEILING = new Date('2099-01-01T00:00:00.000Z')
+
 const EMAIL = 'joao@example.com'
 const PASSWORD_HASH = '$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHQ$hash'
 const TTL_SECONDS = 3600
@@ -91,6 +94,7 @@ const token = (familyId: string, hash: string, id: string = nextId()) =>
     familyId,
     now: NOW,
     ttlSeconds: TTL_SECONDS,
+    lifetimeCeiling: FAR_CEILING,
     ip: IP,
     deviceLabel: DEVICE_LABEL,
     sessionStartedAt: SESSION_STARTED_AT,
@@ -333,6 +337,7 @@ describe('DrizzleRefreshTokensRepository', () => {
           familyId: FAMILY_B,
           now: NOW,
           ttlSeconds: TTL_SECONDS,
+          lifetimeCeiling: FAR_CEILING,
           ip: IP,
           deviceLabel: DEVICE_LABEL,
           sessionStartedAt: SESSION_STARTED_AT,

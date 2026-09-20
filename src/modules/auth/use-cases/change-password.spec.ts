@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
+import { DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS } from '#modules/auth/config'
 import { User } from '#modules/auth/entities/user'
 import { InvalidCurrentPasswordError } from '#modules/auth/errors/invalid-current-password-error'
 import { InvalidPasswordError } from '#modules/auth/errors/invalid-password-error'
@@ -197,6 +198,7 @@ beforeEach(() => {
       { hash: (value: string) => `${DIGEST_PREFIX}${value}` },
       { generate: () => GENERATED_ID },
       TTL_SECONDS,
+      DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS,
     ),
     { now: () => NOW },
     { generate: () => GENERATED_ID },
@@ -394,6 +396,7 @@ describe('ChangePasswordUseCase', () => {
         { hash: (value: string) => `${DIGEST_PREFIX}${value}` },
         { generate: () => GENERATED_ID },
         TTL_SECONDS,
+        DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS,
       ),
       { now: advancingClock },
       { generate: () => GENERATED_ID },

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
+import { DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS } from '#modules/auth/config'
 import {
   FederatedIdentity,
   GOOGLE_PROVIDER,
@@ -26,6 +27,9 @@ import type { AuthRepos, IAuthUnitOfWork } from '#modules/auth/repositories/unit
 import { RefreshTokenIssuer } from '#modules/auth/services/refresh-token-issuer'
 import { SignInWithGoogleUseCase } from '#modules/auth/use-cases/sign-in-with-google'
 import { Email } from '#modules/auth/value-objects/email'
+
+/** Far enough that it never binds. */
+const FAR_CEILING = new Date('2099-01-01T00:00:00.000Z')
 
 const USER_ID = '3f2a1b4c-5d6e-4f70-8192-a3b4c5d6e7f8'
 const EMAIL = 'ana@example.com'
@@ -95,6 +99,7 @@ const refreshTokenIssuer = new RefreshTokenIssuer(
   { hash: (value: string) => `${DIGEST_PREFIX}${value}` },
   idGenerator,
   REFRESH_TTL_SECONDS,
+  DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS,
 )
 
 const trackedOutboxMessages = (): IOutboxMessagesRepository => ({
@@ -152,6 +157,7 @@ const existingSessionFor = (userId: string) =>
     familyId: 'existing-family',
     now: CREATED_AT,
     ttlSeconds: REFRESH_TTL_SECONDS,
+    lifetimeCeiling: FAR_CEILING,
     ip: OTHER_DEVICE_IP,
     deviceLabel: OTHER_DEVICE_LABEL,
     sessionStartedAt: CREATED_AT,

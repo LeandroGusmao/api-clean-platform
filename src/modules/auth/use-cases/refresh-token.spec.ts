@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS } from '#modules/auth/config'
 import { RefreshToken } from '#modules/auth/entities/refresh-token'
 import { User } from '#modules/auth/entities/user'
 import { InvalidRefreshTokenError } from '#modules/auth/errors/invalid-refresh-token-error'
@@ -11,6 +12,9 @@ import type { AuthRepos, IAuthUnitOfWork } from '#modules/auth/repositories/unit
 import { RefreshTokenIssuer } from '#modules/auth/services/refresh-token-issuer'
 import { RefreshTokenUseCase } from '#modules/auth/use-cases/refresh-token'
 import { Email } from '#modules/auth/value-objects/email'
+
+/** Far enough that it never binds. */
+const FAR_CEILING = new Date('2099-01-01T00:00:00.000Z')
 
 const USER_ID = '3f2a1b4c-5d6e-4f70-8192-a3b4c5d6e7f8'
 const FAMILY_ID = '11112222-3333-4444-8555-666677778888'
@@ -77,6 +81,7 @@ const build = () => {
     { hash: digestOf },
     { generate: () => `id-${nextValue()}` },
     TTL_SECONDS,
+    DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS,
   )
 
   useCase = new RefreshTokenUseCase(
@@ -355,6 +360,7 @@ describe('RefreshTokenUseCase — grace window', () => {
         familyId: OTHER_FAMILY_ID,
         now: NOW,
         ttlSeconds: TTL_SECONDS,
+        lifetimeCeiling: FAR_CEILING,
         ip: ORIGINAL_IP,
         deviceLabel: DEVICE_LABEL,
         sessionStartedAt: SESSION_STARTED_AT,
@@ -396,6 +402,7 @@ describe('RefreshTokenUseCase — grace window', () => {
         { hash: digestOf },
         { generate: () => 'id-rollback' },
         TTL_SECONDS,
+        DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS,
       ),
       { sign: async () => ACCESS_TOKEN, verify: async () => ({ sub: USER_ID }) },
       { hash: digestOf },

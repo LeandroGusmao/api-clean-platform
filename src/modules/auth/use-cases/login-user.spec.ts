@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS } from '#modules/auth/config'
 import { User } from '#modules/auth/entities/user'
 import { EmailNotVerifiedError } from '#modules/auth/errors/email-not-verified-error'
 import { InvalidCredentialsError } from '#modules/auth/errors/invalid-credentials-error'
@@ -57,6 +58,7 @@ beforeEach(async () => {
     { hash: digestOf },
     { generate: () => `id-${nextValue()}` },
     REFRESH_TTL_SECONDS,
+    DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS,
   )
 
   useCase = new LoginUserUseCase(

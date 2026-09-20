@@ -5,6 +5,9 @@ import { noopAuthRepos } from '#modules/auth/repositories/noop-auth-repos'
 import type { AuthRepos, IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
 import { LogoutUseCase } from '#modules/auth/use-cases/logout'
 
+/** Far enough that it never binds. */
+const FAR_CEILING = new Date('2099-01-01T00:00:00.000Z')
+
 const USER_ID = '3f2a1b4c-5d6e-4f70-8192-a3b4c5d6e7f8'
 const FAMILY_ID = '11112222-3333-4444-8555-666677778888'
 const OTHER_FAMILY_ID = '99990000-1111-4222-8333-444455556666'
@@ -42,6 +45,7 @@ const store = (id: string, token: string, familyId: string) =>
       familyId,
       now: NOW,
       ttlSeconds: TTL_SECONDS,
+      lifetimeCeiling: FAR_CEILING,
       ip: IP,
       deviceLabel: DEVICE_LABEL,
       sessionStartedAt: SESSION_STARTED_AT,

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
+import { DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS } from '#modules/auth/config'
 import { PendingRegistration } from '#modules/auth/entities/pending-registration'
 import { User } from '#modules/auth/entities/user'
 import { EmailVerificationFailedError } from '#modules/auth/errors/email-verification-failed-error'
@@ -170,6 +171,7 @@ function buildUseCase(): ConfirmEmailUseCase {
       digest,
       { generate: () => GENERATED_ID },
       REFRESH_TOKEN_TTL_SECONDS,
+      DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS,
     ),
     { sign: signSpy, verify: async () => ({ sub: GENERATED_ID }) },
     digest,
