@@ -25,7 +25,7 @@ todo token novo passa a vencer em `min(agora + TTL, início da sessão + teto)`.
 - `RefreshToken.create` aplica o teto ao calcular o `expiresAt`.
 - `RefreshTokenIssuer` recebe o teto e o repassa; expõe `ceilingFor(start)`.
 - `RefreshTokenUseCase` recusa a rotação quando o teto da família já passou.
-- Decisão 42 no `DECISIONS.md` e as emendas da §10.
+- Decisão 42 no `DECISIONS.md` e as emendas da §9.
 
 ### Não entra, e por quê
 
