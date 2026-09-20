@@ -22,6 +22,13 @@ const MIN_CLAIM_LENGTH = 1
 export const DEFAULT_REFRESH_TOKEN_TTL_SECONDS = 5_184_000
 
 /**
+ * 90 days. The ceiling on a session's whole life, counted from when the family
+ * opened. The TTL above slides with every rotation and so is only an idle
+ * timeout; this one does not slide. A ceiling below the TTL simply wins.
+ */
+export const DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS = 7_776_000
+
+/**
  * 30 seconds — decision 11. The window in which a refresh that has already been
  * rotated is still accepted, because the response carrying its successor may
  * have died in a tunnel. Without it, rotation in a mobile app produces random
@@ -233,6 +240,13 @@ export const authEnvSchema = z.object({
     .int()
     .positive()
     .default(DEFAULT_REFRESH_TOKEN_TTL_SECONDS),
+  // `.positive()` and not `.nonnegative()`: a ceiling of zero would refuse every
+  // login, and rejecting zero is also what rejects an empty value.
+  REFRESH_TOKEN_MAX_LIFETIME_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS),
   // `.positive()` and not `.nonnegative()`: a grace window of zero brings back
   // the random logout the window exists to remove, and rejecting zero is also
   // what rejects an empty value — exactly as for `PORT`.

@@ -14,10 +14,12 @@ import {
   DEFAULT_OUTBOX_MESSAGE_PRUNE_RETENTION_SECONDS,
   DEFAULT_PASSWORD_RESET_TOKEN_PRUNE_RETENTION_SECONDS,
   DEFAULT_PENDING_REGISTRATION_PRUNE_RETENTION_SECONDS,
+  DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS,
   DEFAULT_REFRESH_TOKEN_PRUNE_RETENTION_SECONDS,
   DEFAULT_REGISTER_RATE_LIMIT_MAX_REQUESTS,
 } from '#modules/auth/config'
 
+const NINETY_DAYS_SECONDS = 90 * 24 * 60 * 60
 const VALID_SECRET = 'a-test-secret-with-at-least-32-chars'
 const TOO_SHORT_SECRET = 'a'.repeat(31)
 const VALID_GOOGLE_CLIENT_ID = 'client.apps.googleusercontent.com'
@@ -189,6 +191,22 @@ describe('authEnvSchema', () => {
     // Zero would expire every claim the moment it is taken.
     expect(() =>
       authEnvSchema.parse({ ...MINIMAL_ENV, OUTBOX_DISPATCH_LEASE_SECONDS: '' }),
+    ).toThrow()
+  })
+
+  it('defaults the refresh token lifetime ceiling to 90 days', () => {
+    const config = authEnvSchema.parse(MINIMAL_ENV)
+
+    expect(config.REFRESH_TOKEN_MAX_LIFETIME_SECONDS).toBe(
+      DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS,
+    )
+    expect(DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS).toBe(NINETY_DAYS_SECONDS)
+  })
+
+  it('rejects an empty lifetime ceiling instead of coercing it to zero', () => {
+    // Zero would refuse every login: every token would be born past its ceiling.
+    expect(() =>
+      authEnvSchema.parse({ ...MINIMAL_ENV, REFRESH_TOKEN_MAX_LIFETIME_SECONDS: '' }),
     ).toThrow()
   })
 })
