@@ -44,6 +44,10 @@ const OWNER_EMAIL = 'joao@example.com'
 const NOTICE_ID_PREFIX = 'notice-'
 const NO_MESSAGES = 0
 const ONE_MESSAGE = 1
+const ONE_TOKEN = 1
+const MAX_LIFETIME_MS =
+  DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS * MILLISECONDS_PER_SECOND
+const THIRTY_MINUTES_MS = 30 * 60 * MILLISECONDS_PER_SECOND
 
 const digestOf = (value: string) => `digest:${value}`
 const at = (offsetMs: number) => new Date(NOW.getTime() + offsetMs)
@@ -516,5 +520,54 @@ describe('RefreshTokenUseCase — reuse notice', () => {
     expect(notice?.text).toContain(NOW.toISOString())
     expect(notice?.text).toContain('an unknown device')
     expect(notice?.text).toContain('an unrecognized address')
+  })
+})
+
+/** A session start such that the family's ceiling lands `remainingMs` after `NOW`. */
+const startedWithCeilingAt = (remainingMs: number) =>
+  new Date(NOW.getTime() - MAX_LIFETIME_MS + remainingMs)
+
+describe('RefreshTokenUseCase — session lifetime ceiling', () => {
+  it('caps the successor at the ceiling when it is closer than the TTL', async () => {
+    const start = startedWithCeilingAt(THIRTY_MINUTES_MS)
+    store({ sessionStartedAt: start })
+
+    await refresh()
+
+    const successor = repository.tokens[1]
+    expect(successor?.expiresAt).toEqual(at(THIRTY_MINUTES_MS))
+    // The ceiling is a fact about the FAMILY: rotation must not move it.
+    expect(successor?.sessionStartedAt).toEqual(start)
+  })
+
+  it('refuses a family whose ceiling has arrived, writing nothing', async () => {
+    store({ sessionStartedAt: startedWithCeilingAt(0) })
+
+    await expect(refresh()).rejects.toBeInstanceOf(InvalidRefreshTokenError)
+
+    expect(repository.tokens).toHaveLength(ONE_TOKEN)
+    expect(repository.tokens[0]?.revokedAt).toBeNull()
+    expect(outboxMessages.messages).toHaveLength(NO_MESSAGES)
+  })
+
+  it('refuses inside the grace window too', async () => {
+    store({
+      revokedAt: NOW,
+      replacedBy: SUCCESSOR_ID,
+      sessionStartedAt: startedWithCeilingAt(0),
+    })
+    storeSuccessor()
+    clockReading = at(ONE_MILLISECOND)
+
+    await expect(refresh()).rejects.toBeInstanceOf(InvalidRefreshTokenError)
+  })
+
+  it('counts the ceiling from createdAt for a row older than the column', async () => {
+    // `inherit` adopts `createdAt` (NOW) as the start, so the ceiling is far away.
+    store({ sessionStartedAt: null })
+
+    await refresh()
+
+    expect(repository.tokens[1]?.expiresAt).toEqual(at(TTL_MS))
   })
 })

@@ -219,6 +219,15 @@ export class RefreshTokenUseCase {
     now: Date,
     context: IssuedSessionContext,
   ): Promise<IssuedRefreshToken> {
+    // The family's ceiling can already be behind us while this token is still
+    // alive: the max lifetime was lowered after it was issued. Issuing would
+    // mint a successor born expired, so the rotation is refused before anything
+    // is written (decision 42).
+    const sessionStartedAt = context.sessionStartedAt ?? now
+    if (this.issuer.ceilingFor(sessionStartedAt).getTime() <= now.getTime()) {
+      throw new InvalidRefreshTokenError()
+    }
+
     const issued = this.issuer.issue(userId, familyId, now, context)
     await refreshTokens.save(issued.entity)
 
