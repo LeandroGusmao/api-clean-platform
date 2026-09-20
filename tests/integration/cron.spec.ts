@@ -12,12 +12,14 @@ import {
   JOB_NAME_SEPARATOR,
   runCron,
 } from '#main/run-cron'
+import { auditEvents } from '#modules/auth/infra/drizzle/schema/audit-events'
 import { outboxMessages } from '#modules/auth/infra/drizzle/schema/outbox-messages'
 import { passwordResetTokens } from '#modules/auth/infra/drizzle/schema/password-reset-tokens'
 import { pendingRegistrations } from '#modules/auth/infra/drizzle/schema/pending-registrations'
 import { refreshTokens } from '#modules/auth/infra/drizzle/schema/refresh-tokens'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
 import { DISPATCH_OUTBOX_MESSAGES_JOB } from '#modules/auth/use-cases/dispatch-outbox-messages'
+import { PRUNE_AUDIT_EVENTS_JOB } from '#modules/auth/use-cases/prune-audit-events'
 import { PRUNE_EXPIRED_PASSWORD_RESET_TOKENS_JOB } from '#modules/auth/use-cases/prune-expired-password-reset-tokens'
 import { PRUNE_EXPIRED_PENDING_REGISTRATIONS_JOB } from '#modules/auth/use-cases/prune-expired-pending-registrations'
 import { PRUNE_EXPIRED_REFRESH_TOKENS_JOB } from '#modules/auth/use-cases/prune-expired-refresh-tokens'
@@ -28,7 +30,7 @@ const EMAIL = 'joao@example.com'
 const OTHER_EMAIL = 'maria@example.com'
 const PASSWORD_HASH = 'argon2-irrelevant'
 const HASH_LENGTH = 64
-const EXPECTED_JOBS = 5
+const EXPECTED_JOBS = 6
 const ONE_JOB = 1
 const ROWS_DELETED_PER_JOB = 1
 const DISPATCHED_PER_RUN = 1
@@ -42,6 +44,9 @@ const DAY_MS = 24 * 60 * 60 * 1000
 /** Past every retention window (the longest is 7 days, for refresh tokens). */
 const LONG_AGO_MS = 8 * DAY_MS
 const RECENTLY_MS = 60 * 60 * 1000
+/** Just past the audit retention window, whatever the environment sets it to. */
+const ABOVE_AUDIT_RETENTION_MS =
+  (env.AUDIT_EVENT_PRUNE_RETENTION_SECONDS + 24 * 60 * 60) * 1000
 
 /** Only `makeContainer` needs it; the cron run logs nothing itself. */
 const SILENT_LOGGER = {
@@ -66,6 +71,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await db.delete(outboxMessages)
+  await db.delete(auditEvents)
   await db.delete(refreshTokens)
   await db.delete(pendingRegistrations)
   await db.delete(passwordResetTokens)
@@ -178,6 +184,35 @@ describe('runCron', () => {
     expect(await db.select().from(refreshTokens)).toHaveLength(SURVIVORS_PER_TABLE)
     expect(await db.select().from(pendingRegistrations)).toHaveLength(SURVIVORS_PER_TABLE)
     expect(await db.select().from(passwordResetTokens)).toHaveLength(SURVIVORS_PER_TABLE)
+  })
+
+  it('prunes audit events past the retention window and keeps the recent ones', async () => {
+    await db.insert(auditEvents).values([
+      {
+        id: randomUUID(),
+        type: 'PASSWORD_CHANGED',
+        userId,
+        ip: null,
+        deviceLabel: null,
+        occurredAt: ago(ABOVE_AUDIT_RETENTION_MS),
+      },
+      {
+        id: randomUUID(),
+        type: 'PASSWORD_CHANGED',
+        userId,
+        ip: null,
+        deviceLabel: null,
+        occurredAt: ago(RECENTLY_MS),
+      },
+    ])
+
+    const outcomes = await runCron(env, SILENT_LOGGER)
+
+    const pruned = outcomes.find((outcome) =>
+      outcome.name.endsWith(PRUNE_AUDIT_EVENTS_JOB),
+    )
+    expect(pruned?.metrics?.rowsDeleted).toBe(ROWS_DELETED_PER_JOB)
+    expect(await db.select().from(auditEvents)).toHaveLength(SURVIVORS_PER_TABLE)
   })
 
   it('with a qualified selector, runs that job alone and leaves the other tables untouched', async () => {

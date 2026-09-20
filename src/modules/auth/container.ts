@@ -54,6 +54,10 @@ import { LoginUserUseCase } from './use-cases/login-user.js'
 import { LogoutUseCase } from './use-cases/logout.js'
 import { LogoutAllUseCase } from './use-cases/logout-all.js'
 import {
+  PRUNE_AUDIT_EVENTS_JOB,
+  PruneAuditEventsUseCase,
+} from './use-cases/prune-audit-events.js'
+import {
   PRUNE_EXPIRED_PASSWORD_RESET_TOKENS_JOB,
   PruneExpiredPasswordResetTokensUseCase,
 } from './use-cases/prune-expired-password-reset-tokens.js'
@@ -98,6 +102,7 @@ export function makeAuthContainer(
     passwordResetTokens: passwordResetTokensRepository,
     federatedIdentities: federatedIdentitiesRepository,
     outboxMessages: outboxMessagesRepository,
+    auditEvents: auditEventsRepository,
   } = authRepositories(db)
   const hashProvider = new Argon2HashProvider()
   const clock = new SystemClock()
@@ -167,6 +172,11 @@ export function makeAuthContainer(
     clock,
     config.OUTBOX_MESSAGE_PRUNE_RETENTION_SECONDS * MILLISECONDS_PER_SECOND,
   )
+  const pruneAuditEvents = new PruneAuditEventsUseCase(
+    auditEventsRepository,
+    clock,
+    config.AUDIT_EVENT_PRUNE_RETENTION_SECONDS * MILLISECONDS_PER_SECOND,
+  )
   /**
    * What this module hands the `cron.ts` entrypoint. Each `run` re-wraps the
    * use case's result into a fresh object literal — that is what makes it a
@@ -206,6 +216,13 @@ export function makeAuthContainer(
       name: PRUNE_OUTBOX_MESSAGES_JOB,
       run: async () => {
         const { rowsDeleted } = await pruneOutboxMessages.execute()
+        return { rowsDeleted }
+      },
+    },
+    {
+      name: PRUNE_AUDIT_EVENTS_JOB,
+      run: async () => {
+        const { rowsDeleted } = await pruneAuditEvents.execute()
         return { rowsDeleted }
       },
     },
