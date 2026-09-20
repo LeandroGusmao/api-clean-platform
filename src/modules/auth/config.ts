@@ -178,6 +178,13 @@ export const DEFAULT_OUTBOX_DISPATCH_LEASE_SECONDS = 120
 export const DEFAULT_OUTBOX_MESSAGE_PRUNE_RETENTION_SECONDS = 604_800
 
 /**
+ * One year. How long an audit event stays before the prune job removes it. A
+ * placeholder, not a compliance answer: how much of the trail to keep is a
+ * product and legal decision, which is why it is a variable and not a constant.
+ */
+export const DEFAULT_AUDIT_EVENT_PRUNE_RETENTION_SECONDS = 31_536_000
+
+/**
  * Where `jose` fetches Google's signing keys. A default of the real endpoint,
  * the way `MAIL_HOST` defaults to the dev Mailpit host: it is a service
  * endpoint, and the integration test overrides it to a local JWKS server the
@@ -419,6 +426,13 @@ export const authEnvSchema = z.object({
     .int()
     .positive()
     .default(DEFAULT_OUTBOX_MESSAGE_PRUNE_RETENTION_SECONDS),
+  // `.positive()` and not `.nonnegative()`: zero would delete the whole trail on
+  // every prune run, and rejecting zero is also what rejects an empty value.
+  AUDIT_EVENT_PRUNE_RETENTION_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_AUDIT_EVENT_PRUNE_RETENTION_SECONDS),
 })
 
 export type AuthConfig = z.infer<typeof authEnvSchema>
