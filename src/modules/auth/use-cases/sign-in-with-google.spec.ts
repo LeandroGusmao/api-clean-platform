@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
 import { DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS } from '#modules/auth/config'
+import { AuditEventType } from '#modules/auth/entities/audit-event'
 import {
   FederatedIdentity,
   GOOGLE_PROVIDER,
@@ -10,6 +11,7 @@ import { GoogleLinkRequiresPasswordError } from '#modules/auth/errors/google-lin
 import { GoogleSignInConflictError } from '#modules/auth/errors/google-sign-in-conflict-error'
 import { InvalidCredentialsError } from '#modules/auth/errors/invalid-credentials-error'
 import { InvalidGoogleIdentityError } from '#modules/auth/errors/invalid-google-identity-error'
+import { InMemoryAuditEventsRepository } from '#modules/auth/infra/in-memory/in-memory-audit-events-repository'
 import { InMemoryFederatedIdentitiesRepository } from '#modules/auth/infra/in-memory/in-memory-federated-identities-repository'
 import { InMemoryOutboxMessagesRepository } from '#modules/auth/infra/in-memory/in-memory-outbox-messages-repository'
 import { InMemoryRefreshTokensRepository } from '#modules/auth/infra/in-memory/in-memory-refresh-tokens-repository'
@@ -42,6 +44,8 @@ const APP_PASSWORD = 'sup3r-s3cr3t!'
 const STORED_HASH = 'hashed:sup3r-s3cr3t!'
 const DUMMY_HASH = 'hashed:dummy'
 const NOW = new Date('2026-09-08T12:00:00.000Z')
+const ONE_EVENT = 1
+const NO_EVENTS = 0
 const CREATED_AT = new Date('2026-01-01T08:00:00.000Z')
 const ACCESS_TOKEN = 'signed.access.token'
 const OPAQUE_TOKEN = 'opaque-refresh-token'
@@ -61,6 +65,7 @@ let identity: GoogleIdentity
 let verifyResult: () => Promise<GoogleIdentity>
 let compareResult: boolean
 let outboxMessagesRepository: InMemoryOutboxMessagesRepository
+let auditEventsRepository: InMemoryAuditEventsRepository
 let usersRepository: InMemoryUsersRepository
 let federatedIdentitiesRepository: InMemoryFederatedIdentitiesRepository
 let refreshTokensRepository: InMemoryRefreshTokensRepository
@@ -166,6 +171,7 @@ const existingSessionFor = (userId: string) =>
 beforeEach(() => {
   callLog = []
   outboxMessagesRepository = new InMemoryOutboxMessagesRepository()
+  auditEventsRepository = new InMemoryAuditEventsRepository()
   generated = 0
   identity = { subject: SUBJECT, email: EMAIL }
   verifyResult = async () => {
@@ -182,6 +188,7 @@ beforeEach(() => {
     callLog.push(UOW)
     const repos: AuthRepos = {
       ...noopAuthRepos(),
+      auditEvents: auditEventsRepository,
       users: usersRepository,
       refreshTokens: refreshTokensRepository,
       federatedIdentities: federatedIdentitiesRepository,
@@ -338,6 +345,31 @@ describe('SignInWithGoogleUseCase — email has a password account', () => {
       googleAccountLinkedEmail(Email.fromTrusted(EMAIL)),
     ])
     expect(callLog).toEqual([VERIFY, COMPARE, UOW, SAVE_OUTBOX, COMMIT])
+  })
+
+  it('records a GOOGLE_ACCOUNT_LINKED audit event with the device that linked', async () => {
+    storePasswordUser()
+
+    await useCase.execute({ idToken: ID_TOKEN, password: APP_PASSWORD, device: DEVICE })
+
+    expect(auditEventsRepository.events).toHaveLength(ONE_EVENT)
+    const [event] = auditEventsRepository.events
+    expect(event?.type).toBe(AuditEventType.GoogleAccountLinked)
+    expect(event?.userId).toBe(USER_ID)
+    expect(event?.ip).toBe(DEVICE.ip)
+    expect(event?.deviceLabel).toBe(DEVICE.label)
+    expect(event?.occurredAt).toEqual(NOW)
+  })
+
+  it('records nothing when the password is wrong', async () => {
+    storePasswordUser()
+    compareResult = false
+
+    await expect(
+      useCase.execute({ idToken: ID_TOKEN, password: APP_PASSWORD, device: DEVICE }),
+    ).rejects.toBeInstanceOf(InvalidCredentialsError)
+
+    expect(auditEventsRepository.events).toHaveLength(NO_EVENTS)
   })
 })
 

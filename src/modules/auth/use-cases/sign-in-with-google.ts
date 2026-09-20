@@ -1,3 +1,4 @@
+import { AuditEvent, AuditEventType } from '#modules/auth/entities/audit-event'
 import {
   FederatedIdentity,
   GOOGLE_PROVIDER,
@@ -139,7 +140,9 @@ export class SignInWithGoogleUseCase {
       sessionContextFor(command.device, now),
     )
 
-    await this.uow(async ({ federatedIdentities, refreshTokens, outboxMessages }) => {
+    await this.uow(async (repos) => {
+      const { federatedIdentities, refreshTokens, outboxMessages, auditEvents } = repos
+
       await federatedIdentities.save(link)
 
       // BEFORE the insert, always — same reasoning as `change-password.ts`:
@@ -154,6 +157,15 @@ export class SignInWithGoogleUseCase {
         OutboxMessage.create({
           id: this.idGenerator.generate(),
           message: googleAccountLinkedEmail(existing.email),
+          now,
+        }),
+      )
+      await auditEvents.save(
+        AuditEvent.create({
+          id: this.idGenerator.generate(),
+          type: AuditEventType.GoogleAccountLinked,
+          userId: existing.id,
+          device: command.device,
           now,
         }),
       )

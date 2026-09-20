@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
 import { DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS } from '#modules/auth/config'
+import { AuditEventType } from '#modules/auth/entities/audit-event'
 import { User } from '#modules/auth/entities/user'
 import { InvalidCurrentPasswordError } from '#modules/auth/errors/invalid-current-password-error'
 import { InvalidPasswordError } from '#modules/auth/errors/invalid-password-error'
 import { PasswordUnchangedError } from '#modules/auth/errors/password-unchanged-error'
 import { UserNotFoundError } from '#modules/auth/errors/user-not-found-error'
+import { InMemoryAuditEventsRepository } from '#modules/auth/infra/in-memory/in-memory-audit-events-repository'
 import { InMemoryOutboxMessagesRepository } from '#modules/auth/infra/in-memory/in-memory-outbox-messages-repository'
 import { InMemoryRefreshTokensRepository } from '#modules/auth/infra/in-memory/in-memory-refresh-tokens-repository'
 import { InMemoryUsersRepository } from '#modules/auth/infra/in-memory/in-memory-users-repository'
@@ -58,10 +60,14 @@ const SAVE_TOKEN_CALL = 'saveToken'
 const COMMIT_CALL = 'commit'
 const SAVE_OUTBOX_CALL = 'saveOutboxMessage'
 
+const ONE_EVENT = 1
+const NO_EVENTS = 0
+
 let callLog: string[]
 let usersRepository: InMemoryUsersRepository
 let refreshTokensRepository: InMemoryRefreshTokensRepository
 let outboxMessages: InMemoryOutboxMessagesRepository
+let auditEventsRepository: InMemoryAuditEventsRepository
 let useCase: ChangePasswordUseCase
 // Typed with the real signatures rather than a bare `ReturnType<typeof vi.fn>`,
 // which erases them: the erased form compiles at the declaration and then fails
@@ -97,11 +103,13 @@ beforeEach(() => {
   usersRepository = new InMemoryUsersRepository()
   refreshTokensRepository = new InMemoryRefreshTokensRepository()
   outboxMessages = new InMemoryOutboxMessagesRepository()
+  auditEventsRepository = new InMemoryAuditEventsRepository()
 
   // Wrapped so the log records the order the repositories were touched INSIDE
   // the transaction. Order is the whole point of two of the tests below.
   const trackedRepos: AuthRepos = {
     ...noopAuthRepos(),
+    auditEvents: auditEventsRepository,
     users: {
       save: (user) => usersRepository.save(user),
       findByEmail: (email) => usersRepository.findByEmail(email),
@@ -215,6 +223,30 @@ const change = (overrides: Partial<Parameters<typeof useCase.execute>[0]> = {}) 
   })
 
 describe('ChangePasswordUseCase', () => {
+  it('records a PASSWORD_CHANGED audit event with the device that asked', async () => {
+    storeUser(CURRENT_HASH)
+
+    await change()
+
+    expect(auditEventsRepository.events).toHaveLength(ONE_EVENT)
+    const [event] = auditEventsRepository.events
+    expect(event?.type).toBe(AuditEventType.PasswordChanged)
+    expect(event?.userId).toBe(USER_ID)
+    expect(event?.ip).toBe(DEVICE.ip)
+    expect(event?.deviceLabel).toBe(DEVICE.label)
+    expect(event?.occurredAt).toEqual(NOW)
+  })
+
+  it('records nothing when the current password is wrong', async () => {
+    storeUser(CURRENT_HASH)
+
+    await expect(change({ currentPassword: WRONG_PASSWORD })).rejects.toBeInstanceOf(
+      InvalidCurrentPasswordError,
+    )
+
+    expect(auditEventsRepository.events).toHaveLength(NO_EVENTS)
+  })
+
   it('replaces the hash, revokes every session and issues a new pair', async () => {
     storeUser(CURRENT_HASH)
 

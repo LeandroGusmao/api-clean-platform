@@ -1,3 +1,4 @@
+import { AuditEvent, AuditEventType } from '#modules/auth/entities/audit-event'
 import { OutboxMessage } from '#modules/auth/entities/outbox-message'
 import { InvalidCurrentPasswordError } from '#modules/auth/errors/invalid-current-password-error'
 import { PasswordUnchangedError } from '#modules/auth/errors/password-unchanged-error'
@@ -124,7 +125,7 @@ export class ChangePasswordUseCase {
       },
     )
 
-    await this.uow(async ({ users, refreshTokens, outboxMessages }) => {
+    await this.uow(async ({ users, refreshTokens, outboxMessages, auditEvents }) => {
       await users.updatePasswordHash(user.id, passwordHash, now)
 
       // BEFORE the insert, always. `revokeAllForUser` revokes every row of this
@@ -141,6 +142,17 @@ export class ChangePasswordUseCase {
         OutboxMessage.create({
           id: this.idGenerator.generate(),
           message: passwordChangedEmail(user.email),
+          now,
+        }),
+      )
+
+      // The trail, in the same transaction as the change and its notice.
+      await auditEvents.save(
+        AuditEvent.create({
+          id: this.idGenerator.generate(),
+          type: AuditEventType.PasswordChanged,
+          userId: user.id,
+          device: command.device,
           now,
         }),
       )
