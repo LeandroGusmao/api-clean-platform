@@ -158,8 +158,11 @@ function layerPath(file) {
 const PURE_DIRECTORIES =
   /^(entities|value-objects|repositories|ports|use-cases|services|dtos|errors|notifications)\//
 
+// §2: `fixtures/` e `in-memory/` entram em `test` pelo nome da pasta.
+const TEST_ELEMENT = /(\.spec\.ts$|^tests\/|\/fixtures\/|\/in-memory\/)/
+
 function classify(lp) {
-  if (lp.endsWith('.spec.ts') || lp.startsWith('tests/')) return 'test'
+  if (TEST_ELEMENT.test(lp)) return 'test'
   if (lp.startsWith('src/main/')) return 'composition'
 
   const inModule = /^src\/modules\/[^/]+\/(.*)$/.exec(lp)
@@ -431,12 +434,12 @@ function checkImports(file, lp, layer, imports) {
         )
       } else if (crossModule) {
         addFinding(
-          MEDIUM,
+          CRITICAL,
           'XMOD-PURE',
           file,
           line,
-          BOUNDARY_RULE,
-          `infra de '${own}' alcançando a camada pura de '${otherModule}': '${spec}'. Acoplamento entre domínios — confirme se é intencional.`,
+          `${BOUNDARY_RULE} (módulo não alcança módulo)`,
+          `infra de '${own}' alcançando a camada pura de '${otherModule}': '${spec}'. O cruzamento se faz por uma porta do consumidor, com o adaptador em src/main/.`,
           statement,
         )
       }

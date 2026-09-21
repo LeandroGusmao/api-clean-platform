@@ -1,0 +1,3 @@
+import { makeAuthContainer } from '#modules/auth/container'
+
+export const bad = makeAuthContainer()

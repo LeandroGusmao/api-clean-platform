@@ -1,0 +1,3 @@
+import type { Pool } from 'pg'
+
+export const bad = (pool: Pool) => pool

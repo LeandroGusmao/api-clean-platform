@@ -1,0 +1,3 @@
+import { GetUserProfileUseCase } from '#modules/auth/use-cases/get-user-profile'
+
+export const bad = (useCase: GetUserProfileUseCase) => useCase

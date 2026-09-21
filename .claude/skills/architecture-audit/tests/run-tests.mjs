@@ -66,6 +66,7 @@ const EXPECTED = {
   'docs/good-neighbour.md': [],
   'src/shared/utils/random-id.ts': ['PURE-IO:1', 'R7-RANDOM:3'],
   'src/infra/http/tenant-guard.ts': ['GLOBAL-INFRA-XMOD:1'],
+  'src/modules/billing/infra/http/cross-module-pure.ts': ['XMOD-PURE:1'],
   'src/modules/billing/helpers.ts': ['LAYER-UNKNOWN:1'],
   // `services/` is `pure`, so the driver import has to be caught here. Before
   // that folder entered the boundary table it was LAYER-UNKNOWN instead, and

@@ -185,7 +185,7 @@ não verificou é `n/a`, não aprovado.
 |---|---|
 | "O scanner não apontou nada, então passou" | Ele cobre o que regex prova. O passo 3 existe porque o resto não é. |
 | "É só um teste, testes são exceção" | A tabela de fronteira isenta `test` de **import**, não de segredo. Spec que loga erro cru vaza igual. |
-| "O lint já pega isso" | Só R6 tem dente hoje (§4). Fronteira e R7 são revisão humana — é o motivo desta skill existir. |
+| "O lint já pega isso" | R6 e a fronteira têm dente (§4); R7 não. E o portão vê o grafo, não a intenção — é o motivo desta skill existir. |
 | "É uma linha só, marco MÉDIA" | Vazamento não tem severidade proporcional à contagem. Uma linha basta para o hash sair no log. |
 | "Código pré-existente, não é do diff" | Reporte com o escopo marcado. Idade não rebaixa severidade. |
 | "Corrijo enquanto audito" | Relatório primeiro. Correção misturada esconde o que foi encontrado. |

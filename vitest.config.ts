@@ -3,7 +3,7 @@ import { TEST_DATABASE_URL } from './tests/integration/setup/test-database-url.j
 import { TEST_REDIS_URL } from './tests/integration/setup/test-redis-url.js'
 
 const UNIT_PROJECT = 'unit'
-const UNIT_INCLUDE = 'src/**/*.spec.ts'
+const UNIT_INCLUDE = ['src/**/*.spec.ts', 'tools/**/*.spec.mjs']
 
 const INTEGRATION_PROJECT = 'integration'
 const INTEGRATION_INCLUDE = 'tests/integration/**/*.spec.ts'
@@ -29,7 +29,7 @@ export default defineConfig({
       {
         test: {
           name: UNIT_PROJECT,
-          include: [UNIT_INCLUDE],
+          include: UNIT_INCLUDE,
         },
       },
       {

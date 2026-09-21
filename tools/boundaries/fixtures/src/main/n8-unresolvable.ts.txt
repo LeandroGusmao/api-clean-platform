@@ -1,0 +1,3 @@
+import { ghost } from '#modules/ghost/use-cases/ghost'
+
+export const bad = ghost

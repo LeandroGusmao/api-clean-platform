@@ -8,5 +8,19 @@ allowBuilds:
 # `engines` from package.json becomes a hard gate: install fails instead of just warning.
 engineStrict: true
 
+minimumReleaseAgeExclude:
+  - dependency-cruiser@18.4.0
+
 # Every `pnpm add` writes an exact version, no caret.
 savePrefix: ''
+
+# dependency-cruiser supports `typescript >=2.0.0 <7.0.0` and resolves the
+# compiler from its OWN directory, not the project root. With the project's
+# TypeScript 7 it cruises zero modules and exits 0 — a green run that enforces
+# nothing (ARCHITECTURE.md §4). Nesting 6.0.3 here leaves the project on 7:
+# `build`, `typecheck` and the editor are untouched. Remove this block when
+# dependency-cruiser supports TypeScript 7.
+packageExtensions:
+  dependency-cruiser:
+    dependencies:
+      typescript: 6.0.3

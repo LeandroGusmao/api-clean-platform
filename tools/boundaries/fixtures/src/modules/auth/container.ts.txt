@@ -1,0 +1,9 @@
+import { GetUserProfileUseCase } from '#modules/auth/use-cases/get-user-profile'
+
+export interface AuthContainer {
+  getUserProfile: GetUserProfileUseCase
+}
+
+export const makeAuthContainer = (): AuthContainer => ({
+  getUserProfile: new GetUserProfileUseCase(),
+})

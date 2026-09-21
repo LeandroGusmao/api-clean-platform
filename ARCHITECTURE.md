@@ -214,8 +214,27 @@ que o `tsconfig.build.json` já exclui do build, e pela mesma razão: são dubl�
 e um deles carrega um `JWT_SECRET` fixo. Classificá-los como produção faria o
 lint de fronteira aprovar exatamente o import que deveria barrar.
 
-A linha `module-infra` também resolve o cruzamento entre módulos: o `infra/` de
-um módulo não alcança o `infra/` de outro.
+**Nenhum elemento de um módulo alcança outro módulo** — nem o `infra/`, nem a
+camada pura. A tabela acima, lida ao pé da letra, permitiria que o `infra/` de
+um módulo importasse a camada pura de outro, porque `pure` como elemento cobre
+qualquer módulo. Não é o que ela quer dizer: o cruzamento se faz por uma porta
+declarada na camada pura do **consumidor**, e o adaptador mora em `src/main/`,
+único lugar onde módulo conhece módulo.
+
+A analogia que fecha a questão é a de microsserviços. Lá o `billing` **chama** o
+`auth`, mas não **importa** o `auth`: ele segura um cliente de um contrato que
+ele mesmo define, e os tipos internos do outro serviço são invisíveis. A rede
+obriga a porta. Esta regra é isso dentro do processo — ela não proíbe a chamada,
+proíbe o import.
+
+O retorno dos use cases já está pronto para isso: `UserProfileResult` é plano
+por desenho, sem value object, justamente para que nenhum consumidor precise
+conhecer os tipos internos da entidade. Contrato entre módulos se escreve em
+`string` e `Date`.
+
+O custo é real e foi aceito: todo cruzamento paga uma interface e um adaptador,
+inclusive os triviais. Quando a regra entrou, a árvore inteira já a respeitava —
+zero violações em 257 módulos.
 
 **`services/` é a linha mais nova, e o que mora ali é estreito:** uma operação de
 domínio que precisa de colaboradores e não pertence a uma entidade só. O
@@ -450,26 +469,22 @@ N projetos derivados. Estas falham no `pnpm lint`:
 | | Regra | Mecanismo | Verificado |
 |---|---|---|---|
 | **R6** | Só `src/infra/config/env.ts` lê `process.env` | Biome `style/noProcessEnv` + `overrides` | ✅ fixture faz o lint sair com exit 1 |
+| **Fronteira** | Quem importa quem (a tabela do §2) | `dependency-cruiser` + `tools/boundaries/check.mjs` | ✅ 8 fixtures negativas e 2 positivas |
 
-**Só R6 tem dente hoje — e o motivo mudou.** A redação anterior desta seção dizia
-que as outras entrariam "quando o código que elas protegem existir". Esse código
-agora existe: a fatia do `POST /auth/register` criou a camada pura, o primeiro
-repositório e a primeira fronteira de módulo real. O critério foi satisfeito e
-nada foi configurado, então isto deixou de ser desenho e virou **dívida**, com o
-tamanho abaixo:
+**A fronteira saiu da dívida.** Ela era o maior item desta seção — regra que
+quebra em silêncio, que um revisor cansado deixa passar — e hoje falha o
+`pnpm lint`. O que resta abaixo é menor, e cada linha diz por quê:
 
 | Regra | Alvo desde | Mecanismo possível | Situação |
 |---|---|---|---|
 | **R7** — camada pura não produz valor não determinístico | `modules/auth/{entities,value-objects,use-cases}` | Biome `noRestrictedGlobals`/`noRestrictedImports` restrito por caminho | ⚠️ só revisão humana |
-| **Fronteira** — quem importa quem | `modules/auth/**` | `dependency-cruiser` (a tabela do §2 é a config) | ⚠️ só revisão humana |
 | **R1** — repositório usa só a API core do Drizzle | `infra/drizzle/drizzle-users-repository.ts` | lint proibindo `db.query.*` | ⚠️ só revisão humana |
 | **R2** — coluna sempre nomeada explicitamente | `infra/drizzle/schema/users.ts` | difícil de lintar; teste de schema cobre na prática | ⚠️ aceito |
 | **R4** — migrations forward-only | `drizzle/` | difícil de lintar; convenção + review | ⚠️ aceito |
 
-As duas primeiras são as que valem automação: R7 e a fronteira são regras que
-quebram em silêncio e que um revisor cansado deixa passar. R2 e R4 são
-convenções que o teste de integração e o próprio formato da pasta já tornam
-visíveis.
+R7 é a que ainda vale automação: como a fronteira era, ela quebra em silêncio.
+R2 e R4 são convenções que o teste de integração e o próprio formato da pasta já
+tornam visíveis.
 
 > **A regra que existia e não pegou.** A tabela abaixo já proibia "logar objeto
 > de request ou entidade inteira" desde antes desta fatia. O vazamento de hash
@@ -484,42 +499,68 @@ o schema no merge passaria despercebido — a variável simplesmente não seria
 validada e chegaria `undefined` em produção. Com o acesso restrito e a config
 injetada tipada, esquecer o merge vira erro de compilação.
 
-### Quando a fronteira ganhar dente: as três armadilhas
+### Como a fronteira tem dente: as três armadilhas, desarmadas
 
-O mecanismo previsto é **`dependency-cruiser`**, não um plugin de boundaries do
-ESLint — plugin de boundaries **ignora em silêncio todo import que o resolver não
+O mecanismo é **`dependency-cruiser`**, não um plugin de boundaries do ESLint —
+plugin de boundaries **ignora em silêncio todo import que o resolver não
 resolve**, e nenhum resolver de ESLint entende o campo `imports` do
 `package.json`. Como todos os imports entre diretórios usam `#` (§3), o lint
 passaria verde sem enxergar nada.
 
 E há três configurações sem as quais ele enforça **zero**. Cada uma sozinha
-desliga a regra **com exit 0** — verificado empiricamente, não deduzido:
+desliga a regra **com exit 0**. Todas as três estão em `.dependency-cruiser.mjs`:
 
 1. **`tsPreCompilationDeps: true`** — sem isso, `import type` fica invisível.
-   Numa arquitetura contract-first, onde quase toda dependência entre camadas é
-   uma interface, some ~42% das dependências: exatamente a metade da fronteira
-   que a regra existe para proteger.
+   Nesta árvore são **335 arestas de 1003, 33%**: exatamente a metade da
+   fronteira que a regra existe para proteger, já que quase toda dependência
+   entre camadas é uma interface.
 2. **`conditionNames` incluindo `development`** — sem isso, `#modules/*` resolve
-   para `./dist/*.js` e as regras, escritas contra `^src/`, param de casar.
-   Medido na mesma árvore: **com** a condition, 5 violações em 49 módulos, exit
-   5; **sem**, zero violações em 82 módulos, exit 0. Note o detalhe traiçoeiro —
-   sem a condition ele cruza *mais* módulos e acha *menos* violações.
+   para `./dist/*.js` e as regras, escritas contra `^src/`, param de casar. Note
+   o detalhe traiçoeiro: sem a condition ele cruza *mais* módulos e acha *menos*
+   violações.
 3. **TypeScript pinado em `<7`** — o `dependency-cruiser` suporta
-   `>=2.0.0 <7.0.0`. Com o TypeScript 7 ele emite um **aviso**, não um erro:
-   zero módulos cruzados, exit 0, CI verde. Este projeto usa TypeScript 7 (§11),
-   então esta é a armadilha que já está armada.
+   `>=2.0.0 <7.0.0`, e este projeto usa TypeScript 7 (§11). Com o TS 7 ele emite
+   um **aviso** em stderr, não um erro: zero módulos cruzados, exit 0, CI verde.
+   Resolvido sem rebaixar o projeto — o `packageExtensions` do
+   `pnpm-workspace.yaml` aninha um TypeScript 6.0.3 debaixo do
+   `dependency-cruiser`, que resolve o compilador a partir do diretório **dele**.
 
-> **A guarda contra as três de uma vez:** o script deve **falhar se
-> `modules cruised === 0`**. É a única checagem que pega qualquer um dos três
-> modos de falha silenciosa.
+> **A guarda, mais forte que a proposta original.** Esta seção pedia um script
+> que falhasse se `modules cruised === 0`. O `tools/boundaries/check.mjs` faz
+> mais: compara a contagem de módulos em `src/` com os `.ts` em disco (229 =
+> 229) e falha nomeando os que sumiram. Pega os três modos acima **e** a perda
+> parcial — um arquivo que o TypeScript 6 não parseie sairia do grafo sem zerar
+> a contagem. Antes de cruzar, o pré-voo compara a versão de TypeScript que o
+> `dependency-cruiser` de fato resolve com a faixa que ele declara suportar, e
+> morre dizendo qual é. Um quarto ato classifica todo arquivo de `src/` pela
+> tabela do §2 e falha no que não cair em elemento nenhum.
 
-E a configuração só vale acompanhada de fixtures que provem que funciona — **3
-negativos que precisam falhar e 2 positivos que precisam passar**: use case →
-logger (falha), `auth/infra/` → outro módulo `infra/` (falha), `infra/` global →
-in-memory de módulo (falha), `.spec.ts` colocado → in-memory (passa), `main/` →
-implementações concretas (passa). O positivo de `test` não é decorativo: é o
-teste de regressão da **ordem de avaliação** — removendo a exclusão de `test` do
-padrão de `pure`, ele passa a ser acusado.
+A configuração só vale acompanhada de fixtures que provem que funciona, e elas
+vivem em `tools/boundaries/fixtures/` como `.ts.txt`, para que nem o `tsc` nem o
+Biome parseiem código que viola de propósito. São **8 negativas que precisam
+falhar** — uma por regra — e **2 positivas que precisam passar**: `.spec.ts`
+colocado → in-memory, e `main/` → implementações concretas. O positivo do
+`.spec.ts` não é decorativo: é o teste de regressão da **ordem de avaliação**;
+removendo a exclusão de `test` do padrão de `pure`, ele passa a ser acusado.
+
+Cada negativa afirma **qual regra** disparou, não o exit code. Uma fixture que
+falha pela razão errada — um import não resolvido, por exemplo — passaria numa
+asserção que só olhasse exit 1.
+
+### Dois verificadores, dois papéis
+
+A fronteira tem duas ferramentas, e elas não são redundantes:
+
+| | `dependency-cruiser` | `audit-scan.mjs` |
+|---|---|---|
+| papel | **portão**: exit 1 no `pnpm lint` | **rede de revisão**: achado por linha, com explicação |
+| enxerga | o grafo resolvido, `import type` inclusive | o texto do specifier |
+| quando roda | todo lint, todo CI | quando a skill `architecture-audit` é invocada |
+
+Os dois consomem `tools/boundaries/layers.mjs`, onde a tabela do §2 está
+expressa **uma vez**. O portão barra o que a tabela proíbe; a rede questiona o
+que a tabela permite mas merece olhar — `src/infra/` conhecendo o domínio de um
+módulo é o caso que existe hoje.
 
 ### Legal / não legal
 
@@ -530,6 +571,7 @@ padrão de `pure`, ele passa a ser acusado.
 | Registrar rotas em `main/app.ts` | Registrar rotas dentro de `server.ts` |
 | `import '#infra/http/server'` | `import '../../infra/http/server.js'` |
 | Logar campo escolhido | Logar objeto de request ou entidade inteira |
+| Porta no consumidor + adaptador em `main/` | `infra/` de um módulo importando outro módulo |
 | Dependência em versão exata | `^` ou `~` em qualquer dependência |
 
 ---
@@ -1209,6 +1251,27 @@ gravar exato, sem ninguém precisar lembrar.
 Atualizar é ato deliberado — `pnpm outdated` mostra, e a subida é um commit que
 passa pela suíte.
 
+### Um segundo TypeScript, só para o lint de fronteira
+
+O `dependency-cruiser` suporta `typescript >=2.0.0 <7.0.0` e resolve o
+compilador a partir do diretório **dele**, não da raiz. Com o TypeScript 7 deste
+projeto ele cruza zero módulos e sai com exit 0 (§4). O `packageExtensions` do
+`pnpm-workspace.yaml` aninha um `typescript` 6.0.3 debaixo dele:
+
+```yaml
+packageExtensions:
+  dependency-cruiser:
+    dependencies:
+      typescript: 6.0.3
+```
+
+A raiz segue em 7: `build`, `typecheck` e o editor não mudam. Duas pegadinhas do
+pnpm 11 que anulam isso em silêncio: `pnpm.packageExtensions` dentro do
+`package.json` **não é lido**, e `pnpm install --ignore-workspace` descarta as
+settings deste arquivo junto. O bloco sai no dia em que o `dependency-cruiser`
+suportar TypeScript 7 — o pré-voo do `check.mjs` é quem avisa se ele sair antes
+da hora.
+
 ### O que garante a versão do Node
 
 | mecanismo | o que faz | é portão? |
@@ -1435,8 +1498,8 @@ O que de fato não existe, hoje:
 - **Módulos de negócio.** O `auth` é o único módulo. Toda regra sobre
   comunicação entre módulos (§2) é desenho não exercitado por um segundo caso.
 - **Entrypoint `worker.ts`.** O `cron.ts` existe; um worker de fila não.
-- **Dente na fronteira e em R7** — ver §4, que nomeia isso como dívida e não
-  como desenho.
+- **Dente em R7** — ver §4. A fronteira saiu desta lista nesta fatia; R7 é o
+  que resta.
 
 O que é **escolha de produto**, e não ausência, está em
 [`docs/PRODUCT-CHOICES.md`](docs/PRODUCT-CHOICES.md): MFA, lockout, RBAC,

@@ -1,0 +1,3 @@
+import { InvoicesRepository } from '#modules/billing/infra/drizzle/invoices-repository'
+
+export const bad = (repository: InvoicesRepository) => repository

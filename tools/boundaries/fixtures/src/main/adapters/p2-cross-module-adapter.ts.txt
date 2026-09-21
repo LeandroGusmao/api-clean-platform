@@ -1,0 +1,4 @@
+import type { AuthContainer } from '#modules/auth/container'
+import type { BillingContainer } from '#modules/billing/container'
+
+export const ok = (auth: AuthContainer, billing: BillingContainer) => [auth, billing]

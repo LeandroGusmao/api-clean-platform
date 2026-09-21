@@ -1,0 +1,3 @@
+import { ChargeCustomerUseCase } from '#modules/orders/use-cases/charge-customer'
+
+export const handler = (useCase: ChargeCustomerUseCase) => useCase

@@ -2735,6 +2735,77 @@ dispensá-lo, o `DECISIONS.md` perde o que o sustenta e pode cair.
 
 Saldo: 66 → 10 arquivos `.md` versionados, dos quais 7 são documentação de
 projeto e 3 são ferramental em `.claude/`. `docs/` caiu de ~59k para ~3,5k linhas.
+
+### 46 — A regra de fronteira ganha dente
+
+Fecha a fatia 28. A tabela do §2 existia por escrito desde a primeira fatia de
+módulo e nada a verificava. O §4 já classificava isso como **dívida**, não como
+desenho pendente, e carregava o argumento: a regra "não logar objeto inteiro"
+também existia por escrito antes do vazamento de hash que a revisão encontrou.
+A regra estava certa; ninguém a executava.
+
+**O spike, e por que ele decidiu o desenho.** O `dependency-cruiser` não suporta
+TypeScript 7 — a 18.4.0 declara `>=2.0.0 <7.0.0` e a própria mensagem dele diz
+que o suporte "will follow when its API is published and stable". Medido nesta
+árvore: com TS 7, **0 módulos, 0 dependências, exit 0**; com TS 6.0.3, 257
+módulos, 1003 dependências, exit 1. O CI passaria verde sem verificar nada, e o
+único sinal seria um aviso em stderr.
+
+A saída não rebaixa o projeto. O gate do `dependency-cruiser` resolve o
+compilador com `createRequire` a partir do diretório **dele**, então o
+`packageExtensions` do `pnpm-workspace.yaml` aninha um TypeScript 6.0.3 só
+debaixo dele. A raiz segue em 7.0.2. Duas pegadinhas do pnpm 11 custaram uma
+iteração cada e estão registradas no §11: `pnpm.packageExtensions` no
+`package.json` é ignorado sem erro, e `--ignore-workspace` descarta as settings
+junto.
+
+**A guarda é mais forte do que o §4 pedia.** A seção propunha falhar se
+`modules cruised === 0`. O `check.mjs` compara a contagem de módulos em `src/`
+com os `.ts` em disco — 229 = 229 — e assim pega também a **perda parcial**, que
+a contagem zero não pegaria. Antes de cruzar, um pré-voo compara a versão de
+TypeScript resolvida com a faixa declarada. Um quarto ato classifica todo
+arquivo de produção pela tabela do §2 e falha no que não cair em elemento
+nenhum: é o `LAYER-UNKNOWN` do scanner, o mesmo check que pegou a pasta
+`services/` antes de ela entrar na tabela. Ele mora no script, e não como regra
+do `dependency-cruiser`, porque foi medido que um arquivo **sem import nenhum**
+escapa de uma regra — ele nunca aparece do lado `from` de uma dependência.
+
+**A emenda ao §2: módulo não alcança módulo.** A letra da tabela permitia que o
+`infra/` de um módulo importasse a camada pura de outro, porque `pure` como
+elemento cobre qualquer módulo. A analogia que decidiu foi a de microsserviços:
+lá o `billing` chama o `auth`, mas não importa o `auth` — ele segura um cliente
+de um contrato que ele mesmo define, e a rede obriga a porta. A regra reproduz
+isso dentro do processo; ela não proíbe a chamada, proíbe o import. O cruzamento
+passa a ter uma forma só: porta na camada pura do consumidor, adaptador em
+`src/main/`. Custou zero refatoração — a árvore inteira já respeitava.
+
+**Uma regra foi escrita e removida por medição.** Uma
+`container-only-from-main-and-own-infra` nunca dispara sozinha: global-infra
+alcançando container já cai na regra de `global-infra`, camada pura na de
+`pure`, outro módulo na de cruzamento. Removê-la não deixa nenhum arquivo
+infrator escapar, e regra que fixture nenhuma consegue isolar é regra morta —
+exatamente o que o §4 condena.
+
+**Dois verificadores, papéis escritos.** O `dependency-cruiser` é o portão; o
+`audit-scan.mjs` é a rede de revisão. Comparados check a check, divergiam em
+dois pontos, ambos latentes e ambos corrigidos aqui: o `classify()` do scanner
+não implementava a linha `test` do §2, então `in-memory/` e `fixtures/` contavam
+como produção — o oposto do que a seção manda, por escrito; e o `XMOD-PURE`
+acusava travessia de módulo em MÉDIA, com a mensagem "confirme se é
+intencional", que sob a emenda acima não faz mais sentido. Os dois passam a
+consumir `tools/boundaries/layers.mjs`, onde a tabela está expressa uma vez.
+
+**Custos aceitos.**
+
+1. Um segundo TypeScript no lockfile, pinado exato, com condição de saída
+   declarada.
+2. O TypeScript 6 parseia código escrito para o 7. Hoje sem incidente, 229 de
+   229 arquivos cruzados; a guarda de cobertura é o que transforma uma futura
+   divergência de sintaxe em falha ruidosa.
+3. Todo cruzamento entre módulos paga porta e adaptador, inclusive os triviais.
+4. A classificação virou fonte única, mas os *checks* seguem em duas
+   implementações — o risco residual é uma linha nova do §2 virar regra no
+   portão e não virar check no scanner.
 ## 3. Defaults assumidos (não debatidos, abertos a objeção)
 
 | Tema | Escolha | Nota |

@@ -70,7 +70,7 @@ pnpm dev                 # desenvolvimento com watch
 pnpm build               # compila para dist/
 pnpm start               # roda o build
 
-pnpm lint                # biome: formatação, lint e ordem de imports
+pnpm lint                # biome + a fronteira do §2 (dependency-cruiser)
 pnpm typecheck           # tsc --noEmit
 pnpm test:unit           # a pista sem I/O
 pnpm test:integration    # a pista com Postgres real (pnpm db:up antes)
