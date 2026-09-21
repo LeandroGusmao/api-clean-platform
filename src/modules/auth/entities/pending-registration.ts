@@ -40,8 +40,9 @@ export interface TrustedPendingRegistrationProps {
 /**
  * One outstanding six-digit code minted for an email address before any account
  * exists. It carries NO password: the account's
- * password is chosen at confirmation, which is what makes coexisting pendings
- * fungible and closes the pre-hijacking.
+ * password is chosen at confirmation, so whoever registered the address first
+ * owns nothing: completing the account takes a code that only reached the
+ * owner's inbox.
  *
  * State lives in `#` private fields, non-enumerable at runtime:
  * `JSON.stringify(pending)` yields `{}`, so the digest cannot escape through an

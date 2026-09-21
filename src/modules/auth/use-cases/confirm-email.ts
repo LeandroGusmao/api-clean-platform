@@ -79,23 +79,23 @@ export class ConfirmEmailUseCase {
     // that one transaction makes atomic.
     const now = this.clock.now()
 
-    const pendings = await this.pendingRegistrations.findUnconsumedByEmail(email)
-    const usable = pendings.filter((each) => each.isUsable(this.maxAttempts, now))
+    // Only the most recent pending is redeemable, and an older one does NOT
+    // step in when it is exhausted. Testing a guess against every live code
+    // while charging it to one would multiply the five-guess cap by the number
+    // of codes an anonymous caller can mint — one per resend cooldown, for the
+    // whole TTL.
+    const [mostRecent] = await this.pendingRegistrations.findUnconsumedByEmail(email)
+    const target = mostRecent?.isUsable(this.maxAttempts, now) ? mostRecent : undefined
     const codeHash = this.tokenDigest.hash(command.code)
-    const match = usable.find((each) => each.matches(codeHash))
 
-    if (match === undefined) {
+    if (!target?.matches(codeHash)) {
       // Unknown address, no usable pending, expired, exhausted, or wrong code:
       // all collapse into the same throw.
-      const [mostRecentUsable] = usable
-      if (mostRecentUsable !== undefined) {
+      if (target !== undefined) {
         // Autocommit, outside the transaction: this counter must
         // survive the throw below. Not branched on — a wrong guess reports the
         // same way whether or not it spent the last slot.
-        await this.pendingRegistrations.registerFailedAttempt(
-          mostRecentUsable.id,
-          this.maxAttempts,
-        )
+        await this.pendingRegistrations.registerFailedAttempt(target.id, this.maxAttempts)
       }
       throw new EmailVerificationFailedError()
     }
@@ -123,7 +123,7 @@ export class ConfirmEmailUseCase {
       // `consume` is a conditional UPDATE — losing it means a concurrent confirm
       // already burned this code, so the throw must happen INSIDE the callback:
       // a `return` would leave state half-written.
-      if (!(await pendingRegistrations.consume(match.id, now))) {
+      if (!(await pendingRegistrations.consume(target.id, now))) {
         throw new EmailVerificationFailedError()
       }
 

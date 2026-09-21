@@ -79,7 +79,7 @@ describe('pending_registrations table', () => {
   })
 
   it('accepts several coexisting rows for the same email', async () => {
-    // Fungible pendings for one address is the whole design: the table must not
+    // A later register inserts beside the earlier rows, so the table must not
     // enforce uniqueness on `email`.
     await db.insert(pendingRegistrations).values(row())
     await db.insert(pendingRegistrations).values(row({ id: OTHER_ROW_ID }))

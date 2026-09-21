@@ -191,20 +191,40 @@ describe('the email verification flow, against a real SMTP server', () => {
     )
   })
 
-  it('pre-hijack, victim first: a later register by the attacker leaves the victim their code and their password', async () => {
+  it('pre-hijack, victim first: a later register by the attacker only moves the victim to the newer code', async () => {
     // The victim registers first and holds the code from that message.
     const victimCode = await registerAndFetchCode(EMAIL)
 
-    // The attacker registers the same address afterwards. The new pending
-    // coexists with the victim's instead of invalidating it, so that code still
-    // works.
+    // The attacker registers the same address afterwards. Only the most recent
+    // pending is redeemable, so the victim's first code stops working — but the
+    // newer one landed in the victim's inbox, not the attacker's.
     await register(EMAIL)
     await waitForMessageCount(TWO_MESSAGES)
 
-    const confirmation = await confirmEmail(EMAIL, victimCode, VICTIM_PASSWORD)
+    const withFirstCode = await confirmEmail(EMAIL, victimCode, VICTIM_PASSWORD)
+    expect(withFirstCode.statusCode).toBe(UNPROCESSABLE_ENTITY_STATUS_CODE)
+
+    const newerCode = extractVerificationCode((await latestMessage()).text)
+    const confirmation = await confirmEmail(EMAIL, newerCode, VICTIM_PASSWORD)
     expect(confirmation.statusCode).toBe(OK_STATUS_CODE)
 
     expect((await login(EMAIL, VICTIM_PASSWORD)).statusCode).toBe(OK_STATUS_CODE)
+  })
+
+  it('an older code stays refused even when the newer pending is exhausted', async () => {
+    const olderCode = await registerAndFetchCode(EMAIL)
+    await register(EMAIL)
+    await waitForMessageCount(TWO_MESSAGES)
+    const newerCode = extractVerificationCode((await latestMessage()).text)
+    const wrong = wrongCodeFor(newerCode)
+
+    for (let guess = 0; guess < WRONG_ATTEMPTS_TO_EXHAUST_THE_CAP; guess += 1) {
+      await confirmEmail(EMAIL, wrong, ATTACKER_PASSWORD)
+    }
+
+    const withOlderCode = await confirmEmail(EMAIL, olderCode, ATTACKER_PASSWORD)
+    expect(withOlderCode.statusCode).toBe(UNPROCESSABLE_ENTITY_STATUS_CODE)
+    expect(await db.select().from(users)).toHaveLength(0)
   })
 
   it('an attacker brute-forcing their own pending burns its cap and cannot confirm', async () => {
@@ -245,15 +265,12 @@ describe('the email verification flow, against a real SMTP server', () => {
     expect(pending?.attempts).toBeLessThanOrEqual(WRONG_ATTEMPTS_TO_EXHAUST_THE_CAP)
   })
 
-  it('two confirms racing two codes of the same address: one wins, exactly one verified user', async () => {
-    const firstCode = await registerAndFetchCode(EMAIL)
-    await register(EMAIL)
-    await waitForMessageCount(TWO_MESSAGES)
-    const secondCode = extractVerificationCode((await latestMessage()).text)
+  it('two confirms racing the same code: one wins, exactly one verified user', async () => {
+    const code = await registerAndFetchCode(EMAIL)
 
     const [a, b] = await Promise.all([
-      confirmEmail(EMAIL, firstCode, PASSWORD),
-      confirmEmail(EMAIL, secondCode, VICTIM_PASSWORD),
+      confirmEmail(EMAIL, code, PASSWORD),
+      confirmEmail(EMAIL, code, VICTIM_PASSWORD),
     ])
 
     const statuses = [a.statusCode, b.statusCode].sort()

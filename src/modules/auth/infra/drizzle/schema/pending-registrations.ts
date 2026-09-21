@@ -14,8 +14,9 @@ import { index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-c
  * the same reason: the entity owns the value.
  *
  * NO foreign key: there is no user row to point at yet. NO unique index on
- * `email`: several pending registrations for one address coexist by design, and
- * that fungibility is what closes the pre-hijacking in both orderings. NO unique
+ * `email`: a register past the resend cooldown inserts a new row beside the
+ * older ones, and two concurrent registers would otherwise collide. Only the
+ * most recent row is redeemable, so the older ones are inert. NO unique
  * index on `code_hash`: six digits collide by design, and every lookup is by
  * `lower(email)`.
  *

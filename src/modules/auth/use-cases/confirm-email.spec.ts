@@ -346,8 +346,7 @@ describe('ConfirmEmailUseCase', () => {
     expect(pendingById(PENDING_ID)?.consumedAt).toEqual(NOW)
   })
 
-  it('redeems whichever usable pending the code matches, not the most recent', async () => {
-    // Attacker pending is newer; the victim types the code of the OLDER one.
+  it('refuses the code of an older pending: only the most recent one is redeemable', async () => {
     storeUsablePending({
       id: OLD_PENDING_ID,
       ageMs: OLDER_AGE_MS,
@@ -359,13 +358,53 @@ describe('ConfirmEmailUseCase', () => {
       codeHash: `${DIGEST_PREFIX}${OTHER_CODE}`,
     })
 
+    expect(await failureFrom(confirm({ code: CODE }))).toEqual({
+      message: FAILURE_MESSAGE,
+      code: FAILURE_CODE,
+    })
+
+    // Charged to the code that was actually tested.
+    expect(registerFailedAttemptSpy).toHaveBeenCalledWith(NEW_PENDING_ID, MAX_ATTEMPTS)
+    expect(usersRepository.users).toHaveLength(0)
+    expect(uowSpy).not.toHaveBeenCalled()
+  })
+
+  it('once the most recent pending is exhausted, an older usable code is refused without burning an attempt', async () => {
+    storeUsablePending({
+      id: OLD_PENDING_ID,
+      ageMs: OLDER_AGE_MS,
+      codeHash: `${DIGEST_PREFIX}${CODE}`,
+    })
+    storeUsablePending({
+      id: NEW_PENDING_ID,
+      ageMs: FRESH_AGE_MS,
+      codeHash: `${DIGEST_PREFIX}${OTHER_CODE}`,
+      attempts: MAX_ATTEMPTS,
+    })
+
+    await failureFrom(confirm({ code: CODE }))
+
+    expect(registerFailedAttemptSpy).not.toHaveBeenCalled()
+    expect(usersRepository.users).toHaveLength(0)
+  })
+
+  it('redeems the most recent pending when an older one is still unconsumed', async () => {
+    storeUsablePending({
+      id: OLD_PENDING_ID,
+      ageMs: OLDER_AGE_MS,
+      codeHash: `${DIGEST_PREFIX}${OTHER_CODE}`,
+    })
+    storeUsablePending({
+      id: NEW_PENDING_ID,
+      ageMs: FRESH_AGE_MS,
+      codeHash: `${DIGEST_PREFIX}${CODE}`,
+    })
+
     await confirm({ code: CODE, password: PASSWORD })
 
-    // The account has the password from THIS confirm request, and the OLD
-    // pending — the one whose code was typed — is the one consumed.
     expect(storedUser().passwordHash).toBe(`${HASH_PREFIX}${PASSWORD}`)
-    expect(pendingById(OLD_PENDING_ID)?.consumedAt).toEqual(NOW)
-    expect(pendingById(NEW_PENDING_ID)?.consumedAt).toBeNull()
+    expect(pendingById(NEW_PENDING_ID)?.consumedAt).toEqual(NOW)
+    expect(pendingById(OLD_PENDING_ID)?.consumedAt).toBeNull()
   })
 
   it('hashes the password even when no code matches, so match and no-match cost the same', async () => {
