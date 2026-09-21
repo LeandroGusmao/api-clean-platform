@@ -42,10 +42,18 @@ export interface IRefreshTokensRepository {
    * revoked. Zero means the chain was already dead — that is what lets a caller
    * tell the revocation that just happened from a replay that found nothing
    * left to revoke.
+   *
+   * A successor that a concurrent rotation of this chain is inserting is
+   * revoked too: the call waits for that rotation to commit.
    */
   revokeFamily(familyId: string, revokedAt: Date): Promise<number>
 
-  /** Revokes every still-active token of one user, across every chain. */
+  /**
+   * Revokes every still-active token of one user, across every chain —
+   * including a successor that a concurrent rotation is inserting: the call
+   * waits for that rotation to commit. Otherwise a stolen token refreshed in a
+   * loop could outlive a logout-all or a password change.
+   */
   revokeAllForUser(userId: string, revokedAt: Date): Promise<void>
 
   /**

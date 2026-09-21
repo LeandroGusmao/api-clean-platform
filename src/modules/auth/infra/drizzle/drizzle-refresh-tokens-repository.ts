@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, isNull, lte, sql } from 'drizzle-orm'
+import { and, desc, eq, gt, isNull, lte, type SQL, sql } from 'drizzle-orm'
 import type { Database } from '#infra/database/client'
 import {
   findDriverError,
@@ -146,24 +146,50 @@ export class DrizzleRefreshTokensRepository implements IRefreshTokensRepository 
   }
 
   async revokeFamily(familyId: string, revokedAt: Date): Promise<number> {
-    const revoked = await this.db
-      .update(refreshTokens)
-      .set({ revokedAt })
-      // `isNull` is not decoration: without it an already-revoked token would
-      // have its `revokedAt` pushed forward, sliding the grace window of a
-      // token that should already be dead. It is also what makes the count mean
-      // "revoked by THIS call".
-      .where(and(eq(refreshTokens.familyId, familyId), isNull(refreshTokens.revokedAt)))
-      .returning({ id: refreshTokens.id })
-
-    return revoked.length
+    // `isNull` is not decoration: without it an already-revoked token would
+    // have its `revokedAt` pushed forward, sliding the grace window of a
+    // token that should already be dead. It is also what makes the count mean
+    // "revoked by THIS call".
+    return this.#revokeLive(
+      and(eq(refreshTokens.familyId, familyId), isNull(refreshTokens.revokedAt)),
+      revokedAt,
+    )
   }
 
   async revokeAllForUser(userId: string, revokedAt: Date): Promise<void> {
+    await this.#revokeLive(
+      and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)),
+      revokedAt,
+    )
+  }
+
+  /**
+   * Two statements, and the split is the point. A rotation in flight holds
+   * its row and inserts a successor this transaction cannot see yet; a single
+   * `UPDATE` would wait on that row, then finish against the snapshot it took
+   * before the successor existed — and the successor would outlive the
+   * revocation. The locking `SELECT` does the waiting, so the `UPDATE` starts
+   * after the rotation committed and, under READ COMMITTED, with a snapshot
+   * that includes the successor.
+   *
+   * `ORDER BY id` makes two revocations of the same rows lock them in the same
+   * order, so they queue instead of deadlocking.
+   */
+  async #revokeLive(live: SQL | undefined, revokedAt: Date): Promise<number> {
     await this.db
+      .select({ id: refreshTokens.id })
+      .from(refreshTokens)
+      .where(live)
+      .orderBy(refreshTokens.id)
+      .for('update')
+
+    const revoked = await this.db
       .update(refreshTokens)
       .set({ revokedAt })
-      .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)))
+      .where(live)
+      .returning({ id: refreshTokens.id })
+
+    return revoked.length
   }
 
   async findActiveByUserId(userId: string, now: Date): Promise<RefreshToken[]> {

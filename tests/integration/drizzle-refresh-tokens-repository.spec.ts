@@ -1,4 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises'
+import { eq } from 'drizzle-orm'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { env } from '#infra/config/env'
@@ -11,7 +12,7 @@ import { authRepositories } from '#modules/auth/infra/drizzle/auth-repositories'
 import { RefreshTokenHashCollisionError } from '#modules/auth/infra/drizzle/drizzle-refresh-tokens-repository'
 import { refreshTokens } from '#modules/auth/infra/drizzle/schema/refresh-tokens'
 import { users } from '#modules/auth/infra/drizzle/schema/users'
-import type { IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
+import type { AuthRepos, IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'
 
 /** Far enough that it never binds. */
 const FAR_CEILING = new Date('2099-01-01T00:00:00.000Z')
@@ -21,6 +22,7 @@ const PASSWORD_HASH = '$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHQ$hash'
 const TTL_SECONDS = 3600
 const NOW = new Date('2026-08-31T12:00:00.000Z')
 const LATER = new Date('2026-08-31T12:00:05.000Z')
+const REVOKED_AT = new Date('2026-08-31T12:00:10.000Z')
 
 const FAMILY_A = '11112222-3333-4444-8555-666677778888'
 const FAMILY_B = '99990000-1111-4222-8333-444455556666'
@@ -268,6 +270,86 @@ describe('DrizzleRefreshTokensRepository', () => {
 
     expect(seen?.revokedAt).toEqual(LATER)
     expect(seen?.replacedBy).toBe(successor.id)
+  })
+
+  /**
+   * A revocation racing a rotation that already holds the row. The rotation
+   * inserts its successor and commits while the revocation waits on the row
+   * lock; a single `UPDATE` would then finish against the snapshot it took
+   * before the successor existed, and leave the successor alive.
+   */
+  describe('while a rotation is in flight', () => {
+    const rotateHolding = (current: RefreshToken, successor: RefreshToken) =>
+      uow(async ({ refreshTokens: repo }) => {
+        await repo.findByHashForUpdate(current.tokenHash)
+        await repo.save(successor)
+        await repo.markRotated(current.id, successor.id, LATER)
+        await sleep(HOLD_MS)
+      })
+
+    const successorAfter = async (
+      revoke: (repo: AuthRepos['refreshTokens']) => Promise<unknown>,
+    ) => {
+      const current = token(FAMILY_A, HASH_A)
+      const successor = token(FAMILY_A, HASH_B)
+      await uow(({ refreshTokens: repo }) => repo.save(current))
+
+      const rotation = rotateHolding(current, successor)
+      await sleep(CONTENTION_DELAY_MS)
+      await uow(({ refreshTokens: repo }) => revoke(repo))
+      await rotation
+
+      const [row] = await db
+        .select()
+        .from(refreshTokens)
+        .where(eq(refreshTokens.id, successor.id))
+      return row
+    }
+
+    it('revokeAllForUser still revokes the successor the rotation inserts', async () => {
+      const successor = await successorAfter((repo) =>
+        repo.revokeAllForUser(userId, REVOKED_AT),
+      )
+
+      expect(successor?.revokedAt).toEqual(REVOKED_AT)
+    })
+
+    it('revokeFamily still revokes the successor the rotation inserts', async () => {
+      const successor = await successorAfter((repo) =>
+        repo.revokeFamily(FAMILY_A, REVOKED_AT),
+      )
+
+      expect(successor?.revokedAt).toEqual(REVOKED_AT)
+    })
+
+    it('revokeAllForUser still revokes the replacement a grace-window retry inserts', async () => {
+      // `rotated` already points at `live`; the retry kills `live` and issues
+      // `replacement` in its place, all while holding `rotated`.
+      const rotated = token(FAMILY_A, HASH_A)
+      const live = token(FAMILY_A, HASH_B)
+      const replacement = token(FAMILY_A, HASH_C)
+      await uow(async ({ refreshTokens: repo }) => {
+        await repo.save(rotated)
+        await repo.save(live)
+        await repo.markRotated(rotated.id, live.id, NOW)
+      })
+
+      const retry = uow(async ({ refreshTokens: repo }) => {
+        await repo.findByHashForUpdate(rotated.tokenHash)
+        await repo.revoke(live.id, LATER)
+        await repo.save(replacement)
+        await sleep(HOLD_MS)
+      })
+      await sleep(CONTENTION_DELAY_MS)
+      await uow(({ refreshTokens: repo }) => repo.revokeAllForUser(userId, REVOKED_AT))
+      await retry
+
+      const [row] = await db
+        .select()
+        .from(refreshTokens)
+        .where(eq(refreshTokens.id, replacement.id))
+      expect(row?.revokedAt).toEqual(REVOKED_AT)
+    })
   })
 
   it('leaves no rows behind when the transaction rolls back', async () => {
