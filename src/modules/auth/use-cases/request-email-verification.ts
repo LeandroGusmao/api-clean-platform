@@ -52,9 +52,12 @@ export class RequestEmailVerificationUseCase {
     // timestamps, so the two cannot drift apart.
     const now = this.clock.now()
 
-    const pendings = await this.pendingRegistrations.findUnconsumedByEmail(email)
-    const target = pendings.find((each) => each.isUsable(this.maxAttempts, now))
-    if (target === undefined) return
+    // Only the most recent pending, the same one confirm redeems. Falling back
+    // to an older one when it is exhausted would reset that row's attempts and
+    // make it the redeemable one: five fresh guesses per resend, past the
+    // per-address cap.
+    const [target] = await this.pendingRegistrations.findUnconsumedByEmail(email)
+    if (!target?.isUsable(this.maxAttempts, now)) return
 
     // Strictly less than: a resend at EXACTLY the cooldown's age is allowed.
     // Reissuing on demand would mint fresh attempt budget for free.

@@ -21,9 +21,9 @@ import { index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-c
  * `lower(email)`.
  *
  * `code_issued_at` moves on every reissue, and the resend cooldown measures
- * from it; `created_at` is immutable and only for pruning order and audit. `consumed_at` marks BOTH "redeemed by a
- * confirm" and "superseded by a reissue"; nothing downstream reads the
- * difference.
+ * from it; `created_at` is immutable and only for pruning order and audit.
+ * `consumed_at` marks a row redeemed by a confirm. A reissue rewrites the code
+ * in place and leaves it unset.
  */
 export const pendingRegistrations = pgTable(
   'pending_registrations',

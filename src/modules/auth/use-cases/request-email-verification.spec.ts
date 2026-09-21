@@ -206,4 +206,21 @@ describe('RequestEmailVerificationUseCase', () => {
     expect(sent).toHaveLength(0)
     expect(callLog).toEqual([])
   })
+
+  it('never falls back to an older pending when the most recent is exhausted', async () => {
+    // Reissuing the older row would reset its attempts and make it the one
+    // confirm redeems: five fresh guesses per resend, past the per-address cap.
+    storePending({ id: OLD_PENDING_ID, ageMs: OLDER_AGE_MS })
+    storePending({
+      id: NEW_PENDING_ID,
+      ageMs: OUTSIDE_COOLDOWN_AGE_MS,
+      attempts: MAX_ATTEMPTS,
+    })
+
+    await useCase.execute({ email: EMAIL })
+
+    expect(sent).toHaveLength(0)
+    expect(callLog).toEqual([])
+    expect(pendingById(OLD_PENDING_ID)?.codeIssuedAt).not.toEqual(NOW)
+  })
 })

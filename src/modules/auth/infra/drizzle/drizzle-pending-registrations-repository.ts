@@ -48,7 +48,10 @@ export class DrizzlePendingRegistrationsRepository
             isNull(pendingRegistrations.consumedAt),
           ),
         )
-        .orderBy(desc(pendingRegistrations.codeIssuedAt))
+        // `id` breaks a tie on `code_issued_at`: without it, two rows issued in
+        // the same instant could swap places between calls, and each would take
+        // its turn as the redeemable one.
+        .orderBy(desc(pendingRegistrations.codeIssuedAt), desc(pendingRegistrations.id))
 
       return rows.map(toDomainPendingRegistration)
     } catch (error) {

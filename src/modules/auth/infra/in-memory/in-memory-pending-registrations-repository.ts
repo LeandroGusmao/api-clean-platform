@@ -26,10 +26,13 @@ export class InMemoryPendingRegistrationsRepository
 
   async findUnconsumedByEmail(email: Email): Promise<PendingRegistration[]> {
     // The most recent code first, sorted the same way the Drizzle adapter's
-    // `ORDER BY code_issued_at DESC` does.
+    // `ORDER BY code_issued_at DESC, id DESC` does.
     return this.rows
       .filter((each) => each.email.equals(email) && each.consumedAt === null)
-      .sort((a, b) => b.codeIssuedAt.getTime() - a.codeIssuedAt.getTime())
+      .sort(
+        (a, b) =>
+          b.codeIssuedAt.getTime() - a.codeIssuedAt.getTime() || b.id.localeCompare(a.id),
+      )
   }
 
   async reissueCode(

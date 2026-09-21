@@ -75,6 +75,16 @@ describe('DrizzlePendingRegistrationsRepository', () => {
     expect(found.map((p) => p.id)).toEqual([ID_NEWER, ID_OLDER])
   })
 
+  it('breaks a tie on code_issued_at by id, so the redeemable row never changes between calls', async () => {
+    // Saved lowest id first, so insertion order alone would put it in front.
+    await repo.save(pendingAt(ID_OLDER, 0, DIGEST_A))
+    await repo.save(pendingAt(ID_NEWER, 0, DIGEST_B))
+
+    const found = await repo.findUnconsumedByEmail(Email.create(EMAIL))
+
+    expect(found.map((p) => p.id)).toEqual([ID_NEWER, ID_OLDER])
+  })
+
   it('excludes rows of other emails and consumed rows', async () => {
     await repo.save(pendingAt(ID_NEWER, 0))
     await db.insert(pendingRegistrations).values({
