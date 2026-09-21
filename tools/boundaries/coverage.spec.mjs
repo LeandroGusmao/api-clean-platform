@@ -23,7 +23,7 @@ describe('assertEveryFileClassified', () => {
     ).not.toThrow()
   })
 
-  it('names a production file that no element of §2 covers', () => {
+  it('names a production file that no element of ARCHITECTURE.md §2 covers', () => {
     expect(() =>
       assertEveryFileClassified(['src/modules/auth/helpers/format.ts']),
     ).toThrow(/helpers\/format\.ts/)

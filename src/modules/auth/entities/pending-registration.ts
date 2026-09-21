@@ -39,7 +39,7 @@ export interface TrustedPendingRegistrationProps {
 
 /**
  * One outstanding six-digit code minted for an email address before any account
- * exists (§1 of the slice 11 design). It carries NO password: the account's
+ * exists. It carries NO password: the account's
  * password is chosen at confirmation, which is what makes coexisting pendings
  * fungible and closes the pre-hijacking.
  *

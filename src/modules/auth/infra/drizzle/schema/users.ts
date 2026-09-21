@@ -31,7 +31,7 @@ export const users = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     email: text('email').notNull(),
     /**
-     * Null for federated-identity accounts (slice 14), which have no password.
+     * Null for federated-identity accounts, which have no password.
      * Every other account is born with a hash at confirmation.
      */
     passwordHash: text('password_hash'),

@@ -12,7 +12,8 @@ export interface PruneResult {
 /**
  * Full sweep of abandoned pending registrations. The opportunistic prune in
  * `deleteExpiredByEmail` only reaches addresses with new traffic; this covers
- * the rest. Predicate and window: design §3.4.
+ * the rest. `expires_at <= clock.now() - retention`: the window keeps a dead
+ * row available for a post-mortem.
  */
 export class PruneExpiredPendingRegistrationsUseCase {
   constructor(

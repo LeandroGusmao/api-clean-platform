@@ -27,7 +27,7 @@ export default {
     {
       name: 'pure-external-only-zod',
       comment:
-        'Zod declares the module config schema (§5). Anything else is the outside world.',
+        'Zod declares the module config schema (ARCHITECTURE.md §5). Anything else is the outside world.',
       severity: 'error',
       from: { path: PURE, pathNot: TEST },
       to: { dependencyTypes: EXTERNAL, pathNot: ZOD },
@@ -41,14 +41,14 @@ export default {
     },
     {
       name: 'shared-does-not-know-modules',
-      comment: 'src/shared/ is transversal: it knows no module (§2).',
+      comment: 'src/shared/ is transversal: it knows no module (ARCHITECTURE.md §2).',
       severity: 'error',
       from: { path: SHARED, pathNot: TEST },
       to: { path: ANY_MODULE },
     },
     {
       name: 'global-infra-imports-pure-or-global-infra',
-      comment: 'src/infra/ is infrastructure with no owner (§2).',
+      comment: 'src/infra/ is infrastructure with no owner (ARCHITECTURE.md §2).',
       severity: 'error',
       from: { path: GLOBAL_INFRA, pathNot: TEST },
       to: { pathNot: [PURE, GLOBAL_INFRA], dependencyTypesNot: EXTERNAL },
@@ -71,13 +71,13 @@ export default {
   ],
   options: {
     // Without this, `import type` is invisible — 33% of this graph, and the
-    // half of the boundary the rules exist to protect (§4).
+    // half of the boundary the rules exist to protect (ARCHITECTURE.md §4).
     tsPreCompilationDeps: true,
     tsConfig: { fileName: 'tsconfig.json' },
     enhancedResolveOptions: {
       exportsFields: ['exports'],
       // Without `development`, `#modules/*` resolves to ./dist/*.js and the
-      // rules, written against ^src/, stop matching (§4).
+      // rules, written against ^src/, stop matching (ARCHITECTURE.md §4).
       conditionNames: ['development', 'import', 'require', 'node', 'default', 'types'],
       mainFields: ['module', 'main', 'types', 'typings'],
       extensions: ['.ts', '.js', '.mts', '.cts'],

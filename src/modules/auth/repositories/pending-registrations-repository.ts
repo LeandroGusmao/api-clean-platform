@@ -40,7 +40,7 @@ export interface IPendingRegistrationsRepository {
    * cap race-proof under concurrency: a read-then-write would let N parallel
    * guesses all read the same value and all pass.
    *
-   * Called OUTSIDE any transaction (§8 line 3): inside one that rolls back, the
+   * Called OUTSIDE any transaction: inside one that rolls back, the
    * brute-force counter would be erased exactly when it matters.
    */
   registerFailedAttempt(id: string, maxAttempts: number): Promise<boolean>
@@ -77,8 +77,8 @@ export interface IPendingRegistrationsRepository {
    * Full sweep for the cron, across every address. Deletes every row whose
    * `expires_at` is at or before `cutoff`; the use case passes `clock.now() -
    * retention`, so a dead row lingers one retention window and stays available
-   * for a post-mortem (design §3.4). Returns the deleted-row count for the run
-   * log. An unconditional `DELETE`: no transaction, no lock, no ordering.
+   * for a post-mortem. Returns the deleted-row count for the run log. An
+   * unconditional `DELETE`: no transaction, no lock, no ordering.
    */
   deleteExpiredBefore(cutoff: Date): Promise<number>
 }

@@ -89,8 +89,8 @@ beforeEach(async () => {
   await db.delete(refreshTokens)
   await db.delete(users)
   // Login gates on a verified email, so every scenario below that expects a
-  // successful login needs a verified account. Inserted directly: since slice
-  // 11 `register` writes a `pending_registrations` row, and the real
+  // successful login needs a verified account. Inserted directly: `register`
+  // writes a `pending_registrations` row, not a user, and the real
   // SMTP-delivered confirm flow is `verify-email.spec.ts`'s job — this file's
   // concern is `login`, which only needs the account to already BE verified.
   await arrangeAccount(db, { email: EMAIL, password: PASSWORD })

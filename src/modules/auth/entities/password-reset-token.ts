@@ -61,7 +61,7 @@ export class PasswordResetToken {
    * not a column default: `isUsable` compares instants and both sides must
    * share a source.
    *
-   * Kept for symmetry with `PendingRegistration.create` (§5.1); production
+   * Kept for symmetry with `PendingRegistration.create`; production
    * writes go through the adapter's column mapping, so only tests construct via
    * this path.
    */

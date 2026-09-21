@@ -52,7 +52,7 @@ export interface SignInWithGoogleResult {
  * Verifies a Google ID token and hands back the project's own session, creating
  * or linking a local account.
  *
- * Five branches (design §5): an already-linked subject fast-paths with a single
+ * Five branches: an already-linked subject fast-paths with a single
  * write and no transaction, like `login`; a new email creates a verified
  * passwordless account, clears any pending registrations for the address, links,
  * and issues — all in one `uow`; an email that already has a PASSWORD account is
@@ -61,10 +61,10 @@ export interface SignInWithGoogleResult {
  * `reset-password.ts`; a federated-only account whose subject does not match is
  * a conflict.
  *
- * argon2 runs only on the link path, and OUTSIDE the transaction (§8 of the unit
- * of work design). No decoy hash on the other branches: unlike `confirm`, the
- * outcomes here are public by design — the caller knows whether it sent a
- * password — so there is no timing signal to mask.
+ * argon2 runs only on the link path, and OUTSIDE the transaction, where a hash
+ * would hold a pooled connection still. No decoy hash on the other branches:
+ * unlike `confirm`, the outcomes here are public by design — the caller knows
+ * whether it sent a password — so there is no timing signal to mask.
  */
 export class SignInWithGoogleUseCase {
   constructor(
@@ -115,7 +115,8 @@ export class SignInWithGoogleUseCase {
       throw new GoogleSignInConflictError()
     }
 
-    // The email has a PASSWORD account: no silent merge (design §5, §6 item 3).
+    // The email has a PASSWORD account: no silent merge. Whoever controls the
+    // Google account does not thereby own the local one — the password proves it.
     if (command.password === undefined) throw new GoogleLinkRequiresPasswordError()
 
     // argon2, outside any transaction.

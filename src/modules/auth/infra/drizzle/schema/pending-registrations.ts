@@ -4,7 +4,7 @@ import { index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-c
 /**
  * A single-use, six-digit code proving control of an email address, minted
  * before any `users` row exists. The account is created when a code here is
- * redeemed together with a chosen password (§1 of the slice 11 design), so this
+ * redeemed together with a chosen password, so this
  * table carries NO password: whoever completes confirmation picks it.
  *
  * NO column defaults, exactly as in `refresh-tokens.ts`: Postgres stores
@@ -19,8 +19,8 @@ import { index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-c
  * index on `code_hash`: six digits collide by design, and every lookup is by
  * `lower(email)`.
  *
- * `code_issued_at` moves on every reissue (§4.2); `created_at` is immutable and
- * only for pruning order and audit. `consumed_at` marks BOTH "redeemed by a
+ * `code_issued_at` moves on every reissue, and the resend cooldown measures
+ * from it; `created_at` is immutable and only for pruning order and audit. `consumed_at` marks BOTH "redeemed by a
  * confirm" and "superseded by a reissue"; nothing downstream reads the
  * difference.
  */

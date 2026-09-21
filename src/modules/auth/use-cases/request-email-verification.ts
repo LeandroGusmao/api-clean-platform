@@ -18,14 +18,16 @@ export interface RequestEmailVerificationCommand {
  * would be an account oracle.
  *
  * **This closes the response, not the timing:** the sending branch pays an
- * `UPDATE` and an SMTP round trip the others do not. §12 of the design spec
- * records that gap; the outbox in §5.3 is the fix.
+ * `UPDATE` and an SMTP round trip the others do not, and one timed request
+ * tells "unverified address with no recent code" apart from the rest. Closing
+ * it means taking the send off the request path, through the outbox. Accepted
+ * as a known cost.
  *
- * The send happens after the write, through the thunk `issue` returns (§8).
+ * The send happens after the write, through the thunk `issue` returns.
  */
 export class RequestEmailVerificationUseCase {
   constructor(
-    /** `Pick`, and the narrowing IS the rule (§9): this only ever reads. */
+    /** `Pick`: this only ever reads users. */
     private readonly usersRepository: Pick<IUsersRepository, 'findByEmail'>,
     private readonly pendingRegistrations: Pick<
       IPendingRegistrationsRepository,
@@ -41,7 +43,7 @@ export class RequestEmailVerificationUseCase {
   async execute(command: RequestEmailVerificationCommand): Promise<void> {
     const email = Email.create(command.email)
 
-    // A real account only ever exists verified since slice 11: nothing to
+    // A real account only ever exists verified: nothing to
     // resend, and the response must not say which address that was.
     const user = await this.usersRepository.findByEmail(email)
     if (user !== null) return

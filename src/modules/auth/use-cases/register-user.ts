@@ -18,15 +18,17 @@ export interface RegisterUserCommand {
 
 /**
  * Nothing truthful to send. A no-op rather than an absent value, so every branch
- * ends in the same `await deliver()` and none can start to differ (§5.4).
+ * ends in the same `await deliver()` and none can start to differ in control
+ * flow — which a timing difference would turn into an account oracle.
  */
 const NO_DELIVERY: DeliverVerification = async () => {}
 
 /**
  * Starts sign-up for an email address: writes a pending registration carrying a
  * six-digit code, and emails the code. The account is created later, at
- * confirmation, with the password supplied then (§1 of the slice 11 design) — so
- * this use case never hashes a password and never opens a transaction.
+ * confirmation, with the password supplied then — so an attacker who registers
+ * a victim's address first owns nothing when the victim confirms — and this use
+ * case never hashes a password and never opens a transaction.
  *
  * It **answers the same way** whether the address is free, already has a pending
  * registration, or belongs to a verified account: what differs is the email the
@@ -34,13 +36,12 @@ const NO_DELIVERY: DeliverVerification = async () => {}
  *
  * The order is normative: the value object before anything else, so a bad
  * payload never reaches a repository; the prune and the insert are plain
- * autocommit statements; the send after the write (§8 — a rollback after a send
- * would describe a registration that does not exist, and here there is no
- * rollback at all).
+ * autocommit statements; the send after the write, so no email ever describes
+ * a registration that failed to persist.
  */
 export class RegisterUserUseCase {
   constructor(
-    /** `Pick`, and the narrowing IS the rule (§9): this path only ever reads. */
+    /** `Pick`: this path only ever reads users. */
     private readonly usersRepository: Pick<IUsersRepository, 'findByEmail'>,
     private readonly pendingRegistrations: Pick<
       IPendingRegistrationsRepository,

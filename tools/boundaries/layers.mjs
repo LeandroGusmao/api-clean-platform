@@ -16,7 +16,7 @@ export const UNCLASSIFIED = 'unknown'
 
 const ELEMENTS = [
   // `test` comes first: a `.spec.ts` inside `use-cases/` is a test, not pure.
-  // The order IS the precedence of §2.
+  // The order IS the precedence of ARCHITECTURE.md §2.
   ['test', TEST],
   ['composition', COMPOSITION],
   ['module-infra', MODULE_INFRA],

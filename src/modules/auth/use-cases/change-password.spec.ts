@@ -168,8 +168,9 @@ beforeEach(() => {
   }
 
   // Pushes COMMIT only once `work` has resolved — never on a rejection — which
-  // is what makes the ordering assertions below a statement about §8 rather
-  // than a fixed sequence that happens to be true today.
+  // is what makes the ordering assertions below a statement about what may run
+  // inside the transaction, rather than a fixed sequence that happens to be
+  // true today.
   uowSpy = vi.fn(async (work) => {
     callLog.push(UOW_CALL)
     const result = await work(trackedRepos)
@@ -267,10 +268,9 @@ describe('ChangePasswordUseCase', () => {
    * tests in this file green, including the one whose name promised it.
    *
    * One equality kills three mutations at once: deleting a step, swapping two,
-   * and moving either argon2 call inside the transaction (§8 of the unit of
-   * work design — 15ms of CPU with a pooled connection, of ten, standing
-   * still) — plus the one guarantee this task adds: the outbox row must land
-   * before the commit, not after it.
+   * and moving either argon2 call inside the transaction (15ms of CPU with a
+   * pooled connection, of ten, standing still) — plus one more guarantee: the
+   * outbox row must land before the commit, not after it.
    */
   it('writes the outbox row INSIDE the transaction, before it commits', async () => {
     storeUser(CURRENT_HASH)

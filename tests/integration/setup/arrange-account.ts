@@ -5,7 +5,7 @@ import { Argon2HashProvider } from '#modules/auth/infra/providers/argon2-hash-pr
 /**
  * Inserts a `users` row directly, with a real argon2 hash of `password`.
  *
- * Since slice 11 `POST /auth/register` writes a `pending_registrations` row, not
+ * `POST /auth/register` writes a `pending_registrations` row, not
  * a `users` row — so every suite that only needs an account to already exist
  * (login, refresh, logout, me, change-password) arranges it here instead of
  * driving the register/confirm flow. The real, SMTP-delivered flow is

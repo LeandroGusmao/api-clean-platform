@@ -39,7 +39,7 @@ describe('GetUserProfileUseCase', () => {
     expect(profile).toEqual({
       id: USER_ID,
       email: EMAIL,
-      // `User.create` is born verified since slice 11; the point here is the
+      // `User.create` is born verified; the point here is the
       // FLAT shape, not the verification state.
       emailVerifiedAt: NOW,
       createdAt: NOW,

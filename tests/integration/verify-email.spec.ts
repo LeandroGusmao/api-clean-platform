@@ -191,12 +191,13 @@ describe('the email verification flow, against a real SMTP server', () => {
     )
   })
 
-  it('pre-hijack, victim first (the ordering slice 10 could not close): the victim keeps her code and her password', async () => {
+  it('pre-hijack, victim first: a later register by the attacker leaves the victim their code and their password', async () => {
     // The victim registers first and holds the code from that message.
     const victimCode = await registerAndFetchCode(EMAIL)
 
-    // The attacker registers the same address afterwards. Under slice 10 this
-    // invalidated the victim's code; here it coexists and hers still works.
+    // The attacker registers the same address afterwards. The new pending
+    // coexists with the victim's instead of invalidating it, so that code still
+    // works.
     await register(EMAIL)
     await waitForMessageCount(TWO_MESSAGES)
 

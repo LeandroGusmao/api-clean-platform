@@ -180,7 +180,7 @@ describe('createTransactionRunner', () => {
 
     release?.()
 
-    // A per-instance counter, rejected in §5.4 of the design spec, would trip
+    // A per-instance counter would trip
     // here: two concurrent requests through the same singleton runner are not
     // nesting, and the guard has to tell them apart from a genuine nested call
     // by async context rather than by how many runs are in flight at once.

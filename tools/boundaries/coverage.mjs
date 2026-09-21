@@ -1,8 +1,8 @@
 import { classify, UNCLASSIFIED } from './layers.mjs'
 
 /**
- * The only check that catches every silent-failure mode of §4 at once — and,
- * unlike `totalCruised > 0`, it also catches a partial loss.
+ * The only check that catches every silent-failure mode of ARCHITECTURE.md §4
+ * at once — and, unlike `totalCruised > 0`, it also catches a partial loss.
  */
 export function assertEveryFileCruised(cruisedSources, filesOnDisk) {
   const cruised = new Set(cruisedSources)
@@ -17,7 +17,7 @@ export function assertEveryFileCruised(cruisedSources, filesOnDisk) {
 
 /**
  * The gate's version of the scanner's LAYER-UNKNOWN: a production file that no
- * element of §2 classifies is a file no rule constrains.
+ * element of ARCHITECTURE.md §2 classifies is a file no rule constrains.
  *
  * It reads the module list, not the dependency list: a file with no imports at
  * all never shows up on the `from` side of a dependency and would escape a
@@ -30,7 +30,7 @@ export function assertEveryFileClassified(cruisedSources) {
   if (unclassified.length === 0) return
 
   throw new Error(
-    `${unclassified.length} production file(s) match no element of the §2 table, ` +
-      `so no boundary rule applies to them:\n  ${unclassified.join('\n  ')}`,
+    `${unclassified.length} production file(s) match no element of the ` +
+      `ARCHITECTURE.md §2 table, so no boundary rule applies to them:\n  ${unclassified.join('\n  ')}`,
   )
 }

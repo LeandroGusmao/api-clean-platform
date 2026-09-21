@@ -95,8 +95,8 @@ beforeEach(async () => {
   await db.delete(refreshTokens)
   await db.delete(outboxMessages)
   await db.delete(users)
-  // Inserted directly: since slice 11 `register` writes a `pending_registrations`
-  // row, and the real SMTP-delivered confirm flow is `verify-email.spec.ts`'s
+  // Inserted directly: `register` writes a `pending_registrations` row, not a
+  // user, and the real SMTP-delivered confirm flow is `verify-email.spec.ts`'s
   // job — changing a password only needs the account to already BE verified.
   await arrangeAccount(db, { email: EMAIL, password: PASSWORD })
 })

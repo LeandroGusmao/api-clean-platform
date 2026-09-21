@@ -12,7 +12,8 @@ export interface PruneResult {
 /**
  * Full sweep of spent and abandoned reset tokens. `issueOrRefresh` only ever
  * supersedes the one live row per account; nothing else clears the table.
- * Predicate and window: design §3.4.
+ * `expires_at <= clock.now() - retention`: the window keeps a dead row
+ * available for a post-mortem.
  */
 export class PruneExpiredPasswordResetTokensUseCase {
   constructor(

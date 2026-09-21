@@ -115,7 +115,7 @@ export function selectJobs(jobs: readonly CronJob[], selector?: string): CronJob
  * Runs each job in order, isolating failures: a job that throws is recorded and
  * the next still runs. Split from `runCron` so the loop is unit-testable with no
  * database. Serial and not parallel — a one-shot has no deadline, and serial
- * keeps database load predictable and the log readable (design §5.1).
+ * keeps database load predictable and the log readable.
  */
 export async function runJobs(jobs: readonly CronJob[]): Promise<JobOutcome[]> {
   const outcomes: JobOutcome[] = []

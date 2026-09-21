@@ -284,15 +284,21 @@ comece a receber repositório é sinal de que virou use case com outro nome.
 > argumento concreto a favor de a tabela existir antes do lint: ela pegou o que
 > a revisão humana deixou passar.
 
-**Duas regras do Unit of Work que nem o compilador nem o lint alcançam** — a
-tabela acima classifica arquivo por caminho, e as duas a seguir
-dependem do que o código faz dentro dele:
+**Duas regras do Unit of Work que o lint não alcança** — a tabela acima
+classifica arquivo por caminho, e as duas a seguir dependem do que o código faz
+dentro dele:
 
-- **Use case que recebe o Unit of Work não recebe também um repositório
-  direto.** O repositório injetado como singleton no container escreve numa
-  conexão autocommit; chamá-lo dentro do callback do `uow` compila, passa no
-  teste unitário contra um dublê e só quebra a atomicidade em produção. Tudo
-  que o callback escreve tem que vir do `repos` que ele recebe como parâmetro.
+- **Use case que recebe o Unit of Work não ESCREVE por repositório direto.** O
+  repositório injetado como singleton no container escreve numa conexão
+  autocommit; chamá-lo dentro do callback do `uow` compila, passa no teste
+  unitário contra um dublê e só quebra a atomicidade em produção. Tudo que o
+  callback escreve tem que vir do `repos` que ele recebe como parâmetro. Uma
+  **leitura** direta não tem esse estrago, e às vezes é obrigatória: o
+  `compare` do argon2 precisa do hash guardado antes, e o argon2 não pode rodar
+  dentro da transação. Então o repositório direto é declarado por `Pick`, só
+  com os métodos que o use case chama — e uma escrita fora do `uow` vira erro
+  de compilação. Uma escrita só entra nesse `Pick` quando é o terceiro caso da
+  regra seguinte, com o porquê escrito ao lado da declaração.
 - **Três coisas não podem entrar no callback do `uow`,** porque a transação
   fica aberta pela duração inteira dele: I/O externo (e-mail, HTTP — persiste
   dentro, envia depois do commit), trabalho pesado de CPU (argon2 — calcula

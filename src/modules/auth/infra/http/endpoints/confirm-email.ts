@@ -50,8 +50,8 @@ const VERIFICATION_CODE_REASON = `must be exactly ${VERIFICATION_CODE_DIGITS} di
  *
  * `code` checks the SHAPE only — six digits — never a value the client could
  * infer anything from. Whether that shape is the right code, or belongs to a
- * usable verification at all, is `EmailVerificationFailedError` territory
- * (§6.3 of the design spec): one answer for every failure mode.
+ * usable verification at all, is `EmailVerificationFailedError` territory: one
+ * answer for every failure mode.
  *
  * `password` carries the same policy `register` used to declare — the limits
  * come from the value object, so the policy has exactly one definition. A

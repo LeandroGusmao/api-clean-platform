@@ -22,7 +22,7 @@ const NOW = new Date('2026-08-26T12:00:00.000Z')
 
 // Three distinct instants, used only by the mapper-rehydration test below:
 // `User.create` (and therefore `makeUser`) always sets createdAt === updatedAt
-// === emailVerifiedAt (all `now` since slice 11), so it cannot produce a row
+// === emailVerifiedAt (all `now`), so it cannot produce a row
 // where a swapped pair of columns would be caught.
 const REHYDRATION_CREATED_AT = new Date('2026-08-24T09:00:00.000Z')
 const REHYDRATION_UPDATED_AT = new Date('2026-08-25T15:30:00.000Z')

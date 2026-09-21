@@ -8,7 +8,7 @@ export interface IFederatedIdentitiesRepository {
    * Plain insert. A unique violation on `(provider, provider_user_id)` or
    * `(user_id, provider)` bubbles as a generic persistence failure — the
    * concurrent double-link is rare and re-running the sign-in lands on the fast
-   * path (design §4.4), so there is nothing to translate.
+   * path, so there is nothing to translate.
    */
   save(identity: FederatedIdentity): Promise<void>
 

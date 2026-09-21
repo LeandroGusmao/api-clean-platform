@@ -11,7 +11,13 @@ export interface PruneResult {
 /**
  * Deletes refresh tokens dead longer than the retention window — `expires_at <=
  * clock.now() - retention`. The window keeps a dead row available for a
- * post-mortem; the predicate and the trade-off are design §3.4.
+ * post-mortem.
+ *
+ * The predicate is `expires_at` alone, not `revoked_at`: a token revoked early
+ * (logout, password change) lingers until `expires_at + retention`. That is
+ * bounded by the TTL, and one predicate over the one `NOT NULL` column every
+ * prune table shares reads plainly — `COALESCE(revoked_at, expires_at)` would
+ * sweep sooner at the cost of a predicate the reader has to unpick.
  */
 export class PruneExpiredRefreshTokensUseCase {
   constructor(

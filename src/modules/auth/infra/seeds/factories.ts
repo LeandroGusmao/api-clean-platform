@@ -30,7 +30,7 @@ const tokenDigest = new Sha256TokenDigest()
 
 /**
  * Every write goes through the entity and the Drizzle repository the API uses
- * (design §3.2), so a seeded row satisfies the same invariants and mapper as a
+ * rather than raw SQL, so a seeded row satisfies the same invariants and mapper as a
  * registered one.
  */
 export async function createPasswordUser(

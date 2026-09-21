@@ -10,8 +10,8 @@ export type DeliverPasswordReset = () => Promise<void>
 /**
  * Mints a 256-bit opaque reset token and returns its digest plus the deferred
  * send. Nothing here persists or sends: the `forgot` use case writes the digest
- * onto a `password_reset_tokens` row and awaits `deliver()` after the write
- * (§8 of the unit of work design — the `register` variant, no transaction).
+ * onto a `password_reset_tokens` row and awaits `deliver()` after the write, so
+ * no email ever carries a token that failed to persist.
  */
 export class PasswordResetIssuer {
   constructor(

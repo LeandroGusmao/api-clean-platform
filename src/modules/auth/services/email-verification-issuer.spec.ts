@@ -35,7 +35,7 @@ const fakeDigest: ITokenDigest = {
 
 /**
  * Fresh doubles per test. `callLog` is what lets a test assert that nothing is
- * sent until the caller invokes the returned thunk (§8).
+ * sent until the caller invokes the returned thunk.
  */
 function makeIssuer() {
   const callLog: string[] = []

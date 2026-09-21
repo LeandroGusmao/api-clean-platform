@@ -29,11 +29,12 @@ const NO_DELIVERY: DeliverPasswordReset = async () => {}
  * It answers the same way whether the address has an account, is inside the
  * resend cooldown, or has no account at all: what differs is the email, and
  * only its owner can read it. The order is normative — value object first so a
- * bad payload never reaches a repository; the send after the write (§8).
+ * bad payload never reaches a repository; the send after the write, so no
+ * email ever carries a token that failed to persist.
  */
 export class RequestPasswordResetUseCase {
   constructor(
-    /** `Pick`, and the narrowing IS the rule (§9): this path only reads. */
+    /** `Pick`: this path only ever reads users. */
     private readonly usersRepository: Pick<IUsersRepository, 'findByEmail'>,
     private readonly passwordResetTokens: Pick<
       IPasswordResetTokensRepository,

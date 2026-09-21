@@ -34,13 +34,12 @@ export interface ChangePasswordResult {
  * Changes a user's own password, ends every session, and hands the current
  * device a fresh pair.
  *
- * **It takes the unit of work AND a repository directly, which §9 of the unit
- * of work design used to forbid outright.** That rule now forbids a direct
- * WRITE, and the reason for the amendment is visible in the ordering below:
- * `compare` needs the stored hash, so the read must precede it — and argon2 may
- * not run inside a transaction (§8). No ordering satisfies both rules with a
- * single `uow`. Every write goes through `repos`, and the constructor's `Pick`
- * is what makes that a compile error rather than a convention.
+ * **It takes the unit of work AND a repository directly.** `compare` needs the
+ * stored hash, so the read must precede it — and argon2 may not run inside a
+ * transaction, where a ~100ms hash holds a pooled connection still. No
+ * ordering fits both in a single `uow`. The direct repository only reads: every
+ * write goes through `repos`, and the constructor's `Pick` is what makes that a
+ * compile error rather than a convention.
  *
  * The order of the steps is normative, not stylistic. See the comments inline.
  */
@@ -137,7 +136,7 @@ export class ChangePasswordUseCase {
       await refreshTokens.save(issued.entity)
 
       // The notice, in the SAME transaction as the state it describes: a
-      // crash right after this still loses nothing (design §5).
+      // crash right after this still loses nothing.
       await outboxMessages.save(
         OutboxMessage.create({
           id: this.idGenerator.generate(),

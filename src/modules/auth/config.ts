@@ -144,7 +144,8 @@ export const DEFAULT_PASSWORD_RESET_RATE_LIMIT_WINDOW_SECONDS = 60
 
 /**
  * How long a dead token row survives past `expires_at` before the cron prunes
- * it (design §3.4). One window per table: the trail worth keeping differs, and
+ * it: long enough to investigate a session or reset bug that just happened.
+ * One window per table: the trail worth keeping differs, and
  * seven days of dead reset tokens is more clutter than their 30-minute TTL
  * warrants.
  */
@@ -153,8 +154,8 @@ export const DEFAULT_PENDING_REGISTRATION_PRUNE_RETENTION_SECONDS = 86_400
 export const DEFAULT_PASSWORD_RESET_TOKEN_PRUNE_RETENTION_SECONDS = 86_400
 
 /**
- * Five attempts before a pending notice gives up and stops being retried
- * (design §3, §8). The interval BETWEEN attempts is the claim lease below: a
+ * Five attempts before a pending notice gives up and stops being retried. The
+ * interval BETWEEN attempts is the claim lease below: a
  * message whose send failed keeps its claim, so it is offered again only when
  * the claim expires.
  */

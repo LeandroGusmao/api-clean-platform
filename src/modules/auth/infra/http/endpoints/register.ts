@@ -62,9 +62,9 @@ export const registerRoute: FastifyPluginAsync<{ container: AuthContainer }> = a
           // `z.null()` and not an omitted entry: with the Zod type provider a
           // handler may only answer a status the schema declares.
           //
-          // 409 was GONE since slice 10; 503 is GONE now: this route no longer
-          // opens a transaction, so no `TransactionConflictError` can reach the
-          // wire (§7.1 of the slice 11 design).
+          // No 409, which would tell an anonymous caller the address has an
+          // account; no 503: this route opens no transaction, so no
+          // `TransactionConflictError` can reach the wire.
           [ACCEPTED_STATUS]: z.null(),
           [BAD_REQUEST_STATUS]: errorResponseSchema,
           [TOO_MANY_REQUESTS_STATUS]: errorResponseSchema,

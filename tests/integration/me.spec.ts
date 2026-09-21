@@ -47,8 +47,8 @@ afterAll(async () => {
 beforeEach(async () => {
   await db.delete(users)
 
-  // Inserted directly: since slice 11 `register` writes a `pending_registrations`
-  // row, and the real SMTP-delivered confirm flow is `verify-email.spec.ts`'s
+  // Inserted directly: `register` writes a `pending_registrations` row, not a
+  // user, and the real SMTP-delivered confirm flow is `verify-email.spec.ts`'s
   // job — this file's concern is `me`, which only needs the account verified.
   await arrangeAccount(db, { email: EMAIL, password: PASSWORD })
   const [row] = await db.select().from(users).where(eq(users.email, EMAIL))

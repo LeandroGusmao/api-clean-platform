@@ -48,8 +48,8 @@ afterAll(async () => {
 
 /**
  * Inserts a verified account directly — every caller in this file logs it in
- * right after, and login gates on a verified email. Since slice 11 `register`
- * writes a `pending_registrations` row; the real SMTP-delivered confirm flow is
+ * right after, and login gates on a verified email. `register` writes a
+ * `pending_registrations` row, not a user; the real SMTP-delivered confirm flow is
  * `verify-email.spec.ts`'s job, and logout only needs the account to already BE
  * verified.
  */

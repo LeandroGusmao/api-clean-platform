@@ -63,11 +63,11 @@ const REUSE_DETECTED: RotationOutcome = { reused: true }
  * already spent revokes the entire family. The owner's notice is written in the
  * same transaction as that revocation.
  *
- * Receives the unit of work and NO repository directly — the rule of §9 of the
- * unit of work design, which neither the compiler nor the linter can enforce:
- * an injected singleton writes on an autocommit connection, so calling one
- * inside the callback compiles, passes its unit test against the passthrough
- * fake, and silently breaks atomicity in production.
+ * Receives the unit of work and NO repository directly: an injected singleton
+ * writes on an autocommit connection, so calling one inside the callback
+ * compiles, passes its unit test against the passthrough fake, and silently
+ * breaks atomicity in production. Nothing here needs a read before the
+ * transaction, so there is no `Pick` to declare.
  */
 export class RefreshTokenUseCase {
   constructor(

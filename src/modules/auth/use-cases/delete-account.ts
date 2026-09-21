@@ -42,7 +42,7 @@ export interface DeleteAccountCommand {
  */
 export class DeleteAccountUseCase {
   constructor(
-    /** `Pick`, and the narrowing IS the rule (§9): the delete goes through the uow. */
+    /** Reads only: the `Pick` makes a delete outside the uow a compile error. */
     private readonly usersRepository: Pick<IUsersRepository, 'findById'>,
     private readonly uow: IAuthUnitOfWork,
     private readonly hashProvider: IHashProvider,
@@ -57,10 +57,10 @@ export class DeleteAccountUseCase {
     // still in the wild — including by a second call to this very use case.
     if (user === null) throw new UserNotFoundError()
 
-    // Outside any transaction (§8). No decoy on the federated branch, unlike
-    // `change-password.ts`: the caller already proved, with the token, that the
-    // account is theirs, so no timing here answers a question they cannot
-    // already answer.
+    // Outside any transaction, where argon2 would hold a pooled connection. No
+    // decoy on the federated branch, unlike `change-password.ts`: the caller
+    // already proved, with the token, that the account is theirs, so no timing
+    // here answers a question they cannot already answer.
     if (user.passwordHash !== null) {
       const confirmed =
         command.password !== undefined &&

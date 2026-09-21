@@ -57,7 +57,7 @@ const digestOf = (value: string) => `digest:${value}`
 const at = (offsetMs: number) => new Date(NOW.getTime() + offsetMs)
 
 /**
- * Passthrough, exactly like the unit of work fake of slice 4: it runs the
+ * Passthrough, exactly like the shared unit of work fake: it runs the
  * callback against the same repositories and models NO rollback and NO row
  * lock. Anything that needs either is proved against real Postgres.
  */
@@ -392,8 +392,8 @@ describe('RefreshTokenUseCase — grace window', () => {
     // revocation detection just performed. Reuse would fire, answer 401, and
     // leave the stolen family alive for the rest of its sixty days.
     //
-    // So this one double models rollback, which slice 4 deliberately kept out
-    // of the shared fake. Everything else in this file still uses the fake.
+    // So this one double models rollback, which the shared fake deliberately
+    // leaves out. Everything else in this file still uses the fake.
     const rollingBack: IAuthUnitOfWork = async (work) => {
       const snapshot = [...repository.tokens]
 

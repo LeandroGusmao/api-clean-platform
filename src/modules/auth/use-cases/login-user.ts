@@ -30,9 +30,9 @@ export interface LoginUserResult {
  *
  * Takes the refresh repository DIRECTLY and not the unit of work, and that is
  * deliberate on both counts: it writes to one repository, so there is no
- * atomicity to protect — and it runs argon2, which §8 of the unit of work
- * design forbids inside a transaction, because a 100ms hash with the
- * transaction open is a pooled connection standing still.
+ * atomicity to protect — and it runs argon2, which must not run inside a
+ * transaction, because a 100ms hash with the transaction open is a pooled
+ * connection standing still.
  *
  * Also gates on `emailVerifiedAt`, but only AFTER the credential check below
  * has already passed. That order is the whole defence: the "unverified"
@@ -75,11 +75,10 @@ export class LoginUserUseCase {
     // Checking first would hand any anonymous caller an account oracle — the
     // very thing the decoy hash above exists to deny them.
     //
-    // Every `users` row is born verified — the account is created at
-    // confirmation (slice 11) or at the first Google sign-in (slice 14) — so
-    // this branch has no producer. It stays as defence in depth for any
-    // unverified path a later slice reintroduces, and needs the same column and
-    // gate (§4.3 of the pre-hijacking design).
+    // Every `users` row is born verified — the account is created at email
+    // confirmation or at the first Google sign-in — so this branch has no
+    // producer. It stays as defence in depth: any future path that creates an
+    // unverified account is covered by this gate without another change here.
     if (user.emailVerifiedAt === null) throw new EmailNotVerifiedError()
 
     // A fresh family per login: each device owns its chain, so logging out on

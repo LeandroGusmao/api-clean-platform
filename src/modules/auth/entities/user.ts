@@ -76,12 +76,11 @@ export class User {
   }
 
   /**
-   * Born **verified**: since slice 11 the only path that reaches `create` is
-   * `ConfirmEmailUseCase`, which has already proven control of the address
-   * (§5.5 of the slice 11 design). Social login is the other proven path — see
-   * `createFederated` below. `fromTrusted` still accepts a null
-   * `email_verified_at` for old rows and for any unverified path a later slice
-   * reintroduces.
+   * Born **verified**: the only path that reaches `create` is
+   * `ConfirmEmailUseCase`, which has already proven control of the address.
+   * Social login is the other proven path — see `createFederated` below.
+   * `fromTrusted` still accepts a null `email_verified_at` for old rows and for
+   * any future path that creates an unverified account.
    *
    * The domain owns the id and the timestamps, so the row is complete before
    * the insert. The schema defaults (`defaultRandom` / `defaultNow`) are only

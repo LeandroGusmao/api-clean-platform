@@ -15,8 +15,8 @@ export type DeliverVerification = () => Promise<void>
 /**
  * Mints a verification code and returns its digest plus the deferred send.
  *
- * **Returning the send is what makes §8 structural instead of advisory:** with
- * nothing here that sends, a caller cannot put an email on the wire from inside
+ * **Returning the send is what makes "no email inside a transaction"
+ * structural instead of advisory:** with nothing here that sends, a caller cannot put an email on the wire from inside
  * a transaction — where a deadlock retry would send it up to three times, and a
  * rollback would describe a registration that does not exist. Persistence is the
  * caller's job: the `register` and `resend` use cases write the digest onto a
@@ -34,7 +34,7 @@ export class EmailVerificationIssuer {
    * Mints a fresh six-digit code, returns its digest for the caller to persist,
    * and the deferred send. Nothing here persists or sends — one `await
    * deliver()` per branch is what keeps the 202 responses indistinguishable in
-   * the caller's control flow (§5.4 of the slice 11 design).
+   * the caller's control flow.
    */
   issue(email: Email): { codeHash: string; deliver: DeliverVerification } {
     const code = this.tokenGenerator.numericCode(VERIFICATION_CODE_DIGITS)

@@ -29,7 +29,10 @@ export interface ResetPasswordCommand {
  * expired, already consumed, and losing the race to consume. Branches that
  * reported differently would make this a token oracle for an anonymous caller.
  *
- * argon2 runs ONLY on the valid-token branch (§3.5).
+ * argon2 runs ONLY on the valid-token branch, unlike `confirm`. A timing
+ * signal for "that token was valid" is worth something only to a caller who
+ * can enumerate tokens, and nobody enumerates 256 bits — so paying argon2 on
+ * every garbage token would buy nothing.
  *
  * The order of the steps is normative, not stylistic. See the comments inline.
  */
@@ -76,7 +79,8 @@ export class ResetPasswordUseCase {
     const user = await this.usersRepository.findById(token.userId)
     if (user === null) throw new PasswordResetFailedError()
 
-    // argon2, outside the transaction (§8), and only on this branch.
+    // argon2 outside the transaction, where it would hold a pooled connection,
+    // and only on this branch.
     const passwordHash = await this.hashProvider.hash(newPassword.value)
 
     await this.uow(
@@ -99,7 +103,7 @@ export class ResetPasswordUseCase {
         await refreshTokens.revokeAllForUser(token.userId, now)
 
         // The notice, in the SAME transaction as the state it describes: a
-        // crash right after this still loses nothing (design §5).
+        // crash right after this still loses nothing.
         await outboxMessages.save(
           OutboxMessage.create({
             id: this.idGenerator.generate(),

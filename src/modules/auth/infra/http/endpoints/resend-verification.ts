@@ -21,8 +21,8 @@ const RESEND_VERIFICATION_DESCRIPTION =
   'the resend cooldown, and a code actually sent, the status and body are ' +
   'identical. The LATENCY is not: the branch that actually sends pays an ' +
   'UPDATE and an SMTP round trip the other three do not, and closing that gap ' +
-  'needs the mail send off the request path entirely — accepted for now, and ' +
-  'recorded in the design spec.'
+  'needs the mail send off the request path entirely — accepted as a known ' +
+  'cost.'
 
 const bodySchema = z.object({
   email: z
@@ -55,9 +55,8 @@ export const resendVerificationRoute: FastifyPluginAsync<{
           // handler may only answer a status the schema declares. See the
           // same note on `register`.
           //
-          // 503 is GONE: this route no longer opens a transaction — it does one
-          // autocommit UPDATE — so no `TransactionConflictError` can reach the
-          // wire (§7.1 of the slice 11 design).
+          // No 503: this route opens no transaction — it does one autocommit
+          // UPDATE — so no `TransactionConflictError` can reach the wire.
           [ACCEPTED_STATUS]: z.null(),
           [BAD_REQUEST_STATUS]: errorResponseSchema,
           [TOO_MANY_REQUESTS_STATUS]: errorResponseSchema,

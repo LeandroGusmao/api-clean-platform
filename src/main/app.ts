@@ -65,8 +65,10 @@ export async function buildApp(
   await registerHelmet(app)
 
   // Before any route, because the ceiling has to cover everything registered
-  // after it. It counts requests and not failed logins — that half is the
-  // edge's job, deliberately (see the slice's design §10.1).
+  // after it. It counts requests and not failed logins, deliberately: a
+  // distributed password attack is visible only at the edge, where a botnet
+  // shows up as one, and a per-account failure counter here would reimplement
+  // that worse.
   await registerRateLimit(app, env, redis)
 
   // Must come before any route: `@fastify/swagger` only documents what is

@@ -47,10 +47,9 @@ export interface ConfirmEmailResult {
 export class ConfirmEmailUseCase {
   constructor(
     /**
-     * `registerFailedAttempt` is a WRITE in this `Pick` on purpose, and §9
-     * allows it because §8 line 3 puts it outside the transaction: a
-     * brute-force counter inside one is erased by the rollback that always
-     * follows on that path.
+     * `registerFailedAttempt` is a WRITE in this `Pick` on purpose: a
+     * brute-force counter has to live outside the transaction, because inside
+     * one it is erased by the rollback that always follows on that path.
      */
     private readonly pendingRegistrations: Pick<
       IPendingRegistrationsRepository,
@@ -70,8 +69,9 @@ export class ConfirmEmailUseCase {
     const email = Email.create(command.email)
     const password = Password.create(command.password)
 
-    // Before the transaction (§8) and unconditional: match and no-match must
-    // cost the same argon2, or the timing itself answers "was that code valid?".
+    // Before the transaction, where argon2 would hold a pooled connection, and
+    // unconditional: match and no-match must cost the same argon2, or the
+    // timing itself answers "was that code valid?".
     const passwordHash = await this.hashProvider.hash(password.value)
 
     // Read ONCE. The same instant stamps the user, its `email_verified_at` and
@@ -89,7 +89,7 @@ export class ConfirmEmailUseCase {
       // all collapse into the same throw.
       const [mostRecentUsable] = usable
       if (mostRecentUsable !== undefined) {
-        // Autocommit, outside the transaction (§8 line 3): this counter must
+        // Autocommit, outside the transaction: this counter must
         // survive the throw below. Not branched on — a wrong guess reports the
         // same way whether or not it spent the last slot.
         await this.pendingRegistrations.registerFailedAttempt(
@@ -132,7 +132,7 @@ export class ConfirmEmailUseCase {
       } catch (error) {
         // A concurrent confirm of a DIFFERENT pending for the same email won the
         // unique index. Generic error, no oracle; the rollback un-consumes this
-        // pending (§5.1 of the slice 11 design).
+        // pending.
         if (error instanceof EmailAlreadyInUseError) {
           throw new EmailVerificationFailedError()
         }

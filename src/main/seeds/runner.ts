@@ -79,7 +79,7 @@ export class SeedDefinitionError extends Error {
   }
 }
 
-/** The database this run points at is not one the seed may write to (design §7). */
+/** The database this run points at is not one the seed may write to. */
 export class SeedTargetError extends Error {
   constructor(message: string) {
     super(message)
@@ -191,7 +191,7 @@ export function resolveOrder(
 }
 
 /**
- * Two guards, and no flag to bypass either (design §7). The second exists
+ * Two guards, and no flag to bypass either. The second exists
  * because `NODE_ENV` defaults to development: a server shell without it would
  * pass the first and plant an account with a published password.
  *
@@ -246,7 +246,7 @@ export async function runSeed(
   // Before any connection: a typo or a broken `dependsOn` costs no pool.
   const order = resolveOrder(all, selectScenarios(all, args))
 
-  // Outside the transaction (design §5.1): argon2 must not run inside one.
+  // Outside the transaction: argon2 would hold its connection for the hash.
   const preparations = new Map<SeedModule, unknown>()
   for (const seedModule of modules) {
     preparations.set(seedModule, await seedModule.prepare())

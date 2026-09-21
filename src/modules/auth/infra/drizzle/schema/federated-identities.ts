@@ -14,7 +14,7 @@ import { users } from './users.js'
  *
  * Names spelled inline: each appears exactly once, and the repository does NOT
  * match a `23505` against any of them — a duplicate link is rare, and re-running
- * the sign-in resolves it through the fast path (design §4.4).
+ * the sign-in resolves it through the fast path.
  */
 export const federatedIdentities = pgTable(
   'federated_identities',
@@ -23,7 +23,7 @@ export const federatedIdentities = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    /** `'google'` today; a closed set carried as text (design §2). */
+    /** `'google'` today; a closed set carried as text, since altering a `pgEnum` needs a migration. */
     provider: text('provider').notNull(),
     /** The provider's stable subject id — Google's `sub`. Never reassigned. */
     providerUserId: text('provider_user_id').notNull(),

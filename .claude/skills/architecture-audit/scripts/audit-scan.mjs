@@ -158,7 +158,7 @@ function layerPath(file) {
 const PURE_DIRECTORIES =
   /^(entities|value-objects|repositories|ports|use-cases|services|dtos|errors|notifications)\//
 
-// §2: `fixtures/` e `in-memory/` entram em `test` pelo nome da pasta.
+// ARCHITECTURE §2: `fixtures/` e `in-memory/` entram em `test` pelo nome da pasta.
 const TEST_ELEMENT = /(\.spec\.ts$|^tests\/|\/fixtures\/|\/in-memory\/)/
 
 function classify(lp) {

@@ -422,8 +422,8 @@ describe('error handler — framework errors', () => {
   })
 
   it('leaves the OpenAPI document reachable', async () => {
-    // The one open question from the design spec: a custom not-found handler
-    // installed on the root instance could plausibly shadow the docs routes.
+    // A custom not-found handler installed on the root instance could plausibly
+    // shadow the docs routes.
     const developmentEnv: Env = { ...TEST_ENV, NODE_ENV: NODE_ENV_DEVELOPMENT }
     const { app } = createApp()
 
