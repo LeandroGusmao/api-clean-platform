@@ -588,7 +588,9 @@ const LINE_RULES = [
     rule: 'ARCHITECTURE §4/§5 — logar campo escolhido, nunca objeto inteiro',
     pattern:
       /\.log\.\w+\s*\(\s*\{[^}]*\b(?:request|req|reply|res|body|payload|headers|user|entity|command|input|row|rows|credentials)\b/,
-    layers: ['pure', 'module-infra', 'global-infra', 'composition'],
+    // `test` incluído: a tabela de fronteira isenta teste de IMPORT, não de
+    // segredo. Spec que loga objeto inteiro vaza igual.
+    layers: ['pure', 'module-infra', 'global-infra', 'composition', 'test'],
     message:
       'Objeto inteiro de request/entidade no log. O redact do pino não é recursivo e o serializer padrão não cobre isto — logue o campo escolhido.',
   },
@@ -607,7 +609,7 @@ const LINE_RULES = [
     severity: MEDIUM,
     rule: 'ARCHITECTURE §5 — o logger é o pino do Fastify',
     pattern: /\bconsole\.\w+\s*\(/,
-    layers: ['pure', 'module-infra'],
+    layers: ['pure', 'module-infra', 'test'],
     skipFiles: CONSOLE_ALLOWED,
     message:
       'console.* no lugar do logger da request. Sem traceId, sem redact, sem nível.',

@@ -72,7 +72,12 @@ const EXPECTED = {
   // that folder entered the boundary table it was LAYER-UNKNOWN instead, and
   // an unclassified file is checked by nothing at all.
   'src/modules/billing/services/invoice-numberer.ts': ['PURE-IO:1'],
-  'tests/integration/billing.spec.ts': ['TEST-ENV:3', 'TEST-ONLY:5'],
+  'tests/integration/billing.spec.ts': [
+    'TEST-ENV:3',
+    'TEST-ONLY:5',
+    'CONSOLE:6',
+    'LOG-OBJECT:15',
+  ],
   // Correct code. A single finding here is a false positive, and a false
   // positive is worse than a missed check: it teaches people to skim.
   'src/modules/billing/use-cases/refund-order.ts': [],

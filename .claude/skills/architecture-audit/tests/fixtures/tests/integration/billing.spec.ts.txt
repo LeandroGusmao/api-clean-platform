@@ -5,3 +5,12 @@ const url = process.env.DATABASE_URL
 it.only('charges the customer', () => {
   console.log(url)
 })
+
+// A test leaks like production: the boundary table exempts `test` from IMPORT
+// rules, never from secrets.
+const request = { log: { error: (_payload: unknown) => {} } }
+const user = { id: 'user-1' }
+
+it('logs the whole entity', () => {
+  request.log.error({ user })
+})
