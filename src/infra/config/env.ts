@@ -147,7 +147,7 @@ const TRUST_PROXY_REFUSAL =
  * why they are rejected at boot rather than documented.
  *
  * `.default('')` sits BEFORE the refinements on purpose: Zod 4's default is the
- * OUTPUT type and short-circuits parsing (ARCHITECTURE.md §11), so placed at the
+ * OUTPUT type and short-circuits parsing, so placed at the
  * end it would have to be `string | false` and would skip every check.
  *
  * The CIDR syntax itself is deliberately NOT validated here. Fastify compiles

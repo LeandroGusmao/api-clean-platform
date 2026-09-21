@@ -1,46 +1,35 @@
 # Arquitetura
 
-Documentação do que **existe neste repositório**. Nada aqui é plano ou intenção —
-se está escrito, está construído e verificável rodando os comandos da §10.
+Como o código deste repositório está organizado e as regras que valem para
+todo arquivo novo. Tudo aqui está construído; nada é plano.
 
-Esta é a **referência única** da estrutura: o mapa do que existe, as fronteiras
-e como adicionar código sem quebrá-las. Cada fato mora em exatamente um
-documento, e os outros apontam:
+O porquê de cada peça mora no comentário do código que ela governa. Este
+documento dá o mapa e as regras; o detalhe de cada fluxo do `auth` está em
+[`src/modules/auth/README.md`](src/modules/auth/README.md), e o que cada produto
+derivado ainda precisa decidir está em
+[`docs/PRODUCT-CHOICES.md`](docs/PRODUCT-CHOICES.md).
 
-| Documento | Responde |
-|---|---|
-| este | como o código está organizado, e o que vale |
-| [`docs/PRODUCT-CHOICES.md`](docs/PRODUCT-CHOICES.md) | o que cada produto derivado ainda precisa decidir |
-| [`README.md`](README.md) | por onde começar |
-
-Os comentários do código explicam o código em que estão: por que aquilo existe
-e por que é assim. Nenhum deles depende de outro documento para fazer sentido.
-
-**Stack hoje:** Node 24 LTS (Krypton) · TypeScript 7 ESM · Fastify 5 · Zod 4 · PostgreSQL · Drizzle · OpenAPI · Vitest · Biome · pnpm
+**Stack:** Node 24 LTS · TypeScript 7 ESM · Fastify 5 · Zod 4 · PostgreSQL ·
+Drizzle · Redis · OpenAPI · Vitest · Biome · pnpm
 
 ---
 
 ## Índice
 
-- [1. O princípio](#1-o-principio)
-- [2. A árvore](#2-a-arvore)
-- [3. Imports](#3-imports)
-- [4. Regras com dente](#4-regras-com-dente)
-- [5. Configuração e log](#5-configuracao-e-log)
-- [6. Banco de dados](#6-banco-de-dados)
-- [7. HTTP e documentação da API](#7-http-e-documentacao-da-api)
-- [8. Erros](#8-erros)
-- [9. Testes](#9-testes)
-- [10. Comandos](#10-comandos)
-- [11. Versões](#11-versoes)
-- [12. Decisões travadas](#12-decisoes-travadas)
-- [13. O que ainda não existe](#13-o-que-ainda-nao-existe)
-- [14. Fluxo de uma requisição](#14-fluxo-de-uma-requisicao)
-- [15. Como adicionar um módulo novo](#15-como-adicionar-um-modulo-novo)
-
-> As seções **14** e **15** vieram depois das outras e por isso estão no fim: os
-> comentários do código citam este arquivo por número de seção, e renumerar
-> quebraria os ponteiros.
+1. [O princípio](#1-o-principio)
+2. [A árvore e a fronteira](#2-a-arvore-e-a-fronteira)
+3. [Imports](#3-imports)
+4. [Regras verificadas por máquina](#4-regras-verificadas-por-maquina)
+5. [Configuração e log](#5-configuracao-e-log)
+6. [Banco de dados](#6-banco-de-dados)
+7. [HTTP e documentação da API](#7-http-e-documentacao-da-api)
+8. [Erros](#8-erros)
+9. [Testes](#9-testes)
+10. [Comandos](#10-comandos)
+11. [Versões](#11-versoes)
+12. [Fluxo de uma requisição](#12-fluxo-de-uma-requisicao)
+13. [Como adicionar um módulo novo](#13-como-adicionar-um-modulo-novo)
+14. [O que ainda não existe](#14-o-que-ainda-nao-existe)
 
 ---
 
@@ -49,148 +38,59 @@ e por que é assim. Nenhum deles depende de outro documento para fazer sentido.
 > **Código puro nunca depende de código que toca o mundo externo.**
 
 "Mundo externo" é banco, HTTP, rede, arquivo, variável de ambiente, relógio e
-aleatoriedade. Tudo isso entra por contrato e é implementado em `infra/`.
-
-A taxonomia de erro em `src/shared/` (§8) foi o primeiro código puro do
-repositório — nenhum import, nenhuma menção a protocolo. Hoje o módulo `auth`
-tem uma camada pura inteira: entidade, value objects, use case e os contratos de
-repositório e provider. Nenhum desses arquivos importa Fastify, Drizzle, `pg` ou
-`process.env`, e é isso que os torna testáveis em milissegundos, sem banco.
-
-O princípio está aqui porque é ele que decide onde cada arquivo novo vai cair.
+aleatoriedade. Tudo isso entra por contrato (uma interface na camada pura) e é
+implementado em `infra/`. É isso que deixa entidade, value object e use case
+testáveis em milissegundos, sem banco — e é o princípio que decide onde cada
+arquivo novo cai.
 
 ---
 
-## 2. A árvore
+## 2. A árvore e a fronteira
 
 ```text
 src/
-├── infra/                          # infra GLOBAL, sem dono de módulo
-│   ├── config/
-│   │   ├── env.ts                  # ÚNICO lugar que lê process.env
-│   │   └── env.spec.ts             # unitário colocado
-│   ├── database/
-│   │   ├── client.ts               # pool pg + instância Drizzle
-│   │   ├── driver-error.ts         # converte erro do driver antes de sair do infra/
-│   │   ├── transaction-runner.ts   # abre a transação, faz commit/rollback e recusa aninhamento
-│   │   ├── unit-of-work.ts         # createUnitOfWork(runner, buildRepos) — casca genérica
-│   │   └── seeds/
-│   │       └── seed-module.ts      # contrato do seed de dev; fora do dist
-│   ├── health/
-│   │   └── checks/
-│   │       └── database-check.ts   # um arquivo por dependência checada
-│   ├── http/
-│   │   ├── server.ts               # instância Fastify, SEM rotas
-│   │   ├── server.spec.ts          # unitário colocado
-│   │   ├── auth-guard.ts           # preHandler genérico; verificador injetado, sem import de #modules/*
-│   │   ├── client-ip.ts            # request.ip -> chave validada e normalizada
-│   │   ├── client-ip.spec.ts
-│   │   ├── rate-limit.ts           # teto por endereço; rota isenta com config.rateLimit
-│   │   ├── rate-limit.spec.ts
-│   │   ├── openapi.ts              # OpenAPI + UI dos docs (só em development)
-│   │   ├── errors/                 # o contrato de erro; os três mudam juntos
-│   │   │   ├── error-handler.ts    # ÚNICO lugar que traduz erro em status HTTP
-│   │   │   ├── error-handler.spec.ts
-│   │   │   ├── error-response.ts   # schema Zod do envelope — o único público dos três
-│   │   │   ├── validation-issues.ts     # tradução Zod -> códigos do contrato
-│   │   │   └── validation-issues.spec.ts
-│   │   └── endpoints/
-│   │       └── health.ts           # GET /health — agrega os checks
-│   ├── providers/                   # adapters dos contratos de shared/ports/
-│   │   ├── system-clock.ts
-│   │   ├── system-clock.spec.ts     # unitário colocado
-│   │   ├── uuid-id-generator.ts
-│   │   └── uuid-id-generator.spec.ts
-│   └── observability/
-│       ├── error-serializer.ts     # serializer do err do pino (sanitiza params)
-│       ├── logger.ts               # createLogger: o pino que todo entrypoint usa
-│       ├── redact-paths.ts         # paths redigidos pelo logger
-│       └── request-context.ts      # AsyncLocalStorage do traceId
+├── shared/                  # PURO e transversal — não conhece módulo nenhum
+│   ├── errors/              # taxonomia de erro (§8)
+│   └── ports/               # contratos transversais: IClock, IIdGenerator, IUnitOfWork
+├── infra/                   # infra GLOBAL, sem dono de módulo
+│   ├── config/env.ts        # ÚNICO lugar que lê process.env
+│   ├── database/            # pool, transação, unit of work, conversão de erro do driver
+│   ├── redis/               # cliente Redis
+│   ├── health/checks/       # um arquivo por dependência checada pelo /health
+│   ├── http/                # instância Fastify (sem rotas), guard, rate limit, CORS, OpenAPI
+│   │   └── errors/          # ÚNICO lugar que traduz erro em status HTTP
+│   ├── observability/       # logger, redação, traceId
+│   └── providers/           # adapters dos contratos de shared/ports/
 ├── modules/
-│   └── auth/                        # domínio + infra do módulo
-│       ├── config.ts                # schema Zod das env vars do módulo
-│       ├── entities/user.ts         # puro — estado em campos `#`
-│       ├── value-objects/           # puro — email.ts, password.ts
-│       ├── repositories/            # SÓ contratos — users-repository.ts, refresh-tokens-repository.ts
-│       ├── ports/                   # SÓ contratos — hash-provider.ts, token-signer.ts
-│       ├── use-cases/               # puro (+ .spec.ts colocado) — register-user.ts, login-user.ts, get-user-profile.ts, refresh-token.ts, logout.ts, logout-all.ts
-│       ├── services/                # domain service puro — refresh-token-issuer.ts
-│       ├── errors/                  # um arquivo por erro do módulo — inclui invalid-credentials-error.ts, refresh-token-reused-error.ts
-│       ├── container.ts             # factory do container do módulo
-│       └── infra/                   # tudo que toca o mundo externo
-│           ├── drizzle/
-│           │   ├── schema/users.ts  # um arquivo por tabela, nomeado pela tabela
-│           │   ├── user-mapper.ts   # entidade -> row
-│           │   ├── drizzle-users-repository.ts
-│           │   ├── drizzle-refresh-tokens-repository.ts
-│           │   └── auth-repositories.ts    # monta AuthRepos — único lugar que instancia os repositórios do módulo
-│           ├── in-memory/           # repositório de teste
-│           ├── seeds/               # cenários de `pnpm db:seed` do módulo; fora do dist
-│           ├── providers/           # adapters dos contratos de ports/ — argon2, jose
-│           └── http/
-│               ├── constants.ts     # status HTTP e tag do OpenAPI do módulo
-│               ├── refresh-cookie.ts  # atributos do cookie de refresh, em UM lugar
-│               ├── endpoints/       # 1 arquivo = schema + handler + rota
-│               │   ├── register.ts  # POST /auth/register
-│               │   ├── login.ts     # POST /auth/login
-│               │   ├── refresh.ts   # POST /auth/refresh
-│               │   ├── logout.ts    # POST /auth/logout
-│               │   ├── logout-all.ts # POST /auth/logout-all
-│               │   └── me.ts        # GET /auth/me
-│               └── routes.ts        # agregador fino do módulo
-├── shared/                         # camada PURA, sem dono de módulo
-│   ├── errors/
-│   │   └── app-error.ts            # taxonomia: AppError + as 6 categorias
-│   └── ports/                       # contratos transversais
-│       ├── clock.ts                 # IClock — tempo entra por aqui (R7)
-│       ├── id-generator.ts          # IIdGenerator — identidade entra por aqui (R7)
-│       └── unit-of-work.ts          # IUnitOfWork<TRepos> — contrato genérico e transversal
-└── main/
-    ├── container.ts                 # composition root: junta os módulos
-    ├── app.ts                      # compõe a aplicação: docs + rotas + deps, SEM escutar
-    ├── http.ts                     # entrypoint: sobe o servidor e trata shutdown
-    └── seeds/
-        ├── index.ts                # entrypoint de `pnpm db:seed`: argv, log, exit code
-        └── runner.ts               # travas de alvo, seleção, ordem, uma transação
+│   └── <modulo>/            # hoje só `auth`
+│       ├── entities/  value-objects/  services/  use-cases/  errors/  notifications/
+│       ├── repositories/  ports/        # SÓ contratos
+│       ├── config.ts                    # schema Zod das env vars do módulo
+│       ├── container.ts                 # monta o grafo concreto do módulo
+│       └── infra/                       # tudo do módulo que toca o mundo externo
+│           ├── drizzle/                 # schema/ (um arquivo por tabela), mappers, repositórios
+│           ├── in-memory/               # dublês de repositório para teste
+│           ├── providers/               # adapters dos contratos de ports/
+│           ├── seeds/                   # cenários de `pnpm db:seed`
+│           └── http/                    # endpoints/ (1 arquivo = schema + handler + rota), routes.ts
+└── main/                    # composition root: o único que conhece todos os módulos
+    ├── container.ts         # junta os containers dos módulos
+    ├── app.ts               # compõe a aplicação HTTP, SEM escutar
+    ├── http.ts  cron.ts     # entrypoints
+    └── seeds/               # entrypoint de `pnpm db:seed`
 
-tests/
-└── integration/
-    ├── drizzle-users-repository.spec.ts  # repositório Drizzle contra Postgres real
-    ├── health.spec.ts              # suíte que precisa de Postgres de pé
-    ├── register.spec.ts            # POST /auth/register fim a fim
-    ├── login.spec.ts                # POST /auth/login fim a fim
-    ├── refresh-token.spec.ts        # POST /auth/refresh fim a fim
-    ├── logout.spec.ts               # logout e logout-all fim a fim
-    ├── me.spec.ts                   # GET /auth/me fim a fim
-    ├── setup/
-    │   ├── migrate-test-database.ts  # globalSetup: aplica migrations commitadas antes da suíte
-    │   └── test-database-url.ts      # única fonte da TEST_DATABASE_URL fora do CI
-    └── users-schema.spec.ts        # prova a migration da tabela `users`
+tests/integration/           # suítes contra Postgres e Redis reais
+tools/boundaries/            # o lint de fronteira e suas fixtures
+drizzle/                     # migrations geradas e commitadas
 ```
 
-`src/infra/` é infra **sem dono** — o servidor, a config e a conexão do banco.
-Futuramente, o logger. `src/modules/<m>/infra/` é a infra **daquele domínio**;
-hoje só `auth` existe, e ele é o modelo completo: camada pura em `entities/`,
-`value-objects/`, `use-cases/` e nos contratos de `repositories/` e `ports/`,
-com os adapters — Drizzle, in-memory, argon2, HTTP — isolados sob `infra/`. Se
-você não consegue dizer de qual módulo uma peça é, ela é global.
+Se você não consegue dizer de qual módulo uma peça é, ela é global
+(`src/infra/` ou `src/shared/`).
 
-`src/main/` é o **composition root** — o único lugar que conhece o concreto de
-**todos** os módulos ao mesmo tempo. Cada módulo conhece o próprio concreto no
-seu `container.ts`, e o `main/` apenas junta as fatias; a divisão está desenhada
-logo abaixo. Os entrypoints moram aqui (`http.ts` hoje; `worker.ts` e `cron.ts`
-quando existirem) porque é aqui que o grafo é montado. `app.ts` compõe a
-aplicação HTTP e devolve; quem abre porta é o entrypoint.
+### A regra de fronteira
 
-> `main/` não é "a pasta dos entrypoints". A regra de fronteira classifica
-> `src/main/**` inteiro como `composition`, e é isso que permite a `app.ts`
-> instanciar o banco e registrar rotas sem violar nada.
-
-### A regra de fronteira, enunciada
-
-O §1 dá o princípio; esta tabela é ele por tipo de arquivo. É o que o lint de
-fronteira vai configurar quando entrar — e é por isso que ela precisa estar
-escrita antes, não depois.
+O §1 aplicado por caminho de arquivo. É esta tabela que o lint configura
+(`tools/boundaries/layers.mjs`).
 
 | Elemento | Padrão | Pode importar |
 |---|---|---|
@@ -200,735 +100,302 @@ escrita antes, não depois.
 | `composition` | `src/modules/*/container.ts` · `src/main/**` | tudo |
 | `test` | `**/*.spec.ts` · `tests/**` · `**/fixtures/**` · `**/in-memory/**` | tudo |
 
-**`composition` e `test` são exceções deliberadas, não brechas.** O composition
-root existe justamente para conhecer o concreto, e o teste unitário precisa
-alcançar o repositório in-memory. Deixá-las implícitas é o que produz "exceção
-não documentada" e esvazia a regra.
+- **`composition` e `test` são exceções deliberadas.** O composition root existe
+  para conhecer o concreto; o teste precisa alcançar o dublê in-memory.
+- **`fixtures/` e `in-memory/` são `test` pelo nome da pasta**, mesmo vivendo
+  sob `src/`. São dublês — e ficam fora do build pelo mesmo motivo.
+- **A ordem da tabela é a precedência:** o arquivo cai no primeiro elemento que
+  casar, testando `test`, `composition`, `module-infra`, `pure` e `global-infra`
+  nessa ordem — um `.spec.ts` dentro de `use-cases/` é `test`, não `pure`.
+- **Todo arquivo de `src/` cai em algum elemento.** Pasta nova que nenhuma linha
+  classifica falha o lint; adicione a linha antes de criar a pasta.
 
-`fixtures/` e `in-memory/` entram em `test` **pelo nome da pasta**, não pelo
-caminho: os dois vivem sob `src/`, e sem esta linha a tabela os classificaria
-como código de produção — `src/infra/config/fixtures/` como `global-infra`,
-`src/modules/*/infra/in-memory/` como `module-infra`. São os mesmos dois globs
-que o `tsconfig.build.json` já exclui do build, e pela mesma razão: são dublês,
-e um deles carrega um `JWT_SECRET` fixo. Classificá-los como produção faria o
-lint de fronteira aprovar exatamente o import que deveria barrar.
+**Quem pode importar um `container.ts`:**
 
-**Nenhum elemento de um módulo alcança outro módulo** — nem o `infra/`, nem a
-camada pura. A tabela acima, lida ao pé da letra, permitiria que o `infra/` de
-um módulo importasse a camada pura de outro, porque `pure` como elemento cobre
-qualquer módulo. Não é o que ela quer dizer: o cruzamento se faz por uma porta
-declarada na camada pura do **consumidor**, e o adaptador mora em `src/main/`,
-único lugar onde módulo conhece módulo.
-
-A analogia que fecha a questão é a de microsserviços. Lá o `billing` **chama** o
-`auth`, mas não **importa** o `auth`: ele segura um cliente de um contrato que
-ele mesmo define, e os tipos internos do outro serviço são invisíveis. A rede
-obriga a porta. Esta regra é isso dentro do processo — ela não proíbe a chamada,
-proíbe o import.
-
-O retorno dos use cases já está pronto para isso: `UserProfileResult` é plano
-por desenho, sem value object, justamente para que nenhum consumidor precise
-conhecer os tipos internos da entidade. Contrato entre módulos se escreve em
-`string` e `Date`.
-
-O custo é real e foi aceito: todo cruzamento paga uma interface e um adaptador,
-inclusive os triviais. Quando a regra entrou, a árvore inteira já a respeitava —
-zero violações em 257 módulos.
-
-**Como o cruzamento se escreve, então.** A regra de ouro é que a comunicação
-entre módulos acontece na camada de use case ou por contrato de domínio —
-**nunca** invocando o handler HTTP de outro módulo, nem fazendo chamada HTTP
-interna ao próprio servidor. Três formas, em ordem de acoplamento:
-
-1. **Porta de repositório no consumidor** *(a mais comum)* — o módulo chamador
-   declara na sua camada pura a porta estreita que precisa, e o adaptador em
-   `src/main/` delega ao repositório do módulo alvo. Teste unitário trivial com
-   um dublê em memória da porta.
-2. **Porta de use case no consumidor** — quando o cruzamento envolve efeito
-   colateral ou regra de domínio do outro módulo (reservar estoque, aplicar
-   cupom), a porta descreve a operação, não a leitura, e o adaptador executa o
-   use case do alvo.
-3. **Evento de domínio** — para desacoplamento completo, ou preparando extração
-   para serviço separado. O chamador persiste em estado pendente e publica o
-   evento pelo outbox transacional; o módulo alvo reage e publica o resultado;
-   o chamador atualiza o estado.
-
-A diferença entre 1 e 2 é o que a porta descreve, não onde ela mora: nos três
-casos ela é declarada pelo **consumidor**, porque importar o contrato do módulo
-alvo já é módulo alcançando módulo.
-
-**Antipadrões, e por que cada um falha:**
-
-- **Chamada HTTP interna** — `fetch('/products/123')` dentro do mesmo processo.
-  Paga latência, serialização e um ponto de falha de rede para atravessar uma
-  fronteira que é um `import`.
-- **Reuso de handler HTTP** — chamar o handler de outro módulo dentro de um
-  fluxo. Handler traduz entrada HTTP em parâmetro de use case e formata
-  resposta; reusá-lo arrasta contrato de transporte para dentro do domínio.
-- **Importar `infra/` de outro módulo** — pegar `DrizzleUsersRepository` em vez
-  de uma porta. É a linha `module-infra` da tabela acima, e o lint barra.
-
-**`services/` é a linha mais nova, e o que mora ali é estreito:** uma operação de
-domínio que precisa de colaboradores e não pertence a uma entidade só. O
-`RefreshTokenIssuer` é o caso que a criou — cunhar um elo da cadeia de refresh
-(gerar opaco, digerir, montar a entidade) é a mesma operação no `login` e nos
-dois ramos da rotação, e a entidade não pode conhecer porta. Sem ela o
-`LoginUserUseCase` receberia nove colaboradores.
-
-O que **não** mora ali: orquestração de caso de uso, que é `use-cases/`; e
-qualquer coisa que toque o mundo externo, que é `infra/`. Um `services/` que
-comece a receber repositório é sinal de que virou use case com outro nome.
-
-> A pasta nasceu numa fatia **sem** esta linha, e a auditoria a pegou como
-> `LAYER-UNKNOWN` — arquivo de produção que nenhuma regra classificava. É o
-> argumento concreto a favor de a tabela existir antes do lint: ela pegou o que
-> a revisão humana deixou passar.
-
-**Duas regras do Unit of Work que o lint não alcança** — a tabela acima
-classifica arquivo por caminho, e as duas a seguir dependem do que o código faz
-dentro dele:
-
-- **Use case que recebe o Unit of Work não ESCREVE por repositório direto.** O
-  repositório injetado como singleton no container escreve numa conexão
-  autocommit; chamá-lo dentro do callback do `uow` compila, passa no teste
-  unitário contra um dublê e só quebra a atomicidade em produção. Tudo que o
-  callback escreve tem que vir do `repos` que ele recebe como parâmetro. Uma
-  **leitura** direta não tem esse estrago, e às vezes é obrigatória: o
-  `compare` do argon2 precisa do hash guardado antes, e o argon2 não pode rodar
-  dentro da transação. Então o repositório direto é declarado por `Pick`, só
-  com os métodos que o use case chama — e uma escrita fora do `uow` vira erro
-  de compilação. Uma escrita só entra nesse `Pick` quando é o terceiro caso da
-  regra seguinte, com o porquê escrito ao lado da declaração.
-- **Três coisas não podem entrar no callback do `uow`,** porque a transação
-  fica aberta pela duração inteira dele: I/O externo (e-mail, HTTP — persiste
-  dentro, envia depois do commit), trabalho pesado de CPU (argon2 — calcula
-  antes e passa o resultado pronto) e qualquer escrita que precise sobreviver a
-  uma falha (um contador de tentativas de força bruta é autocommit de
-  propósito; um rollback apagaria o próprio registro da falha que ele existe
-  para guardar).
-
-#### E quem pode importar `composition`?
-
-A tabela acima diz o que cada elemento **importa**. Falta a direção contrária, e
-ela não é óbvia — `composition` não aparece na coluna direita de nenhuma linha,
-o que leria como "ninguém pode importar um container". Não é isso:
-
-| Quem importa | O quê | Como |
+| Quem | O quê | Como |
 |---|---|---|
-| `src/main/**` | `modules/*/container.ts` de qualquer módulo | valor — é o composition root juntando as fatias |
-| `src/modules/<m>/infra/**` | o `container.ts` **do próprio módulo** | **só o tipo** |
+| `src/main/**` | o `container.ts` de qualquer módulo | valor |
+| `src/modules/<m>/infra/**` | o `container.ts` **do próprio módulo** | **só `import type`** |
 | qualquer outro | — | proibido |
 
-A segunda linha é a que surpreende. `routes.ts` e `endpoints/register.ts` fazem
-`import type { AuthContainer }` porque o plugin é tipado pela fatia do container
-que ele recebe — é o que transforma "alcançar o use case de outro módulo" em
-erro de compilação. Sendo `import type`, some na compilação: nenhuma dependência em
-runtime, nenhum ciclo.
+### Módulo não importa módulo
 
-A terceira linha é literal: o `container.ts` de um módulo nunca é alcançado pelo
-`infra/` de outro módulo, nem pela camada pura.
+Nenhum elemento de um módulo alcança outro módulo — nem o `infra/`, nem a camada
+pura. A regra proíbe o **import**, não a chamada: como entre microsserviços, o
+consumidor segura um contrato que ele mesmo define. Três formas de cruzar, em
+ordem de acoplamento:
 
-Sem esta seção, a configuração literal da tabela quebraria o CI no primeiro
-módulo que existe — que é exatamente o `auth` de hoje.
+1. **Porta de repositório no consumidor** *(a mais comum)* — o módulo chamador
+   declara na sua camada pura a porta estreita de leitura que precisa; o
+   adaptador em `src/main/` delega ao repositório do módulo alvo.
+2. **Porta de use case no consumidor** — quando o cruzamento tem efeito
+   colateral ou regra do outro módulo (reservar estoque, aplicar cupom), a porta
+   descreve a operação e o adaptador executa o use case do alvo.
+3. **Evento de domínio** — pelo outbox transacional, para desacoplamento
+   completo.
 
-### O container: cada módulo exporta o seu, `main/` compõe
+Nos três casos a porta é do **consumidor**, e o contrato se escreve em tipos
+planos (`string`, `Date`) — nunca nos value objects do outro módulo.
 
-Injeção de dependência aqui é **container manual tipado**. Sem biblioteca, sem
-string key, sem decorator: duas funções, e o grafo inteiro legível.
+**Proibido:** chamada HTTP interna ao próprio servidor, reusar o handler HTTP de
+outro módulo, e importar o `infra/` de outro módulo.
+
+### O que mora em cada pasta pura
+
+- **`use-cases/`** — orquestra um caso de uso. O DTO de entrada e saída mora no
+  próprio arquivo do use case; `dtos/` só nasce quando um DTO for compartilhado.
+- **`services/`** — operação de domínio que precisa de colaboradores e não
+  pertence a uma entidade só (ex.: `RefreshTokenIssuer`, usado pelo login e pela
+  rotação). Um `services/` que começa a receber repositório virou use case.
+- **`repositories/` e `ports/`** — só interfaces. Um contrato nasce com os
+  métodos e campos que têm consumidor, nada mais.
+- **Comando devolve recibo, consulta devolve read model.** Use case que muda
+  estado devolve o mínimo (`{ id }`); consulta devolve um objeto plano, value
+  objects desembrulhados e datas ainda como `Date`.
+
+### Unit of Work: duas regras que o lint não alcança
+
+- **Dentro do callback do `uow`, toda escrita vem do `repos` que ele recebe.** O
+  repositório injetado direto escreve em autocommit e quebraria a atomicidade só
+  em produção. Leitura direta é permitida, e o repositório direto é declarado
+  por `Pick` com só os métodos que o use case chama.
+- **Três coisas não entram no callback,** porque a transação fica aberta a
+  duração inteira dele: I/O externo (persiste dentro, envia depois do commit),
+  CPU pesada (argon2 — calcula antes) e escrita que precisa sobreviver a uma
+  falha (ex.: contador de tentativas).
+
+### Composição: cada módulo tem seu container, `main/` junta
+
+Injeção de dependência é **container manual tipado** — sem biblioteca, sem
+decorator.
 
 ```ts
-// modules/auth/container.ts — o módulo conhece o concreto
-export function makeAuthContainer(db: Database, config: AuthConfig) {
+// modules/auth/container.ts — o módulo conhece o próprio concreto
+export function makeAuthContainer(db: Database, config: AuthContainerConfig, /* ... */) {
   const usersRepository = new DrizzleUsersRepository(db)
-  const hashProvider = new Argon2HashProvider()
-  const clock = new SystemClock()
-  const idGenerator = new UuidIdGenerator()
-  const tokenSigner = new JwtTokenSigner(config, clock)
-
+  // ...
   return {
     registerUser: new RegisterUserUseCase(usersRepository, hashProvider, clock, idGenerator),
-    loginUser: new LoginUserUseCase(usersRepository, hashProvider, tokenSigner),
     getUserProfile: new GetUserProfileUseCase(usersRepository),
-    verifyAccessToken: (token: string) => tokenSigner.verify(token),
   }
 }
 export type AuthContainer = ReturnType<typeof makeAuthContainer>
 
 // main/container.ts — o composition root junta os módulos
-export function makeContainer(db: Database, env: Env) {
-  return { auth: makeAuthContainer(db, env) }
+export function makeContainer(db: Database, env: Env, logger: AppLogger) {
+  return { auth: makeAuthContainer(db, env /* ... */) }
 }
 ```
 
-Tipagem 100% inferida, e o mesmo grafo serve os três entrypoints porque é
-montado **sem Fastify** — requisito para worker e cron existirem depois sem
-duplicar wiring. `env` chega inteiro em `makeContainer`, e cada módulo declara
-só a fatia que precisa — `makeAuthContainer` pede `AuthConfig`, então `auth` nem
-enxerga `DATABASE_URL`. Tipagem estrutural dá essa regra de graça, sem nenhum
-código de recorte. Objeto stateless (repositório, provider) é
-singleton no container; o custo de um `new` é nanosegundos contra milissegundos
-de rede, e o problema do `new` no handler nunca foi performance, foi
-acoplamento.
+- **Cada módulo recebe só a fatia de config que declara**, e o
+  plugin HTTP do módulo recebe só a fatia dele do container. Alcançar o use case
+  de outro módulo é erro de compilação.
+- **O grafo é montado sem Fastify**, para servir `http.ts`, `cron.ts` e um
+  futuro worker igualmente.
+- **Objeto stateless é singleton** no container.
 
-**O plugin do módulo recebe só a fatia dele.**
+Três cortes de responsabilidade:
 
-```ts
-await app.register(authRoutes, { prefix: AUTH_PREFIX, container: container.auth })
-```
+| Arquivo | Faz | Não faz |
+|---|---|---|
+| `infra/http/server.ts` | cria e configura a instância Fastify, error handler e traceId | registrar rotas |
+| `main/app.ts` | monta banco, Redis, container, docs e rotas; fecha tudo no `onClose` | abrir porta |
+| `main/http.ts` | `listen` e sinais de shutdown | montar grafo |
 
-Alcançar o use case de outro módulo vira **erro de compilação** — o tipo
-`AuthContainer` simplesmente não tem o campo. É garantia do compilador, não
-combinado que depende de lint.
-
-> **O grafo é montado no `buildApp`, não no `http.ts`.** `buildApp` é o
-> composition root que as suítes exercitam; se o container nascesse no
-> entrypoint, as rotas do módulo existiriam em produção e faltariam no teste —
-> exatamente o buraco que o corte entre compor e escutar (§2) fechou.
-
-**Onde mora o DTO de um use case.** No arquivo do próprio use case.
-`RegisterUserCommand` e `RegisterUserResult` são 1:1 com `RegisterUserUseCase` e
-mudam sempre junto — mesmo raciocínio que mantém schema, handler e rota no mesmo
-arquivo de endpoint. A pasta `dtos/` está prevista na convenção para o dia em que
-um DTO passar a ser compartilhado entre use cases — não existe ainda, e criá-la
-vazia só adicionaria um diretório que ninguém abre.
-
-**Duas portas transversais, e por que são duas.** `IClock` e `IIdGenerator` moram
-em `shared/ports/`, com adapters em `infra/providers/`. Estão separadas de
-propósito: id de entidade e segredo criptográfico têm perfis de segurança e
-motivos de mudar diferentes — trocar o id de UUIDv4 para v7 não tem relação com a
-entropia de um refresh token. Juntas numa porta só, o use case que quer apenas um
-id receberia uma porta que também cunha segredos.
-
-Pela mesma economia, um contrato nasce com os métodos — ou os campos — que têm
-consumidor. O payload do access token tem `sub`, `iat` e `exp`, e não `jti`,
-porque nada no sistema consome uma denylist — o refresh opaco e revogável é que
-faz esse papel, e uma denylist de access token foi recusada junto. Campo sem
-consumidor é código que N apps derivados copiam sem nunca exercitar.
-
-**Divisão de responsabilidade que já vale:** `infra/http/server.ts` constrói e
-configura a instância Fastify e a devolve **sem nenhuma rota**. Quem registra
-rotas, prefixos e plugins é `main/app.ts`. Essa linha é o que permite ao servidor
-ser montado num teste sem arrastar o roteamento inteiro junto.
-
-**E há uma segunda linha, entre compor e escutar.** `main/app.ts` devolve a
-aplicação inteira — docs, rotas e dependências — **sem abrir porta**;
-`main/http.ts` só chama `listen` e trata os sinais. Sem esse corte, montar o app
-completo num teste exigiria subir servidor, e cada suíte acabaria remontando a
-aplicação à mão — duas listas de registro para manter iguais, e um hook global
-que existe em produção e falta no teste passa despercebido, com a suíte verde.
-
-A conexão do banco é criada dentro do `buildApp`, que registra um hook `onClose`
-fechando o pool. Assim `app.close()` é o único teardown: nem o entrypoint nem os
-testes encerram conexão na mão.
+Assim o teste monta exatamente a aplicação de produção sem abrir porta, e
+`app.close()` é o único teardown.
 
 ---
 
 ## 3. Imports
 
-Não há path alias. O projeto usa **subpath imports do Node**, declarados em
-`package.json`, resolvidos pelo runtime — sem etapa de reescrita, sem bundler.
+Não há path alias: o projeto usa **subpath imports do Node**, declarados no
+`imports` do `package.json` e resolvidos pelo próprio runtime.
 
 ```jsonc
-"imports": {
-  "#modules/*": { "development": "./src/modules/*.ts", "default": "./dist/modules/*.js" },
-  "#shared/*":  { "development": "./src/shared/*.ts",  "default": "./dist/shared/*.js"  },
-  "#infra/*":   { "development": "./src/infra/*.ts",   "default": "./dist/infra/*.js"   },
-  "#main/*":    { "development": "./src/main/*.ts",    "default": "./dist/main/*.js"    }
-}
+"#modules/*": { "development": "./src/modules/*.ts", "default": "./dist/modules/*.js" }
+// idem para #shared/*, #infra/* e #main/*
 ```
 
-`#infra/*`, `#shared/*`, `#main/*` e `#modules/*` têm conteúdo hoje.
-`tests/integration/users-schema.spec.ts` já importa
-`#modules/auth/infra/drizzle/schema/users` — criar o primeiro módulo não exigiu mexer
-no `package.json`, que é exatamente o que o mapeamento pronto de antemão
-comprava.
+**Regras:**
 
-`#main/*` existe porque a suíte de integração, que mora em `tests/`, precisa
-alcançar `buildApp` — e a regra abaixo proíbe caminho relativo entre diretórios
-de topo.
+- **Entre diretórios de topo:** `#infra/...`, `#modules/...`, `#shared/...`,
+  `#main/...`.
+- **Dentro do mesmo galho** (mesma pasta ou subpasta): relativo **com extensão
+  `.js`** — `./schema/users.js`. ESM `nodenext` exige a extensão.
+- **Nunca subir com `..`**: `#modules/auth/errors/x`, não `../errors/x`.
+- **Exceção:** `vitest.config.ts` importa `./tests/...` por caminho relativo —
+  arquivo de config do Vite não passa pelo resolver do Node.
 
-**Duas regras, com uma exceção:**
+> ⚠️ **Sem `--conditions=development` e com `dist/` presente, o processo roda
+> código compilado velho enquanto você edita `src/`**, sem aviso. O script `dev`
+> já carrega a flag.
 
-- **Entre diretórios de topo:** `#infra/...`, `#modules/...`, `#shared/...`
-- **Dentro do próprio galho** — mesma pasta ou uma subpasta dela: relativo **com
-  extensão `.js`** — `./user-mapper.js`, `./schema/users.js`,
-  `./endpoints/register.js`. ESM com `nodenext` exige a extensão; sem ela o `tsc`
-  falha com `TS2835`.
-
-Subir de pasta com `..` fica fora do padrão: de `value-objects/` para `errors/`
-escreve-se `#modules/auth/errors/invalid-email-error`, não `../errors/...`. O
-critério é legibilidade sob refatoração — um caminho `#` continua correto depois
-de mover o arquivo; um `../../..` não.
-
-**A exceção:** `vitest.config.ts`, na raiz, importa
-`./tests/integration/setup/test-database-url.js` por caminho relativo,
-cruzando para `tests/`. Não há `#tests/*` no `imports` do `package.json` — a
-suíte de teste não é código de produção — e um arquivo de config do Vite é
-carregado pelo Vite, não pelo resolver do Node: não haveria como usar um
-subpath import ali mesmo que o mapeamento existisse.
-
-O `tsc` **não reescreve** esses especificadores: `dist/main/http.js` sai com
-`import { env } from '#infra/config/env'` literal, e o Node resolve pela condition
-`default` para `dist/`. É por isso que `package.json` precisa ir para a imagem de
-produção.
-
-> **A pegadinha mais fácil de não perceber.** Sem `--conditions=development`, com
-> `dist/` presente, o processo sobe servindo **código compilado velho** enquanto
-> você edita `src/` — sem nenhum aviso. O script `dev` já carrega a flag; não a
-> remova.
-
-### As três opções do tsconfig que sustentam isso
-
-`rootDir`, `outDir` e `customConditions` **não são preferência**. Sem elas o
-projeto não compila, e o modo de falha não é óbvio:
-
-- Sem `customConditions: ["development"]`, o `tsc` resolve `#infra/...` pelo ramo
-  `default` — ou seja, procura em `dist/`, que ainda não existe. Resultado:
-  **`TS2307` em todo import `#`**.
-- Sem `rootDir: "src"`, o `tsc` calcula a raiz comum das entradas. Basta o
-  `include` alcançar um arquivo fora de `src/` para a saída virar `dist/src/...`,
-  e aí o `imports` do `package.json`, que aponta para `./dist/infra/*.js`, passa a
-  apontar para o nada.
-
-Ambos verificados rodando uma config de biblioteca sobre esta árvore: 3 erros de
-compilação e a saída no lugar errado.
-
-**Onde cada uma mora.** `customConditions` fica no `tsconfig.json`, que vale para
-o repositório inteiro. `rootDir` e `outDir` são preocupação de quem emite, e por
-isso ficam só no `tsconfig.build.json` — ver §9.
+No `tsconfig`, `customConditions: ["development"]` (senão todo import `#` dá
+`TS2307`) e, só no `tsconfig.build.json`, `rootDir: "src"` / `outDir: "dist"`
+(senão a saída vira `dist/src/...` e o `imports` aponta para o nada).
 
 ---
 
-## 4. Regras com dente
+## 4. Regras verificadas por máquina
 
-Regra que não é verificada por máquina é combinado, e combinado não sobrevive a
-N projetos derivados. Estas falham no `pnpm lint`:
+Regra que nenhuma máquina verifica não sobrevive a N projetos derivados. Estas
+falham o `pnpm lint`:
 
-| | Regra | Mecanismo | Verificado |
-|---|---|---|---|
-| **R6** | Só `src/infra/config/env.ts` lê `process.env` | Biome `style/noProcessEnv` + `overrides` | ✅ fixture faz o lint sair com exit 1 |
-| **Fronteira** | Quem importa quem (a tabela do §2) | `dependency-cruiser` + `tools/boundaries/check.mjs` | ✅ 8 fixtures negativas e 2 positivas |
+| Regra | Mecanismo |
+|---|---|
+| **R6** — só `src/infra/config/env.ts` lê `process.env` | Biome `style/noProcessEnv` |
+| **Fronteira** — a tabela do §2 | `dependency-cruiser` + `tools/boundaries/check.mjs` |
 
-**A fronteira saiu da dívida.** Ela era o maior item desta seção — regra que
-quebra em silêncio, que um revisor cansado deixa passar — e hoje falha o
-`pnpm lint`. O que resta abaixo é menor, e cada linha diz por quê:
+Estas ainda dependem de revisão:
 
-| Regra | Alvo desde | Mecanismo possível | Situação |
-|---|---|---|---|
-| **R7** — camada pura não produz valor não determinístico | `modules/auth/{entities,value-objects,use-cases}` | Biome `noRestrictedGlobals`/`noRestrictedImports` restrito por caminho | ⚠️ só revisão humana |
-| **R1** — repositório usa só a API core do Drizzle | `infra/drizzle/drizzle-users-repository.ts` | lint proibindo `db.query.*` | ⚠️ só revisão humana |
-| **R2** — coluna sempre nomeada explicitamente | `infra/drizzle/schema/users.ts` | difícil de lintar; teste de schema cobre na prática | ⚠️ aceito |
-| **R4** — migrations forward-only | `drizzle/` | difícil de lintar; convenção + review | ⚠️ aceito |
+| Regra | Situação |
+|---|---|
+| **R7** — camada pura não produz valor não determinístico (`new Date()`, `Math.random()`, `randomUUID()`); tempo e id entram por `IClock` e `IIdGenerator` | revisão humana — é a próxima que merece dente |
+| **R1** — repositório usa só a API core do Drizzle, nunca `db.query.*` | revisão humana |
+| **R2** — toda coluna nomeada explicitamente | coberto na prática pelo teste de schema |
+| **R4** — migrations forward-only | convenção + revisão |
 
-R7 é a que ainda vale automação: como a fronteira era, ela quebra em silêncio.
-R2 e R4 são convenções que o teste de integração e o próprio formato da pasta já
-tornam visíveis.
+A skill `architecture-audit` (`audit-scan.mjs`) é a rede de revisão: aponta por
+linha o que a tabela permite mas merece olhar. O `dependency-cruiser` é o portão.
 
-> **A regra que existia e não pegou.** A tabela abaixo já proibia "logar objeto
-> de request ou entidade inteira" desde antes desta fatia. O vazamento de hash
-> que a revisão final encontrou (§8) era exatamente essa forma — por um objeto de
-> **erro**, não de entidade. A regra estava certa; nada a verificava, e ninguém
-> leu a linha na hora de escrever `request.log.error({ err })`. É o argumento
-> mais concreto que este projeto tem a favor de dar dente às cinco acima.
+### Não desligue a fronteira sem perceber
 
-**Por que R6 importa:** cada módulo vai declarar o schema Zod das suas env vars, e
-o boot faz o merge. Se um módulo lesse `process.env` direto, esquecer de registrar
-o schema no merge passaria despercebido — a variável simplesmente não seria
-validada e chegaria `undefined` em produção. Com o acesso restrito e a config
-injetada tipada, esquecer o merge vira erro de compilação.
+O `dependency-cruiser` enforça **zero com exit 0** se qualquer destas três sair
+de `.dependency-cruiser.mjs` / `pnpm-workspace.yaml`:
 
-### Como a fronteira tem dente: as três armadilhas, desarmadas
+1. **`tsPreCompilationDeps: true`** — sem ele, `import type` é invisível, e
+   quase toda dependência entre camadas é uma interface.
+2. **`conditionNames` com `development`** — sem ele, `#` resolve para `dist/` e
+   as regras param de casar.
+3. **TypeScript `<7` aninhado** — o `dependency-cruiser` não fala TS 7; o
+   `packageExtensions` do `pnpm-workspace.yaml` lhe dá um TypeScript 6 próprio.
 
-O mecanismo é **`dependency-cruiser`**, não um plugin de boundaries do ESLint —
-plugin de boundaries **ignora em silêncio todo import que o resolver não
-resolve**, e nenhum resolver de ESLint entende o campo `imports` do
-`package.json`. Como todos os imports entre diretórios usam `#` (§3), o lint
-passaria verde sem enxergar nada.
-
-E há três configurações sem as quais ele enforça **zero**. Cada uma sozinha
-desliga a regra **com exit 0**. Todas as três estão em `.dependency-cruiser.mjs`:
-
-1. **`tsPreCompilationDeps: true`** — sem isso, `import type` fica invisível.
-   Nesta árvore são **335 arestas de 1003, 33%**: exatamente a metade da
-   fronteira que a regra existe para proteger, já que quase toda dependência
-   entre camadas é uma interface.
-2. **`conditionNames` incluindo `development`** — sem isso, `#modules/*` resolve
-   para `./dist/*.js` e as regras, escritas contra `^src/`, param de casar. Note
-   o detalhe traiçoeiro: sem a condition ele cruza *mais* módulos e acha *menos*
-   violações.
-3. **TypeScript pinado em `<7`** — o `dependency-cruiser` suporta
-   `>=2.0.0 <7.0.0`, e este projeto usa TypeScript 7 (§11). Com o TS 7 ele emite
-   um **aviso** em stderr, não um erro: zero módulos cruzados, exit 0, CI verde.
-   Resolvido sem rebaixar o projeto — o `packageExtensions` do
-   `pnpm-workspace.yaml` aninha um TypeScript 6.0.3 debaixo do
-   `dependency-cruiser`, que resolve o compilador a partir do diretório **dele**.
-
-> **A guarda, mais forte que a proposta original.** Esta seção pedia um script
-> que falhasse se `modules cruised === 0`. O `tools/boundaries/check.mjs` faz
-> mais: compara a contagem de módulos em `src/` com os `.ts` em disco (229 =
-> 229) e falha nomeando os que sumiram. Pega os três modos acima **e** a perda
-> parcial — um arquivo que o TypeScript 6 não parseie sairia do grafo sem zerar
-> a contagem. Antes de cruzar, o pré-voo compara a versão de TypeScript que o
-> `dependency-cruiser` de fato resolve com a faixa que ele declara suportar, e
-> morre dizendo qual é. Um quarto ato classifica todo arquivo de `src/` pela
-> tabela do §2 e falha no que não cair em elemento nenhum.
-
-A configuração só vale acompanhada de fixtures que provem que funciona, e elas
-vivem em `tools/boundaries/fixtures/` como `.ts.txt`, para que nem o `tsc` nem o
-Biome parseiem código que viola de propósito. São **8 negativas que precisam
-falhar** — uma por regra — e **2 positivas que precisam passar**: `.spec.ts`
-colocado → in-memory, e `main/` → implementações concretas. O positivo do
-`.spec.ts` não é decorativo: é o teste de regressão da **ordem de avaliação**;
-removendo a exclusão de `test` do padrão de `pure`, ele passa a ser acusado.
-
-Cada negativa afirma **qual regra** disparou, não o exit code. Uma fixture que
-falha pela razão errada — um import não resolvido, por exemplo — passaria numa
-asserção que só olhasse exit 1.
-
-### Dois verificadores, dois papéis
-
-A fronteira tem duas ferramentas, e elas não são redundantes:
-
-| | `dependency-cruiser` | `audit-scan.mjs` |
-|---|---|---|
-| papel | **portão**: exit 1 no `pnpm lint` | **rede de revisão**: achado por linha, com explicação |
-| enxerga | o grafo resolvido, `import type` inclusive | o texto do specifier |
-| quando roda | todo lint, todo CI | quando a skill `architecture-audit` é invocada |
-
-Os dois consomem `tools/boundaries/layers.mjs`, onde a tabela do §2 está
-expressa **uma vez**. O portão barra o que a tabela proíbe; a rede questiona o
-que a tabela permite mas merece olhar — `src/infra/` conhecendo o domínio de um
-módulo é o caso que existe hoje.
+O `check.mjs` guarda as três: confere a versão de TypeScript resolvida, compara
+os módulos cruzados com os `.ts` em disco e falha em arquivo sem elemento.
+Mudou uma regra? Atualize as fixtures em `tools/boundaries/fixtures/` — cada
+negativa afirma **qual** regra disparou.
 
 ### Legal / não legal
 
 | ✅ | ❌ |
 |---|---|
-| `buildServer(env)` — a config chega injetada | `process.env.X` fora de `env.ts` |
-| Toda env numérica com `.int().positive()` | `z.coerce.number()` cru — `PORT=` vira **`0`** em silêncio |
-| Registrar rotas em `main/app.ts` | Registrar rotas dentro de `server.ts` |
+| Config chega injetada: `buildServer(env)` | `process.env.X` fora de `env.ts` |
+| Env numérica com `.int().positive()` | `z.coerce.number()` cru — `PORT=` vira `0` em silêncio |
+| Registrar rotas em `main/app.ts` | Registrar rotas em `server.ts` |
 | `import '#infra/http/server'` | `import '../../infra/http/server.js'` |
-| Logar campo escolhido | Logar objeto de request ou entidade inteira |
-| Porta no consumidor + adaptador em `main/` | `infra/` de um módulo importando outro módulo |
-| Dependência em versão exata | `^` ou `~` em qualquer dependência |
+| Logar campo escolhido | Logar objeto de request, entidade ou erro de driver inteiro |
+| Porta no consumidor + adaptador em `main/` | Um módulo importando outro |
+| Dependência em versão exata | `^` ou `~` |
 
 ---
 
 ## 5. Configuração e log
 
-**`env.ts` valida tudo no boot e mata o processo se algo estiver errado**, com a
-lista de campos inválidos. Falhar no start é o comportamento desejado: env
-inválida não deve virar bug três horas depois.
+- **`env.ts` valida tudo no boot e mata o processo** com a lista de campos
+  inválidos. Env inválida não vira bug três horas depois.
+- **Cada módulo declara o schema Zod das suas env vars** em `config.ts`, e o
+  schema é registrado no merge de `env.ts`. Como só `env.ts` lê `process.env`
+  (R6), esquecer o registro é erro de compilação, não `undefined` em produção.
+- **Env numérica em branco falha no boot** em vez de virar `0` pela coerção.
 
-```
-$ PORT= node dist/main/http.js
-Variáveis de ambiente inválidas:
-✖ Too small: expected number to be >0
-  → at PORT
-exit=1
-```
+**Log.** Um único pino, criado por `createLogger` em
+`infra/observability/logger.ts` e compartilhado por todo entrypoint e pelo
+Fastify. Regras:
 
-O logger é um **pino próprio**, criado por `createLogger` em
-`infra/observability/logger.ts` e entregue ao Fastify por `loggerInstance`. Ele
-saiu de dentro do `server.ts` quando a transação passou a poder registrar
-tentativas de retry: o composition root é compartilhado por `http`, `worker` e
-`cron`, e um worker que montasse o próprio pino duplicaria o
-`REDACT_PATHS` — a lista que mantém hash de senha e token fora do log. `buildApp`
-cria um só e o passa aos dois lados.
-
-Três configurações merecem nota:
-
-- **`genReqId: () => randomUUID()`** — o padrão do Fastify é um **contador por
-  processo** (`req-1`, `req-2`). Com duas réplicas as duas emitem `req-1`, e um
-  restart reinicia a contagem: grepar um `traceId` no agregador devolveria
-  requisições sem relação entre si. É o mesmo valor que aparece no corpo de erro
-  (§8), então o `traceId` de um print do usuário grepa a linha exata do log.
-- **`logController: new LogController({ requestIdLogLabel: 'traceId' })`** — sem
-  isso o Fastify loga `reqId` e o resto do sistema fala `traceId`, derrotando o
-  grep único. A opção `requestIdLogLabel` de topo existe, mas está **deprecada** e
-  sai no Fastify 6.
-- **`redact`** cobre senha, token e headers de autenticação. Mas o `redact` do
-  pino **não é recursivo** (`*.x` casa exatamente um nível) e o serializer `req`
-  padrão do Fastify **não emite headers**. Então a lista é rede de segurança, não
-  garantia: a regra que realmente protege é **nunca logar objeto inteiro**.
-
-Em `NODE_ENV=development` o log sai por `pino-pretty`; em produção é JSON puro.
+- **Nunca logue objeto inteiro** — request, entidade ou erro cru. O `redact`
+  cobre senha, token e headers de autenticação, mas é rede de segurança, não
+  garantia: não é recursivo.
+- **Todo log de request carrega `traceId`** — um UUID por request, o mesmo que
+  volta no corpo de erro (§8). Ele vive num `AsyncLocalStorage`
+  (`request-context.ts`), então nada precisa repassá-lo por parâmetro.
+- Em development o log sai por `pino-pretty`; em produção, JSON.
 
 ---
 
 ## 6. Banco de dados
 
-**PostgreSQL**, acessado via `pg` (driver `node-postgres`) e Drizzle. A conexão
-mora em `src/infra/database/client.ts`, infra global compartilhada por todos
-os módulos — cada um dono das próprias tabelas, como descrito em `Posse de
-tabela` mais abaixo.
+**PostgreSQL** via `pg` e Drizzle. A conexão mora em
+`src/infra/database/client.ts`, compartilhada por todos os módulos.
 
-```ts
-// src/infra/database/client.ts
-export type Database = NodePgDatabase | NodePgTransaction<EmptyRelations>
-```
-
-`DATABASE_URL` é validada em `env.ts` (§5), sem valor default — o boot falha
-se faltar, mesma regra das demais variáveis.
-
-### Limites de conexão, e por que subir o pool é a alavanca errada
-
-**A aritmética que decide a topologia.** O instinto ao ver "10 conexões" é subir
-o número; num sistema com várias instâncias isso é a alavanca errada, porque o
-custo é **multiplicativo**:
+### Pool
 
 ```text
 instâncias × DATABASE_POOL_MAX  ≤  max_connections − reserva
 ```
 
-Com os defaults do Postgres — `max_connections` 100, 3 reservadas para superuser
-— **9 instâncias × 10 já flerta com o teto**. Vinte instâncias com `max` 50 pedem
-1000 conexões e o servidor recusa.
+Subir o pool é a alavanca errada com várias réplicas: o custo multiplica, e
+cada conexão é um processo no Postgres. Passado o teto, a saída é um **pooler em
+transaction mode** (PgBouncer, RDS Proxy) na frente.
 
-E conexão do Postgres não é thread: cada uma é um **processo backend**, com
-memória própria e contenção em estruturas compartilhadas. Passado o ponto em que
-os cores do banco saturam, aumentar o pool só troca "fila no app" por "thrash no
-banco" — pior, porque o banco é compartilhado entre as instâncias enquanto a fila
-é local.
+- **Não use `.prepare()`.** O Drizzle manda prepared statements anônimos, que
+  sobrevivem ao pooler; um statement nomeado quebra essa compatibilidade longe
+  da causa.
+- Pool e timeouts vêm de `DATABASE_POOL_MAX` e `DATABASE_*_TIMEOUT_MS`, com
+  default em `env.ts`. **`0` num timeout não desliga** — deixa valer o do
+  servidor.
 
-**Quando a resposta deixa de ser o pool.** Quando `instâncias × max` encosta no
-teto, a saída é um **pooler em transaction mode** entre app e Postgres, com pool
-modesto por instância. E aqui o projeto já está do lado certo:
-
-> Verificado em `drizzle-orm@1.0.0-rc.4`, `node-postgres/session.js:39`:
-> `queryName` só é definido quando alguém pede `.prepare()` explicitamente. Por
-> default o Drizzle manda **prepared statements anônimos**, que é exatamente o
-> que sobrevive a um pooler em transaction mode.
->
-> **A armadilha:** quem "otimizar" uma query com `.prepare()` um dia quebra o
-> pooler, e a falha aparece longe da causa. Se o `.prepare()` for necessário, o
-> pooler precisa sair de transaction mode — ou a query volta a ser anônima.
-
-
-Cinco variáveis governam o pool e os timeouts, todas com default em `env.ts`:
-`DATABASE_POOL_MAX` (10), `DATABASE_CONNECTION_TIMEOUT_MS` (5000),
-`DATABASE_STATEMENT_TIMEOUT_MS` (10000), `DATABASE_LOCK_TIMEOUT_MS` (5000) e
-`DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS` (10000). Elas passaram a importar
-quando o Unit of Work nasceu: uma conexão deixou de ser retida pela duração de
-uma **query** e passou a ser retida pela duração de um **callback**.
-
-O instinto ao ver um pool de 10 é aumentá-lo. Num sistema com várias réplicas
-isso é a alavanca errada, porque o custo é multiplicativo:
-
-```
-instâncias × DATABASE_POOL_MAX  ≤  max_connections − reserva
-```
-
-Com os defaults do Postgres (`max_connections` 100, 3 reservadas), **9
-instâncias × 10 já encosta no teto**. Conexão do Postgres não é thread: cada uma
-é um processo backend com memória própria. Passado o ponto em que os cores do
-banco saturam, pool maior só troca fila no app por contenção no banco — pior,
-porque o banco é compartilhado e a fila é local.
-
-Quando `instâncias × max` encosta no teto, a resposta é um **pooler em
-transaction mode** (PgBouncer, RDS Proxy, Supavisor) na frente. O boilerplate já
-é compatível: o Drizzle manda prepared statements **anônimos** por default.
-**Chamar `.prepare()` numa query quebra essa compatibilidade**, e a falha
-aparece longe da causa.
-
-Duas armadilhas registradas:
-
-- **`0` num timeout não desliga.** O `pg` envia os três sob `if (params.x)`, então
-  um zero simplesmente não é enviado e vale o que o servidor tiver — que num
-  Postgres gerenciado pode ser um valor de parameter group.
-- **Valor em branco é recusado no boot.** Sem isso, `VAR=` viraria `0` pela
-  coerção e desligaria a proteção em silêncio — falha aberta.
-
-A aritmética que decide a topologia, e a armadilha do `.prepare()`, estão acima
-nesta mesma seção.
-
-Localmente, o Postgres sobe via `docker-compose.yml` (`postgres:18.4-alpine3.24`),
-infra apenas — a aplicação roda no host:
+### Migrations
 
 ```bash
-docker compose up -d    # sobe os dois Postgres (dev e teste)
-pnpm dev                # aplicação, no host
+pnpm db:generate --name=create_users_table   # SEMPRE com --name
 ```
 
-São **dois serviços**, a mesma imagem pinada:
+- **Forward-only (R4).** Migration commitada é imutável; corrija com uma nova.
+- **Nunca renomeie uma migration aplicada.** O migrator compara pelo **nome da
+  pasta**: renomear a faz rodar de novo.
+- `drizzle/` fica fora do Biome — é saída de ferramenta.
 
-| serviço | porta | banco | dados |
-|---|---|---|---|
-| `postgres` | 5432 | `api_clean_platform` | volume nomeado, persistente |
-| `postgres-test` | 5433 | `api_clean_platform_test` | `tmpfs`, some quando o container para |
+### Regras dos repositórios
 
-O serviço separado é o que garante que a suíte de integração nunca alcance dado
-de desenvolvimento, e o `tmpfs` faz do restart do container o reset do estado.
-O `globalSetup` do projeto `integration` no Vitest
-(`tests/integration/setup/migrate-test-database.ts`) aplica as migrations
-commitadas antes de qualquer teste rodar, então o banco vazio do `tmpfs` nunca
-é um passo manual.
+- **Erro de driver não sai do `infra/`.** Um repositório nunca relança o erro do
+  driver: a `message` do `DrizzleQueryError` carrega todo parâmetro vinculado,
+  inclusive hash de senha. Converta com `toPersistenceError`
+  (`infra/database/driver-error.ts`), que copia só uma lista de permissão de
+  campos e não guarda `cause`.
 
-`drizzle.config.ts` (raiz) gera e aplica migrations via `pnpm db:generate` /
-`pnpm db:migrate` (§10). Seu glob de schema
-(`src/modules/*/infra/drizzle/schema/*.ts`) casa com
-`src/modules/auth/infra/drizzle/schema/users.ts`, e a migration gerada dele está
-commitada em `drizzle/`.
+  ```ts
+  } catch (error) {
+    if (isEmailAlreadyInUse(error)) throw new EmailAlreadyInUseError()
+    throw toPersistenceError(error)   // nunca `throw error`
+  }
+  ```
 
-### Migration: sempre com `--name`, e nunca renomeie uma já aplicada
-
-O drizzle-kit escreve **uma pasta por migration** — `<timestamp>_<nome>/` com
-`migration.sql` e `snapshot.json` dentro. Sem `--name` ele sorteia um nome
-aleatório (`bouncy_makkari`), que não diz nada numa pasta com trinta migrations:
-
-```bash
-pnpm db:generate --name=create_users_table
-```
-
-> ⚠️ **O nome da pasta é a chave de controle.** O migrator decide o que rodar
-> comparando **nome**, não hash: `localMigrations.filter((lm) => !dbNamesSet.has(lm.name))`.
-> Renomear uma migration já aplicada faz o drizzle tratá-la como nova e rodar de
-> novo — num `CREATE TABLE`, erro de "relation already exists".
->
-> O hash **é** gravado na tabela `drizzle.__drizzle_migrations`, mas nunca é
-> comparado. Editar o SQL de uma migration já aplicada, portanto, não é
-> detectado: passa em silêncio e o hash gravado fica velho. Migration commitada
-> é imutável — corrija com uma nova (R4, forward-only).
-
-`drizzle/` está **fora do Biome** (`biome.jsonc`): é saída de ferramenta, e o
-`snapshot.json` gerado não bate com a formatação dele — lintar aquilo faria
-`pnpm lint` quebrar depois de todo `db:generate`, e o `lint:fix` "resolveria"
-reescrevendo um arquivo gerado.
-
-### Violação de unicidade: case o nome da constraint, não só o código
-
-O repositório traduz `23505` do Postgres para erro de domínio, mas **só quando a
-`constraint` é a esperada**. A `users` já tem duas constraints únicas — o índice
-de e-mail e a primary key —, e casar apenas o código transformaria uma colisão de
-`id` num `409 EMAIL_ALREADY_IN_USE` sobre uma falha que é `500`.
-
-O nome do índice é constante exportada do arquivo de schema, lida pelo
-repositório. É a exceção à exceção de magic strings do `CLAUDE.md`: ela vale
-enquanto o nome aparece uma vez só.
-
-O erro do `pg` fica no `.cause`, não no topo — o Drizzle embrulha em
-`DrizzleQueryError`. Por isso a checagem anda a cadeia de `cause`, e não olha a
-`message`.
-
-### Erro de driver não sai do `infra/`
-
-> **Regra:** um repositório **nunca** relança o erro que o driver lhe deu.
-
-O motivo é que esse objeto carrega segredo. A `.message` do `DrizzleQueryError`
-**não** é o texto da query: é `Failed query: ${query}\nparams: ${params}` — o
-texto **mais todo parâmetro vinculado**. Num INSERT em `users`, um desses
-parâmetros é o hash de senha. Como a `stack` deriva da `message` e `params` é
-propriedade própria enumerável, são **três** carregadores do mesmo segredo no
-mesmo objeto.
-
-```ts
-} catch (error) {
-  if (isEmailAlreadyInUse(error)) throw new EmailAlreadyInUseError()
-
-  throw toPersistenceError(error)   // ← nunca `throw error`
-}
-```
-
-`src/infra/database/driver-error.ts` faz a conversão. O que sobrevive é **lista
-de permissão, não de proibição**: a `message` do erro do Postgres, o `code`, o
-`constraint` e a `query` com marcadores. Copiar tudo menos `params` traria o
-`detail` junto, e é nele que o Postgres escreve o valor conflitante —
-`Key (email)=(joao@example.com) already exists.`. Com lista de permissão, campo
-novo que o driver adicione amanhã não entra por acidente.
-
-O `PersistenceError` resultante **não tem `cause`**, e isso é o ponto do tipo: o
-`stdSerializers.err` do pino concatena a cadeia inteira de `cause` na `message`
-e na `stack` do erro de topo, então guardar o original vazaria tudo de volta a
-partir de uma posição aninhada.
-
-**Por que prevenir na origem em vez de limpar no log.** Conter no logger exige
-antecipar *toda* posição onde um erro pode se esconder — `cause`, os `errors[]`
-de um `AggregateError`, qualquer chave própria com valor parecido com erro. O
-pino caminha por todas; um sanitizador nosso caminharia pelas que a gente
-lembrasse. Prevenir tem **um** lugar para acertar, e ele já existia: o `catch`
-que traduz a violação de constraint.
-
-O `error-serializer.ts` continua registrado no logger como **segunda camada**,
-para o caso de um repositório que não siga a regra deixar um erro cru chegar ao
-log no topo.
-
-### Tempo: `timestamptz` sempre, e a perda de precisão na leitura
-
-Toda coluna de tempo é `timestamp with time zone`. **Ele não guarda fuso** — o
-nome engana. Guarda um instante absoluto; o fuso só participa em duas bordas:
-converte na entrada, se o valor vier com offset, e renderiza na saída conforme o
-`TimeZone` da sessão. O mesmo registro, lido em três sessões:
-
-```
-UTC                 2026-08-26 00:55:13.159767+00    epoch 1787705713.159767
-America/Sao_Paulo   2026-08-25 21:55:13.159767-03    epoch 1787705713.159767
-Asia/Tokyo          2026-08-26 09:55:13.159767+09    epoch 1787705713.159767
-```
-
-Três aparências, um instante. A aplicação é imune: o `pg` devolve um `Date` do
-JS, que também é instante absoluto — verificado com o processo Node em
-`America/Sao_Paulo` lendo o mesmo epoch.
-
-O que **não** se usa é `timestamp` sem timezone: esse guarda o relógio de parede
-literal, sem conversão. É de onde vêm os bugs de deploy multi-região — dois
-servidores gravando "14:00" e nenhuma forma de saber qual.
-
-> ⚠️ **Precisão se perde na leitura.** O Postgres guarda microssegundos; o `Date`
-> do JS só tem milissegundos. Ler um valor gravado pelo `now()` do banco trunca:
-> `…13.159767` vira `…13.159`.
->
-> Irrelevante para `created_at`. Relevante para qualquer comparação exata de
-> instantes onde um lado venha do banco e o outro do `IClock` — exatamente as
-> comparações que a rotação do refresh token faz. Quando o `IClock` for a
-> fonte, tudo passa a ser gravado com precisão de ms de qualquer forma, e a
-> assimetria sobra só nas linhas escritas pelo default.
-
-`GET /health` consulta o banco (`select 1`) a cada chamada: responde `200` com
-o banco no ar, `503` com o banco fora. Sem preflight no boot — o processo sobe
-mesmo com o banco inatingível, para que `/health` consiga reportar a falha em
-vez do processo crash-loopar.
+- **Violação de unicidade casa o nome da constraint**, não só o código `23505` —
+  senão uma colisão de primary key vira erro de domínio. O nome do índice é
+  constante exportada do arquivo de schema.
+- **Tempo é sempre `timestamptz`**, nunca `timestamp` sem fuso. O `Date` do JS
+  trunca microssegundos para milissegundos na leitura — cuidado com comparação
+  exata entre um valor do banco e um do `IClock`.
+- **`updated_at` é enviado sempre, explicitamente.** Omitir a coluna deixa o
+  `$onUpdate` usar o relógio do sistema em vez do `IClock`.
 
 ### Posse de tabela
 
-Cada módulo declara suas tabelas em `infra/drizzle/schema/`, **um arquivo por
-tabela, nomeado pela tabela** — o diretório já diz "schema do Drizzle", então o
-nome do arquivo não repete. Uma foreign key
-só atravessa arquivos **do mesmo módulo**; entre módulos, referencia-se por id
-sem constraint, e a integridade fica na aplicação. Todas as tabelas vivem em
-`public` — um schema do Postgres por módulo foi considerado e adiado: ele
-isola de verdade, mas custa search_path em toda conexão, migration por schema e
-um pool que não compartilha plano entre módulos, para resolver uma colisão de
-nome que a convenção de nomear tabela por módulo já evita.
+Cada módulo declara as próprias tabelas em `infra/drizzle/schema/`, **um arquivo
+por tabela, nomeado pela tabela**. Foreign key só entre tabelas **do mesmo
+módulo**; entre módulos, referencia-se por id sem constraint. Tudo vive no
+schema `public`.
+
+### Local
+
+`pnpm db:up` sobe via `docker-compose.yml` o Postgres de dev (5432, volume
+persistente), o de teste (5433, `tmpfs`), o Redis e o Mailpit. A aplicação roda
+no host. A suíte de integração aplica as migrations commitadas sozinha, no
+`globalSetup`.
 
 ---
 
 ## 7. HTTP e documentação da API
 
-Um endpoint é **um arquivo** com schemas Zod, handler e rota juntos —
-`infra/http/endpoints/health.ts` é o exemplo vivo. Os schemas Zod não são só
-validação: são também a fonte da documentação, sem nenhuma duplicação.
-
-**O que faz isso funcionar:** `server.ts` registra os compilers do
-`fastify-type-provider-zod` (`setValidatorCompiler` / `setSerializerCompiler`).
-Sem eles o Fastify recebe schema Zod onde espera JSON Schema e **falha em
-runtime**.
-
-`infra/http/openapi.ts` gera o documento OpenAPI 3.1 e serve a UI em `/docs`
-(spec crua em `/docs/json`). Ali também é declarado
-`components.securitySchemes.bearerAuth` (`http`, esquema `bearer`, formato
-`JWT`) — os endpoints protegidos referenciam esse esquema por `security:
-[{ bearerAuth: [] }]` em vez de repetir a definição em cada arquivo.
-
-> **Só em `NODE_ENV=development`.** Nenhum ambiente deployado publica a
-> superfície da API: fora de development as rotas nem existem, respondem 404.
-
-Duas armadilhas de ordem, ambas silenciosas:
-
-- **`registerOpenApi` tem que rodar antes das rotas.** O `@fastify/swagger`
-  engancha no hook `onRoute`; rota registrada antes dele simplesmente não
-  aparece na spec — sem erro, sem aviso.
-- **`transform: jsonSchemaTransform` é obrigatório.** É ele que converte o Zod
-  em JSON Schema. Sem ele a spec sai vazia.
+- **Um endpoint é um arquivo**: schemas Zod, handler e rota juntos, em
+  `infra/http/endpoints/`. Os schemas validam **e** geram o OpenAPI.
+- **O handler é um tradutor.** Valida, chama o use case, escolhe o status. Um
+  `if` de regra de negócio nele está no lugar errado, e ele não tem `try/catch`.
+- **`/docs` e `/docs/json` só existem em `NODE_ENV=development`.** Fora dele
+  respondem 404. `registerOpenApi` roda antes das rotas, senão elas somem da spec.
+- Endpoint protegido referencia `security: [{ bearerAuth: [] }]`, declarado uma
+  vez em `openapi.ts`.
 
 ### Todo endpoint declara todo status que ele mesmo produz
 
@@ -940,137 +407,48 @@ response: {
 },
 ```
 
-O motivo é o cliente: num boilerplate cujo consumidor é app mobile, o OpenAPI é o
-contrato de onde se gera código. Endpoint que documenta só o caminho feliz
-obriga o cliente a descobrir os erros por tentativa.
+O OpenAPI é o contrato de onde o cliente gera código. Declara-se o que o handler
+e o schema daquela rota podem gerar — inclusive `503` em rota que abre transação.
+**Não** se declara o que o framework produz em qualquer rota (`500`, `415`).
 
-**"Que ele mesmo produz" é o recorte, e ele importa.** Declara-se o que o handler
-e o schema daquela rota podem gerar — `register.ts` declara `201`, `400` e `409`;
-`health.ts` declara `200` e `503`; `refresh.ts`, `logout.ts` e `logout-all.ts`
-declaram **503** porque abrem transação, e um deadlock que sobrevive ao retry do
-runner sai como `TransactionConflictError`. **Não** se declara o que o framework produz em
-qualquer rota: `500` do handler genérico e `415` de content-type errado são
-universais, e repetir os dois em todo arquivo é ruído que ninguém mantém.
+- Status não declarado no schema é **erro de compilação** no handler.
+- O schema de resposta **valida** o corpo: forma que não bate vira `500`.
+- `204` é `z.null()` no schema e `.send(null)` no handler.
 
-> **Declarar tem uma consequência que não é óbvia:** o `serializerCompiler` passa
-> a **validar** o corpo daquele status contra o schema. Se o `error-handler.ts`
-> um dia produzir uma forma que não bate, o cliente recebe **500** no lugar do
-> status pretendido. Funciona hoje porque `errorResponseSchema` tem `details`
-> opcional, e as duas formas que o handler emite — com e sem `details` — passam
-> nas duas. Um campo novo obrigatório no envelope quebraria isso em silêncio, e
-> o teste que pega é o que assere o **corpo**, não só o status.
+### Data em resposta: `z.date()`, não `z.iso.datetime()`
 
-> **Medida, não hipotética.** `z.iso.datetime()` rejeita um `Date`: devolver um
-> campo de data cru onde o schema promete essa string responde **500**, sem nada
-> no corpo apontando a causa — é exatamente a consequência acima, aplicada.
+O handler entrega o `Date` e o serializer emite ISO. Assim o use case devolve a
+forma que o contrato publica, sem `.toISOString()` no handler. Formatar é
+trabalho do transporte, não da camada pura.
 
-> **O type provider dá dente à regra, e isso foi verificado.** Sob o
-> `ZodTypeProvider`, responder um status que o schema **não declara** é **erro de
-> compilação**: `reply.status(204)` num endpoint que declara só `401` falha com
-> *"Argument of type '204' is not assignable to parameter of type '401'"*. A
-> regra desta seção deixou de depender só de revisão para o status do próprio
-> handler.
->
-> **Um 204 precisa de `z.null()` no schema e `.send(null)` no handler.**
-> `.send()` sem argumento não compila (*"Expected 1 arguments, but got 0"*). O
-> corpo sai com zero bytes e o documento publica a resposta **sem `content`**,
-> que é a forma certa para um 204.
+### Health
 
-### Data em resposta: declare `z.date()`, não `z.iso.datetime()`
-
-A saída de um schema de data é a mesma nas duas formas; o que muda é **quem
-converte**.
-
-| No schema | O handler entrega | Vai no corpo | Publica no OpenAPI |
-|---|---|---|---|
-| `z.date()` | `Date` | `"2026-08-28T00:38:13.576Z"` | `type: string, format: date-time` |
-| `z.iso.datetime()` | `string` ISO | idem | idem **+ um `pattern` longo** |
-
-O `serializerCompiler` aceita o `Date` e emite ISO sozinho — medido, inclusive
-com campo anulável, e continua rejeitando tipo errado, então o schema segue sendo
-guarda. O `pattern` extra não tem consumidor num schema de **resposta**: quem gera
-cliente usa o `format`, e ninguém valida a resposta do servidor contra a regex.
-Ele ganha o pão em schema de **request** — é o caso do `PASSWORD_POLICY_PATTERN`
-no register.
-
-**O que isso decide não é formatação, é fronteira.** Com `z.iso.datetime()`, todo
-handler chama `.toISOString()`, e para isso precisa conhecer os tipos internos do
-domínio. Com `z.date()`, o use case entrega a forma que o contrato publica e o
-endpoint só escolhe o status:
-
-```ts
-const profile = await container.getUserProfile.execute(getPrincipal(request).id)
-
-return reply.status(OK_STATUS).send(profile)
-```
-
-**A regra que sai daí, e vale para o próximo use case:** *comando devolve recibo,
-consulta devolve read model.* `registerUser` e `loginUser` mudam estado e
-devolvem o mínimo (`{ id }`, `{ accessToken }`); `getUserProfile` não muda nada e
-devolve `UserProfileResult` — plano, com o value object já desembrulhado e as
-datas ainda como `Date`.
-
-Datas ficam `Date` de propósito: formatar é trabalho do transporte, e devolver
-ISO da camada pura faria ela servir HTTP especificamente, deixando os entrypoints
-de worker e cron fazendo parse de volta.
-
-Os endpoints checados por `/health` vivem em `infra/health/checks/`, um arquivo
-por dependência. O endpoint só agrega e traduz para HTTP: `redis-check.ts` é o
-irmão de `database-check.ts`, e uma API externa ganharia o seu em vez de
-crescer o handler. Só o banco decide o status — o Redis é reportado, mas uma
-sonda vermelha por causa dele tiraria de circulação até as rotas que nunca o
-tocam.
+`GET /health` agrega os checks de `infra/health/checks/`, um arquivo por
+dependência. Só o banco decide o status (`200` / `503`); o Redis é reportado sem
+derrubar a sonda. O processo sobe mesmo com o banco fora, para que o `/health`
+consiga reportar a falha.
 
 ---
 
 ## 8. Erros
 
-Toda falha responde no **mesmo envelope**, com um `code` estável que o cliente
-pode ramificar:
+Toda falha responde no **mesmo envelope**:
 
 ```jsonc
 { "error": { "code": "USER_NOT_FOUND", "message": "User not found", "traceId": "6eedbea3-…" } }
 ```
 
-`code` é contrato e serve de chave de i18n. **`message` não é contrato** — existe
-para log e debug, e nunca deve ser exibida crua num app traduzido, ou vira texto
-em inglês numa tela em português.
+**`code` é contrato** — estável, serve de chave de i18n. **`message` não é** —
+serve para log e nunca deve ser exibida crua ao usuário.
 
-### A taxonomia é semântica, não protocolar
+### A taxonomia
 
-`src/shared/errors/app-error.ts` é camada pura e **não menciona HTTP**. "Não
-encontrado" e "conflito" são conceitos de aplicação: significam a mesma coisa num
-worker ou num cron, onde status code não quer dizer nada.
+`src/shared/errors/app-error.ts` é puro e não menciona HTTP: sete categorias
+irmãs, todas estendendo `AppError` direto. Cada erro de domínio estende uma
+delas e **declara** seu `code` (nunca derivado do nome da classe).
 
-```ts
-export abstract class AppError extends Error {
-  abstract readonly code: string
-  readonly securityEvent: boolean = false
-}
-export abstract class NotFoundError extends AppError {}
-// ConflictError, UnauthorizedError, ForbiddenError, ValidationError,
-// BusinessRuleError, TransientError
-```
-
-O `code` é **declarado**, nunca derivado do nome da classe. Derivar faria o nome
-da classe virar contrato público em silêncio: um PR de renome passaria no
-typecheck, no lint e em todo teste, e quebraria o `switch (error.code)` de todo
-app em produção sem deixar rastro no diff.
-
-`securityEvent` é o único campo da base que não é sobre a RESPOSTA. Uma
-subclasse que o marca `true` — hoje só `RefreshTokenReusedError` — diz ao error
-handler que a falha em si é o sinal, não o tráfego normal de cliente que as
-outras seis categorias são; o handler responde do mesmo jeito, mas também
-escreve um `warn` com o `code` antes de responder. Sem o marcador,
-um reuso de refresh detectado — família inteira revogada — e um token expirado
-comum seriam a mesma linha de log: nenhuma.
-
-### O mapa não cresce
-
-`infra/http/errors/error-handler.ts` é o **único** lugar que traduz erro em status HTTP.
-(Um endpoint declara os status das respostas dele — `health.ts` publica `200` e
-`503` — mas nenhum endpoint decide o status de uma falha.) Cem erros de domínio
-continuam caindo nestas seis linhas:
+`infra/http/errors/error-handler.ts` é o **único** lugar que traduz erro em
+status. O use case só faz `throw`.
 
 | categoria | status |
 |---|---|
@@ -1080,554 +458,158 @@ continuam caindo nestas seis linhas:
 | `NotFoundError` | 404 |
 | `ConflictError` | 409 |
 | `BusinessRuleError` | 422 |
-| `TransientError` | 503 |
+| `TransientError` | 503 + `Retry-After` |
 
-As sete são **irmãs** — todas estendem `AppError` direto. Se alguma passar a
-estender outra, o mapa começa a depender da ordem das linhas.
+Um erro com `securityEvent = true` (ex.: `RefreshTokenReusedError`) responde
+igual, mas também gera um `warn` no log.
 
-`TransientError` é a única que acrescenta um header: o `503` sai com
-`Retry-After`. Sem ele o cliente sabe que pode repetir mas não quando, e um laço
-apertado contra um banco já em contenção é pior que não repetir. Nenhuma das
-outras leva o header — repetir um 409 não o resolve.
+### O que não vem da taxonomia
 
-O `429` também responde com `Retry-After`, mas ele **não vem da taxonomia**:
-quem o define é o próprio limitador, com os segundos que de fato faltam para a
-janela virar. O handler não acrescenta nenhum — sobrescrever uma medida por um
-palpite seria pior que não ter o header.
-
-O use case só faz `throw`; o endpoint não tem `try/catch`.
-
-### As cinco coisas que não são da taxonomia
-
-| origem | resposta | por quê |
-|---|---|---|
-| validação do Fastify/Zod | 400 `VALIDATION_ERROR` + `details[]` | chega como `Error` com `FST_ERR_VALIDATION`, não como `ValidationError` — sem esse ramo, todo payload inválido daria 500 |
-| 4xx do próprio Fastify (415, 413…) | status preservado, `code` `BAD_REQUEST` | 4xx é culpa do cliente; virar 500 encheria o log de erro interno falso |
-| rota inexistente | 404 `ROUTE_NOT_FOUND` | sem `setNotFoundHandler` o 404 sai no formato do Fastify e fura o envelope |
-| `429` do rate limiting | status preservado, `code` `TOO_MANY_REQUESTS` + `Retry-After` | o plugin lança um `Error` com `statusCode`; sem ramo próprio cairia no 4xx genérico e publicaria `BAD_REQUEST` — instrução oposta à que o cliente precisa. **Não é categoria nova**: nasce no transporte, e a taxonomia continua com sete |
-| qualquer outra coisa | 500 `INTERNAL_SERVER_ERROR` | corpo genérico, **sem stack e sem mensagem de driver**; o log registra tudo |
-
-Um `AppError` que estenda a base **fora** das seis categorias também cai no
-último ramo: é erro de programação, não problema do cliente.
-
-O `code` do 4xx do Fastify é um só, e não uma tabela por `FST_ERR_*`: repassar o
-código do framework faria o nome dele virar contrato público, e distinguir 413 de
-415 é o que o status HTTP já faz.
-
-> **Cuidado ao testar o 415:** o Fastify traz parser nativo para
-> `application/json` **e** `text/plain`. Nenhum dos dois dispara 415 — foi
-> preciso um `application/xml` para o ramo aparecer.
-
-### Erro de validação carrega detalhe por campo
-
-```jsonc
-{
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "Invalid payload",
-    "details": [
-      { "field": "email",    "code": "INVALID_FORMAT" },
-      { "field": "password", "code": "TOO_SMALL" }
-    ],
-    "traceId": "6eedbea3-…"
-  }
-}
-```
-
-O `code` do `details` é **o código do issue do Zod em maiúsculo**, sem tabela de
-tradução:
-
-| issue do Zod | `code` publicado |
+| origem | resposta |
 |---|---|
-| `invalid_type` | `INVALID_TYPE` |
-| `too_small` | `TOO_SMALL` |
-| `too_big` | `TOO_BIG` |
-| `invalid_format` | `INVALID_FORMAT` |
-| `not_multiple_of` | `NOT_MULTIPLE_OF` |
-| `unrecognized_keys` | `UNRECOGNIZED_KEYS` |
-| `invalid_value` | `INVALID_VALUE` |
-| `custom`, `invalid_union`, `invalid_key`, `invalid_element` | `INVALID_VALUE` |
+| validação do Fastify/Zod | 400 `VALIDATION_ERROR` + `details[]` por campo |
+| 4xx do próprio Fastify (413, 415…) | status preservado, `code` `BAD_REQUEST` |
+| rota inexistente | 404 `ROUTE_NOT_FOUND` |
+| rate limit | 429 `TOO_MANY_REQUESTS` + `Retry-After` do limitador |
+| qualquer outra coisa | 500 `INTERNAL_SERVER_ERROR`, corpo genérico, detalhe só no log |
 
-**Por que não há tabela.** Ela seria uma função identidade escrita à mão: medido
-com um payload real, 8 dos 11 casos saíam idênticos ao `toUpperCase()`. Os três
-que diferiam eram os que liam `params.origin` — interno do Zod, e o único campo
-que o próprio Zod declara aberto (`(string & {})`).
+O `code` de cada item de `details[]` é o código do issue do Zod em maiúsculo
+(`TOO_SMALL`, `INVALID_FORMAT`…); os que só revelam como o schema foi composto
+colapsam em `INVALID_VALUE`.
 
-A lista de quatro que colapsam para `INVALID_VALUE` **não é tradução, é
-exclusão**: esses códigos descrevem como o schema foi composto, não o que há de
-errado com o dado. `custom` conta ao cliente que existe um `.refine()`.
-
-**O que protege o contrato** é o teste de vocabulário em `error-handler.spec.ts`,
-que passa um payload inválido pelo Zod real e fixa todos os códigos publicados.
-Uma tabela com `default` faria o contrário: um code renomeado pelo Zod viraria
-`INVALID_VALUE` em silêncio, com a suíte verde, porque os fixtures do teste
-continuariam usando a string antiga.
-
-`field` é omitido quando o issue aponta para o corpo inteiro em vez de um campo —
-é o caso de `unrecognized_keys`.
-
-### `traceId`: o mesmo no log e no corpo
-
-`infra/observability/request-context.ts` isola um `AsyncLocalStorage` em três
-funções. Um hook `onRequest` abre o escopo com o `request.id`, e tudo a jusante
-— rotas, hooks, error handler e not-found handler — lê o mesmo valor sem receber
-parâmetro nenhum.
-
-O caminho explícito (`ctx` em toda assinatura) foi descartado por ser viral:
-contamina até a assinatura dos repositórios, e esquecer de repassar quebra a
-correlação em silêncio.
-
-> Hoje o error handler poderia usar `request.id` direto — o ALS ainda não tem
-> consumidor fora do fluxo de request. Ele existe assim mesmo porque num
-> boilerplate o que não entra hoje não chega aos apps já derivados, e porque é
-> ele que mantém a migração para OpenTelemetry como troca de **um arquivo**.
-
-### Onde tudo isso é registrado
-
-Error handler, not-found handler e o hook do ALS ficam em **`buildServer`**, não
-em `main/app.ts`. A regra "`server.ts` não registra rotas" continua valendo:
-isto é configuração da instância, não roteamento. O efeito é que todo servidor
-montado num teste já herda o contrato de erro inteiro.
+Error handler, not-found handler e o hook do `traceId` são registrados em
+`buildServer`, então todo servidor montado num teste já herda o contrato.
 
 ---
 
 ## 9. Testes
 
-**Vitest**, um runner para as duas pistas — a separação é por *project*, não por
-ferramenta:
+**Vitest**, separado por *project*:
 
 | project | onde | precisa de banco | comando |
 |---|---|---|---|
-| `unit` | `src/**/*.spec.ts`, colocado ao lado do código | não | `pnpm test:unit` |
+| `unit` | `src/**/*.spec.ts`, ao lado do código | não | `pnpm test:unit` |
 | `integration` | `tests/integration/**/*.spec.ts` | sim | `pnpm test:integration` |
 
-`pnpm test` roda as duas. A pista de integração usa `fileParallelism: false`,
-porque todos os arquivos compartilham o mesmo Postgres.
-
-**Nenhum teste lê `process.env`.** A env da suíte é injetada em `test.env`, no
-`vitest.config.ts`. Com isso R6 continua valendo sem exceção nenhuma no
-`biome.jsonc`, e `import { env } from '#infra/config/env'` já chega válido dentro
-do teste.
-
-**Não há `resolve.conditions` na config, de propósito.** O Vite já pede a
-condition `development` em modo de teste, então `#infra/*` resolve para `src/` e
-nunca para o `dist/` — verificado plantando um sentinela no `dist/` e observando
-o `src/` vencer. Sobrescrever esse array substituiria os defaults do Vite e
-criaria justamente o risco que ele evitaria.
-
-### Duas peças de produção têm a forma que têm por causa disto
-
-- **`parseEnv(source)`** separa a validação do efeito colateral. Sem ela,
-  importar `env.ts` num spec dispara o `process.exit(1)` do boot e mata o worker
-  do Vitest — comprovado antes de existir.
-- **`buildServer(env, { logStream })`** recebe o destino do log por injeção;
-  destino de log é mundo externo pela definição do §1. É o que permite testar a
-  redação do §5 contra o logger real de produção, sem trazer `pino` como
-  dependência direta. Funciona porque `stream` e `transport` são mutuamente
-  exclusivos no pino, e o `pino-pretty` só é ligado em development.
-
-O que a suíte cobre hoje: os casos "não legal" do §4 dentro de `parseEnv`, a
-redação do §5 — inclusive a limitação de um nível só, que fica documentada como
-teste — e `GET /health` respondendo `200` e `503` contra Postgres real.
-
-Soma-se a isso o contrato de erro do §8 inteiro: as seis categorias mapeadas uma
-a uma, a tabela de tradução do Zod linha a linha, e a garantia de não-vazamento
-— um erro inesperado responde genérico e a mensagem interna aparece **só** no
-log.
-
-O helper de migration da suíte é o `globalSetup` do projeto `integration`
-(`tests/integration/setup/migrate-test-database.ts`, §6): aplica as migrations
-commitadas antes de qualquer teste rodar. O `tmpfs` do `postgres-test` ainda é
-quem zera o cluster, mas só **entre restarts do container** — dentro de uma
-mesma execução ele não isola uma spec da outra.
-
-Essa isolação é por teste, não por suíte: `users-schema.spec.ts` limpa a
-tabela com `db.delete(users)` no **`beforeEach`**, não no `afterEach`. Uma
-suíte pode terminar com linhas na tabela, e a limpeza só acontece no início do
-próximo teste — quem escrever a próxima spec de integração não pode assumir
-banco vazio ao entrar, e precisa limpar as próprias tabelas no `beforeEach`.
+- **Use case se testa contra o repositório in-memory**, sem infra real.
+- **Nenhum teste lê `process.env`.** A env da suíte vem de `test.env` no
+  `vitest.config.ts`, e R6 vale sem exceção.
+- **A integração roda um arquivo por vez** e compartilha o mesmo Postgres. Cada
+  spec limpa as próprias tabelas no **`beforeEach`** — nunca assuma banco vazio.
+- **Mundo externo entra por injeção também no teste**: `parseEnv(source)` separa
+  a validação do `process.exit`, e `buildServer(env, { logStream })` recebe o
+  destino do log.
 
 ---
 
 ## 10. Comandos
 
 ```bash
-pnpm dev               # tsx + watch, resolve # para src/
-pnpm build             # tsc -p tsconfig.build.json -> dist/ (sem os specs)
-pnpm start             # node dist/main/http.js, resolve # para dist/
-pnpm typecheck         # tsc --noEmit — cobre src/, tests/ e os arquivos de config
-pnpm test              # Vitest: unit + integração
-pnpm test:unit         # só a pista sem I/O
-pnpm test:integration  # só a pista com Postgres real (docker compose up -d antes)
-pnpm test:watch        # Vitest em watch
-pnpm lint              # biome check  (formatação + lint + ordem de imports)
+pnpm dev               # watch, resolve # para src/
+pnpm build             # tsc -> dist/ (sem os specs)
+pnpm start             # node dist/main/http.js
+pnpm typecheck         # tsc --noEmit — a autoridade, acima do editor
+pnpm lint              # biome + fronteira (§4)
 pnpm lint:fix          # biome check --write
-pnpm db:generate --name=create_users_table   # gera migration a partir do schema dos módulos
-                                             # SEMPRE com --name; sem ele o nome é sorteado (§6)
-pnpm db:migrate        # drizzle-kit migrate — aplica migrations pendentes (lê o .env)
-pnpm db:up             # docker compose up -d --wait — postgres, postgres-test e mailpit
-pnpm db:down           # docker compose down — o volume do dev sobrevive
+pnpm test              # unit + integração
+pnpm test:unit         # sem I/O
+pnpm test:integration  # Postgres e Redis reais (pnpm db:up antes)
+pnpm test:watch
+pnpm db:up             # sobe postgres, postgres-test, redis e mailpit
+pnpm db:down           # derruba; o volume de dev sobrevive
 pnpm db:logs           # logs do postgres de dev
+pnpm db:generate --name=<nome>   # gera migration — SEMPRE com --name
+pnpm db:migrate        # aplica migrations pendentes
 pnpm db:studio         # drizzle-kit studio
-pnpm db:seed           # estado conhecido no banco LOCAL: cenários default (--list, --all, auth, auth:<cenário>)
+pnpm db:seed           # estado conhecido no banco LOCAL (--list, --all, auth, auth:<cenário>)
 ```
-
-O servidor sobe com uma única rota de aplicação, `GET /health` (§7) — mais
-`/docs` e `/docs/json`, que só existem em development. Qualquer outro caminho
-responde **404**, e isso é o esperado.
 
 ---
 
 ## 11. Versões
 
-**Toda dependência é pinada em versão exata. Nenhum `^`, nenhum `~`** — nem em
-`dependencies`, nem em `devDependencies`. Num boilerplate copiado N vezes, caret
-significa que dois apps gerados do mesmo commit podem resolver árvores
-diferentes, e a divergência aparece como bug que não reproduz.
-
-O pin não é só do estado atual: `savePrefix: ''` faz todo `pnpm add` futuro
-gravar exato, sem ninguém precisar lembrar.
-
-Atualizar é ato deliberado — `pnpm outdated` mostra, e a subida é um commit que
-passa pela suíte.
-
-### Um segundo TypeScript, só para o lint de fronteira
-
-O `dependency-cruiser` suporta `typescript >=2.0.0 <7.0.0` e resolve o
-compilador a partir do diretório **dele**, não da raiz. Com o TypeScript 7 deste
-projeto ele cruza zero módulos e sai com exit 0 (§4). O `packageExtensions` do
-`pnpm-workspace.yaml` aninha um `typescript` 6.0.3 debaixo dele:
-
-```yaml
-packageExtensions:
-  dependency-cruiser:
-    dependencies:
-      typescript: 6.0.3
-```
-
-A raiz segue em 7: `build`, `typecheck` e o editor não mudam. Duas pegadinhas do
-pnpm 11 que anulam isso em silêncio: `pnpm.packageExtensions` dentro do
-`package.json` **não é lido**, e `pnpm install --ignore-workspace` descarta as
-settings deste arquivo junto. O bloco sai no dia em que o `dependency-cruiser`
-suportar TypeScript 7 — o pré-voo do `check.mjs` é quem avisa se ele sair antes
-da hora.
-
-### O que garante a versão do Node
-
-| mecanismo | o que faz | é portão? |
-|---|---|---|
-| `.nvmrc` | fnm/nvm trocam a versão ao entrar na pasta; CI lê com `node-version-file` | não — conveniência |
-| `engines` + `engineStrict: true` | `pnpm install` **recusa** em versão fora da faixa | **sim** — exit 1 |
-| `packageManager` | Corepack fixa a versão do pnpm | sim, com Corepack ligado |
-
-Sozinho, `engines` só **avisa** e sai com exit 0. É o `engineStrict` no
-`pnpm-workspace.yaml` que o transforma em portão.
-
-> **`lib` do tsconfig acompanha o runtime, não o `target`.** `lib: ["es2024"]`
-> sozinho esconde do compilador APIs que o Node 24 **tem** — iterator helpers
-> (`.map`/`.toArray`), métodos de `Set` (`union`) e `Error.isError`. O sintoma
-> engana: o dev bate em `TS2339`, conclui que o Node não suporta e escreve o
-> workaround. Por isso o `lib` carrega os blocos `ESNext.*` do
-> `@tsconfig/node24`.
-
-> **`@types/node` acompanha o major do Node, não o `latest` do npm.** Hoje o
-> `latest` desse pacote é 26.x, que descreve o Node 26 — *current*, não LTS.
-> Instalá-lo sobre o Node 24 faz o compilador aceitar APIs que não existem em
-> runtime. Rodamos Node 24, logo `@types/node` é 24.x.
-
-### Bibliotecas que falham em silêncio
-
-Três armadilhas que já custaram tempo uma vez cada. O que as une não é a
-biblioteca, é o modo de falha: **o código parece certo, compila ou passa, e faz
-outra coisa.**
-
-> **O `.default()` do Zod 4 curto-circuita — ele não parseia o valor.** Num
-> schema cuja entrada é string e a saída número, `.default('5000')` devolve a
-> **string** `"5000"`, não `5000`. O default é do tipo de **saída**, então
-> escreva `.default(5000)`. Descoberto porque um teste comparava o objeto de
-> config inteiro com `toEqual`; com asserção campo a campo teria passado, e o
-> pool receberia uma string onde espera número.
-
-> **`.pipe(z.coerce.number())` depois de `z.string()` não compila — e o estrago
-> não fica no lugar do erro.** O schema coagido declara entrada `unknown`, que
-> não encaixa a jusante de um schema de string. O `tsc` reporta a linha do
-> `pipe`, mas o efeito é o tipo inferido do objeto **inteiro** degradar para
-> `any`, e aí todo consumidor dele para de ser verificado. Use
-> `.transform(Number).pipe(z.number())`. Vale a lição geral: um erro dentro de um
-> `z.object` grande apaga a tipagem de tudo que depende dele.
-
-> **`SET LOCAL` não aceita parâmetro ligado.** `SET LOCAL lock_timeout = $1` é
-> recusado pelo Postgres com `42601 syntax error at or near "$1"` — `SET` não é
-> uma query parametrizável. Tem de ir por `sql.raw`, e **por isso o valor nunca
-> pode vir de request**. Verificado também que ele reverte no `COMMIT`, então é
-> seguro num pool: dentro da transação vale o valor local, depois volta o da
-> conexão.
-
-> **`clearCookie` não herda os atributos de `setCookie`.** Passando só
-> `{ path }`, o `Set-Cookie` de expiração sai com `SameSite=Lax`, **sem
-> `HttpOnly` e sem `Secure`**. A deleção funciona assim mesmo — o browser casa
-> por nome, domínio e path —, mas o cookie emitido é mais fraco que o original.
-> Passe o conjunto completo de atributos.
-
-> **Cookie `Secure` sobre `http://localhost` é recusado pelo Safari.** Medido em
-> 2026-09-01: Chrome e Firefox aceitam, o WebKit não — em macOS e em iOS. O
-> browser que recusa **não guarda o cookie e não avisa**, nem erro nem console,
-> e o refresh seguinte responde 401 como se nunca tivesse havido login.
-> Consequência concreta: **o modo cookie não pode ser exercitado pelo `/docs` no
-> Safari**; use um browser Chromium, ou termine TLS na frente da API. Testar de
-> aparelho real por IP de LAN falha igual em **todo** browser, porque endereço
-> de LAN cru nunca é origem confiável.
->
-> A correção óbvia — condicionar o `Secure` a `NODE_ENV` — é pior: essa variável
-> tem `.default('development')` no `env.ts`, então qualquer deploy que esquecesse
-> de defini-la mandaria o cookie **sem `Secure`**, em silêncio. Falha aberta em
-> produção é pior que caça ao fantasma num laptop.
-
-> **`exactOptionalPropertyTypes` transforma um parâmetro opcional repassado em
-> erro a três linhas de distância.** Encaminhar `cookies?: Record<string,string>`
-> direto para as opções do `app.inject` passa um `undefined` explícito, que é
-> inválido para propriedade opcional; o `inject` então falha a resolução de
-> overload e reporta o retorno como `void & Promise<Response> & Chain`, de modo
-> que o erro aparece como *"statusCode does not exist"*. Espalhe
-> condicionalmente em vez de repassar.
-
-> **`request.ip` não é um endereço IP.** Medido no Fastify 5.12.1: quando o peer
-> é confiado, ele devolve **o último token do `X-Forwarded-For` sem validação
-> nenhuma** — `naoehip`, `1.2.3.4a`, `999.999.999.999`,
-> `<script>alert(1)</script>` e uma string de 200 caracteres saíram todas
-> intactas. `typeof` é sempre `string`, nada lança, e no laptop o valor parece
-> perfeito. Quem usar isso como chave, índice ou campo persistido está deixando
-> o atacante escolher o conteúdo **e o tamanho**. Passe por
-> `infra/http/client-ip.ts`, que valida e normaliza — e note que normalizar não
-> é opcional: substituir o `keyGenerator` do `@fastify/rate-limit` descarta o
-> agrupamento de IPv6 por /64 que ele aplicaria, e sem isso um único assinante
-> tem 2⁶⁴ endereços, logo baldes ilimitados.
-
-> **`trustProxy` com número é inoperante — e parece configurado.** Medido no
-> Fastify 5.12.1: `trustProxy: 1` constrói sem erro e **nunca confia em
-> ninguém**, porque o `lib/request.js` devolve `() => false` para qualquer
-> número (*"hop-count-only trust cannot validate the immediate peer"*).
-> `request.ip` fica preso no `remoteAddress`, e atrás de um load balancer isso
-> significa que todo cliente compartilha um endereço — um limite por IP botaria
-> o mundo inteiro num balde só. É justamente o valor que todo tutorial mostra.
-> Por isso `TRUST_PROXY` **recusa número no boot** e só aceita lista de redes.
->
-> No mesmo assunto: uma lista com CIDR inválido morre na **construção** da
-> instância — inclusive quando só um item da lista é inválido, não há aceitação
-> parcial —, mas como um `TypeError` **cru** do `@fastify/proxy-addr`, com
-> `message: "invalid IP address: <token>"` e **`code: undefined`**. Não é
-> `FST_*` e não sai no formato de erro de env do projeto: se o boot morrer com
-> um `TypeError` sem contexto nenhum, é isto.
-
-> **`$onUpdate` do Drizzle preenche a ausência, não sobrescreve a presença — e o
-> perigo é o contrário do que parece.** Medido em 2026-09-03 no
-> `drizzle-orm@1.0.0-rc.4`: `set({ passwordHash, updatedAt: D })` grava `D`, e
-> `set({ passwordHash })` grava `new Date()`. A causa é o `??` do
-> `buildUpdateSet`, em `pg-core/dialect.js`. Ou seja: um valor vindo do `IClock`
-> **não** é descartado — mas **omitir** a coluna deixa o relógio do sistema
-> entrar em silêncio, e em produção ninguém nota, porque os dois relógios
-> coincidem. Quem nota é o teste que avança um relógio falso. Por isso o
-> repositório manda `updated_at` sempre, explicitamente, e o teste de integração
-> grava uma data de 2020: com uma data plausível a asserção não provaria nada.
-
-> **A validação de schema do Fastify roda ANTES do `preHandler`.** Consequência
-> concreta numa rota protegida que também tem corpo — `POST /auth/password` é a
-> primeira do projeto: um chamador **sem** credencial nenhuma, mandando corpo
-> malformado, recebe `400` com os nomes dos campos, e o guard nunca executa. Com
-> corpo válido ele recebe o `401` esperado. Não é defeito do guard e não tem
-> correção declarativa; foi aceito porque a forma da request é contrato
-> publicado para os clientes desta própria API, não segredo. Está fixado por
-> teste em `tests/integration/change-password.spec.ts` para ser decisão
-> registrada, e não surpresa.
-
-> **`loggerInstance` do Fastify especializa o genérico da instância.** Passar um
-> `pino.Logger` faz o `FastifyInstance` devolvido carregar aquele tipo de logger,
-> e ele deixa de ser atribuível ao `FastifyInstance` que a função declara
-> devolver. A correção não é cast: anote o valor como `FastifyBaseLogger` antes
-> de passá-lo, e o genérico fica fixo.
-
-> **`requireTLS` do nodemailer é `false` por padrão, e falha em silêncio.** Um
-> transporte que não consegue negociar STARTTLS **não erra** — ele manda em
-> texto claro, credenciais e conteúdo inclusos, sem aviso nenhum no caminho
-> feliz. É por isso que `MAIL_REQUIRE_TLS` é forçado a `true` em produção pelo
-> schema de env: deixar o default do nodemailer decidir isso é deixar a
-> segurança do transporte depender de ninguém esquecer uma variável.
->
-> **O contrafactual, registrado porque foi suspeitado e refutado.** `sendMail()`
-> **não** resolve em silêncio quando o destinatário é recusado. Lido no código
-> de `smtp-connection` do `nodemailer@9.1.1`: quando **todo** destinatário do
-> envelope é rejeitado, ele lança — e como `EmailMessage.to` desta fatia é um
-> endereço só, "o destinatário" e "todos os destinatários" são o mesmo caso
-> aqui. Uma porta futura para múltiplos destinatários teria de reexaminar
-> `info.rejected`, porque aí a rejeição parcial silenciosa volta a ser possível.
+- **Toda dependência em versão exata. Nenhum `^`, nenhum `~`.** Dois apps
+  gerados do mesmo commit têm que resolver a mesma árvore. `savePrefix: ''` faz
+  todo `pnpm add` gravar exato; atualizar é um commit deliberado que passa pela
+  suíte.
+- **Node** é garantido por `engines` + `engineStrict: true` (o `pnpm install`
+  recusa versão errada); `.nvmrc` é conveniência. `@types/node` acompanha o
+  major do Node em uso, não o `latest` do npm.
+- **TypeScript 7** na raiz; o `dependency-cruiser` ganha um TypeScript 6 próprio
+  pelo `packageExtensions` do `pnpm-workspace.yaml` (§4). Se o editor discordar
+  do `pnpm typecheck`, o editor está errado.
+- **Biome** no lugar de ESLint + Prettier.
+- `pnpm-workspace.yaml` guarda as settings do pnpm; sem `packages:`, este
+  continua sendo um pacote único, não um monorepo.
+- **Sem release estável do boilerplate enquanto o Drizzle não tiver GA** — ele
+  está pinado num release candidate. R1, R2 e R4 reduzem o que uma mudança do
+  Drizzle pode quebrar.
 
 ---
 
-## 12. Decisões travadas
+## 12. Fluxo de uma requisição
 
-**TypeScript pinado em `7.0.2` exato, sem caret.** O TS 7 é o port em Go e mudou o
-`exports` do pacote: a raiz passou a exportar só a versão, e a API do compilador
-foi para `./unstable/*`. Consequência prática — **`typescript-eslint` e
-`dependency-cruiser` não funcionam com TS 7**, porque ambos consomem a API antiga.
-O `dependency-cruiser` é o pior dos dois: ele emite *aviso*, não erro, e sai com
-**exit 0** e `0 modules cruised`, ou seja, CI verde sem enforçar nada.
-
-**A terceira consequência é o seu editor, e ela tem saída.** O TS 7 também não
-entrega `tsserver.js` — o mecanismo que o `typescript.tsdk` do VS Code
-classicamente aponta. O pacote `typescript` virou um **localizador**: `lib/` tem
-só `tsc.js`, `version.cjs` e `getExePath.js`, e o compilador de verdade é um
-binário Go de ~24 MB entregue por plataforma em `optionalDependencies`
-(`@typescript/typescript-linux-x64` e irmãos).
-
-Isso **não** significa que o editor não possa usá-lo. O próprio `getExePath.js`
-do pacote carrega a nota:
-
-```js
-// NOTE: Keep VS Code extension's resolveTsdkPathToExe in sync with this function.
-```
-
-Ou seja: a extensão TypeScript do VS Code resolve o tsdk **para o executável**, em
-vez de para um `tsserver.js`. Numa extensão nova o bastante, editor e CI rodam o
-mesmo compilador. Numa mais antiga, o editor cai no TypeScript embutido dele
-(linha 5.x) e passa a discordar do CI **nos dois sentidos** — acusando o que o
-`tsc` aceita e deixando passar o que o `tsc` pega.
-
-Como saber em qual caso você está: `TypeScript: Select TypeScript Version` na
-paleta de comandos mostra o que está ativo e oferece *Use Workspace Version*. Se
-a do workspace não pegar, `"typescript.tsdk": "node_modules/typescript/lib"` em
-`.vscode/settings.json` e reiniciar o TS server; se ainda reportar 5.x, a
-extensão é antiga demais.
-
-> **A regra que vale de qualquer forma:** `pnpm typecheck` é a autoridade, porque
-> é ele que o CI roda, com a versão pinada. Divergiu do editor, o editor está
-> errado. E antes de investigar uma divergência, reinicie o TS server — ele
-> guarda estado velho e a maioria dos "erros fantasma" é isso.
-
-**Biome no lugar de ESLint + Prettier.** Decorre do primeiro parágrafo: o Biome é
-um binário Rust com **zero dependências JS**, com parser próprio — a versão do
-TypeScript é indiferente para ele. Além disso `noProcessEnv` (R6) é regra nativa, e
-`noRestrictedImports` casa o especificador **como string**, o que resolve
-fronteira sem precisar de resolver de módulo.
-
-**Custo aceito:** o Biome não detecta ciclo de dependência e não gera grafo. Sem
-lint type-aware.
-
-**`pnpm-workspace.yaml` não faz deste repo um monorepo.** Sem a chave
-`packages:`, isto é um pacote único. O arquivo existe porque o pnpm 11 deixou de
-ler o campo `pnpm` do `package.json`, e é onde moram `allowBuilds`,
-`engineStrict` e `savePrefix`.
-
-**Sem Turborepo.** Ele orquestra tarefas entre pacotes e cacheia saída de tarefa;
-aqui há um pacote só, e o pipeline inteiro custa ~1,1 s — o overhead do próprio
-turbo fica na mesma ordem. Passaria a valer se isto virasse monorepo de verdade, e
-aí o primeiro passo seria pnpm workspaces, não ele. Módulos aqui são
-**diretórios**, não pacotes; `worker` e `cron`, quando existirem, são entrypoints
-do mesmo pacote.
-
-**Nenhum "1.0 do boilerplate" para outros times enquanto o Drizzle não tiver
-GA.** O `drizzle-orm` está pinado em `1.0.0-rc.4` exato, sem caret — release
-candidate. O roadmap ainda tem itens que tocam código deste repositório:
-"Relational Queries V2 API" (mitigada pela R1, que proíbe `db.query.*`), "down
-migrations" (assumida pela R4, que fixa migrations forward-only) e a branch
-`casing-rework` (mitigada pela R2, que nomeia toda coluna explicitamente). Cada
-mitigação custou pouco, mas nenhuma delas vale como promessa de estabilidade
-para N apps derivados: o argumento não é que algum formato vá mudar, é que ainda
-não existe versão estável para prometer em cima.
-
----
-
-## 13. O que ainda não existe
-
-**Reescrito na fatia 27.** A versão anterior listava verificação de e-mail, troca
-de senha, `cron.ts`, poda de `refresh_tokens`, rate limiting, CORS e Docker como
-inexistentes — **os sete existem** e alguns havia semanas. A lista era mantida à
-mão e parou de ser atualizada, que é o argumento desta fatia inteira.
-
-O que de fato não existe, hoje:
-
-- **Módulos de negócio.** O `auth` é o único módulo. Toda regra sobre
-  comunicação entre módulos (§2) é desenho não exercitado por um segundo caso.
-- **Entrypoint `worker.ts`.** O `cron.ts` existe; um worker de fila não.
-- **Dente em R7** — ver §4. A fronteira saiu desta lista nesta fatia; R7 é o
-  que resta.
-
-O que é **escolha de produto**, e não ausência, está em
-[`docs/PRODUCT-CHOICES.md`](docs/PRODUCT-CHOICES.md): MFA, lockout, RBAC,
-multi-tenancy, senha vazada, `kid` no JWT, criptografia em repouso e outras.
-
----
-
-## 14. Fluxo de uma requisição
-
-Ciclo de vida de `POST /auth/login`. Cada passo nomeia o arquivo real.
+`POST /auth/login`, arquivo por arquivo:
 
 ```text
-1. main/http.ts
-   Valida o env, abre o banco, monta o container.
-   Pede a instância Fastify a infra/http/server.ts e registra os plugins
-   de módulo, cada um com seu prefixo e SUA FATIA do container.
+1. main/http.ts → main/app.ts
+   Valida o env, abre banco e Redis, monta o container e registra cada
+   módulo com seu prefixo e SUA FATIA do container.
 
 2. modules/auth/infra/http/routes.ts
-   Agrega os endpoints do módulo e repassa a fatia recebida.
+   Agrega os endpoints do módulo.
 
 3. modules/auth/infra/http/endpoints/login.ts
-   Valida corpo e resposta por schema Zod, declara o teto da rota,
-   chama o use case e traduz o retorno em resposta HTTP.
-   NÃO contém regra de negócio.
+   Valida o corpo pelo schema Zod, chama o use case, traduz o retorno em
+   resposta HTTP. Sem regra de negócio.
 
 4. modules/auth/use-cases/login-user.ts
-   Busca o usuário por IUsersRepository.
-   Compara o hash por IHashProvider — SEMPRE, inclusive quando a conta
-     não existe, contra hashProvider.dummyHash (ver abaixo).
-   Assina o access token por ITokenSigner e emite o refresh opaco,
-     persistido dentro de uow.run.
-   Ou lança InvalidCredentialsError.
-   Não conhece HTTP, não conhece Drizzle, não loga, não chama new Date().
+   Busca o usuário, compara o hash (SEMPRE — contra um dummyHash quando a
+   conta não existe, para o tempo de resposta não revelar quais e-mails
+   existem), assina o access token e emite o refresh dentro de uow.run.
+   Não conhece HTTP nem Drizzle, não loga, não chama new Date().
 
 5. modules/auth/infra/drizzle/drizzle-users-repository.ts
-   Executa o SQL e converte a row em entidade pelo mapper.
+   Executa o SQL e converte a row em entidade.
 
    Se 3, 4 ou 5 lançarem:
 6. infra/http/errors/error-handler.ts
-   Mapeia para status e monta o corpo com o traceId.
+   Mapeia para status e monta o envelope com o traceId.
 ```
-
-> **Passo 4 — a comparação é obrigatória mesmo sem conta.** Se o use case
-> retornasse cedo quando o e-mail não existe, e-mail inexistente responderia em
-> ~1 ms enquanto e-mail existente pagaria o argon2id. Isso é um **oráculo de
-> enumeração de usuários** trivialmente mensurável. Por isso o
-> `IHashProvider` expõe `dummyHash`, e a comparação acontece nos dois caminhos.
-
-> **Passo 4 — o hash fica FORA da transação.** Um hash de ~100 ms dentro do
-> `uow.run` reteria a conexão do pool por todo esse tempo, e o pool tem 10 (§6).
-
-**O handler HTTP é um tradutor.** Qualquer `if` de regra de negócio nele está no
-lugar errado.
 
 ---
 
-## 15. Como adicionar um módulo novo
+## 13. Como adicionar um módulo novo
 
-A ordem não é burocracia: força o domínio a ser desenhado antes de qualquer
-decisão de infraestrutura, que é o que mantém a fronteira honesta.
+**Antes, leia [`docs/PRODUCT-CHOICES.md`](docs/PRODUCT-CHOICES.md)** — um módulo
+que guarde dado sensível reabre decisões que o `auth` deixou em aberto.
 
-1. `mkdir src/modules/<modulo>` com a anatomia do §2 — crie só as pastas que vai
-   usar.
-2. **Domínio primeiro:** entidade e value objects. Sem pensar em banco nem HTTP.
-3. **Contratos:** `repositories/` e `providers/` com o que o domínio precisa do
+A ordem força o domínio a ser desenhado antes da infraestrutura:
+
+1. `mkdir src/modules/<modulo>` com a anatomia do §2 — só as pastas que vai usar.
+2. **Domínio:** entidades e value objects, sem pensar em banco nem HTTP.
+3. **Contratos:** `repositories/` e `ports/` com o que o domínio precisa do
    mundo externo.
-4. **Use cases por TDD**, contra o repositório in-memory. Aqui o módulo já tem
-   valor e já está testado, sem nenhuma infra real.
-5. **Infra depois:** schema Drizzle, mapper, repositório concreto. Os testes de
-   use case não mudam.
-6. **HTTP por último:** `endpoints/` e `routes.ts`.
-7. **`config.ts`** se o módulo tiver env vars próprias, e registre o schema no
-   merge de `infra/config/env.ts` (§5). Um módulo nunca lê `process.env` — R6.
-8. **`container.ts`** montando o grafo, e registre a fatia em `main/container.ts`.
-9. **Revise a fronteira à mão.** Hoje ela não tem dente (§4): nenhum arquivo de
-   `modules/<modulo>/` pode importar de outro módulo, e a camada pura não pode
-   importar de `infra/`.
+4. **Use cases por TDD**, contra o repositório in-memory.
+5. **Infra:** schema Drizzle, mapper, repositório concreto,
+   `pnpm db:generate --name=...`. Os testes de use case não mudam.
+6. **HTTP:** `infra/http/endpoints/` e `routes.ts`.
+7. **`config.ts`**, se houver env vars próprias, registrado no merge de
+   `infra/config/env.ts`.
+8. **`container.ts`**, e registre a fatia em `main/container.ts` e as rotas em
+   `main/app.ts`.
+9. **`pnpm lint`** — a fronteira é verificada; se o módulo precisa de outro,
+   use uma porta no consumidor (§2).
 
-**Antes do passo 1, leia [`docs/PRODUCT-CHOICES.md`](docs/PRODUCT-CHOICES.md).**
-Um módulo que guarde dado sensível reabre decisões que o `auth` deixou em aberto
-de propósito — criptografia em repouso, retenção, MFA.
+---
+
+## 14. O que ainda não existe
+
+- **Um segundo módulo.** O `auth` é o único; as regras de comunicação entre
+  módulos (§2) ainda não foram exercitadas por um caso real.
+- **Entrypoint `worker.ts`.** O `cron.ts` existe; um worker de fila, não.
+- **Dente em R7** (§4).
+
+O que é escolha de produto — MFA, lockout, RBAC, multi-tenancy, `kid` no JWT,
+criptografia em repouso — está em
+[`docs/PRODUCT-CHOICES.md`](docs/PRODUCT-CHOICES.md).
