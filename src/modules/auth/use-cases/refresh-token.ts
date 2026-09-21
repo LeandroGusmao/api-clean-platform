@@ -112,7 +112,28 @@ export class RefreshTokenUseCase {
         const withinGrace =
           supersededId !== null && current.isWithinGraceWindow(now, this.graceWindowMs)
 
-        if (!withinGrace) {
+        // The successor already issued dies here, and dies WITHOUT a
+        // `replacedBy` of its own — so presenting it lands in reuse detection
+        // instead of being forgiven again. Revoked BEFORE the replacement is
+        // issued, so "at most one live token per family" holds even in the
+        // middle of the transaction.
+        //
+        // Forgiven only when THIS call killed it. A successor that was already
+        // dead was revoked by a logout, a password change or reset, or an
+        // earlier replay of this same token — explicit revocations touch only
+        // live rows, so `current` still looks like a fresh rotation. Forgiving
+        // it would revive a family the user just ended, or mint a second live
+        // chain in it.
+        //
+        // It costs nothing in the case the window exists for: when the response
+        // was lost in a tunnel, the successor killed here is the one that
+        // reached nobody. It DOES require the client to serialise its refresh
+        // calls, and to retry a lost response once — a second retry of the
+        // same token finds the successor already dead.
+        const forgiven =
+          withinGrace && (await refreshTokens.revoke(supersededId, now)) > 0
+
+        if (!forgiven) {
           const revoked = await refreshTokens.revokeFamily(current.familyId, now)
 
           // Only the call that actually killed the family warns the owner. The
@@ -160,23 +181,6 @@ export class RefreshTokenUseCase {
           // because that fake models no rollback.
           return REUSE_DETECTED
         }
-
-        // The successor already issued dies here, and dies WITHOUT a
-        // `replacedBy` of its own — so presenting it lands in the branch above
-        // instead of being forgiven again. That is what closes the fork: before
-        // this, a stolen token replayed inside the window minted a second live
-        // chain in the same family, neither chain ever presented a spent token,
-        // and detection never fired again for that family.
-        //
-        // It costs nothing in the case the window exists for: when the response
-        // was lost in a tunnel, the successor killed here is the one that
-        // reached nobody. It DOES require the client to serialise its refresh
-        // calls — two concurrent refreshes of the same token would leave it
-        // holding a successor this line killed.
-        //
-        // Revoked BEFORE the replacement is issued, so "at most one live token
-        // per family" holds even in the middle of the transaction.
-        await refreshTokens.revoke(supersededId, now)
 
         // `current` itself is left untouched: its `revokedAt` must not move, or
         // a client stuck in a retry loop would hold an eternal session.

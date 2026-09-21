@@ -29,8 +29,13 @@ export interface IRefreshTokensRepository {
    * The absence of a successor is the whole point: a replay of a token revoked
    * this way lands in reuse detection rather than in the grace window, because
    * only a revocation that recorded a successor counts as a rotation.
+   *
+   * Touches only a still-active row and returns how many it revoked: zero means
+   * the token was already dead, which is how the grace window tells a
+   * successor that is still live from one an explicit revocation already
+   * killed.
    */
-  revoke(id: string, revokedAt: Date): Promise<void>
+  revoke(id: string, revokedAt: Date): Promise<number>
 
   /**
    * Revokes every still-active token of one chain and returns how many it

@@ -46,6 +46,7 @@ const ONE_DAY_MS = 86_400_000
 const MAX_LIFETIME_MS = env.REFRESH_TOKEN_MAX_LIFETIME_SECONDS * MILLISECONDS_PER_SECOND
 const ONE_FAMILY = 1
 const ONE_LIVE_TOKEN = 1
+const NO_LIVE_TOKENS = 0
 
 let app: FastifyInstance
 let db: Database
@@ -293,6 +294,21 @@ describe('POST /auth/refresh', () => {
     )
 
     expect(live).toHaveLength(ONE_LIVE_TOKEN)
+  })
+
+  it('refuses a second replay of the same predecessor, never forking the family', async () => {
+    const { refreshToken } = (await login()).json()
+    await refresh({ refreshToken })
+    await refresh({ refreshToken })
+
+    const second = await refresh({ refreshToken })
+
+    expect(second.statusCode).toBe(UNAUTHORIZED_STATUS_CODE)
+    expect(second.json().error.code).toBe(REFRESH_TOKEN_REUSED_CODE)
+    const live = (await db.select().from(refreshTokens)).filter(
+      (row) => row.revokedAt === null,
+    )
+    expect(live).toHaveLength(NO_LIVE_TOKENS)
   })
 
   it('reads the token from the cookie when the body has none', async () => {

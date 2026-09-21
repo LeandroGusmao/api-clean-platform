@@ -168,6 +168,20 @@ describe('POST /auth/google', () => {
     expect(refreshed.statusCode).toBe(UNAUTHORIZED)
   })
 
+  it('refuses a rotated predecessor of that session inside the grace window', async () => {
+    const { refreshToken } = await createPasswordAccount()
+    await app.inject({ method: POST, url: REFRESH_PATH, payload: { refreshToken } })
+
+    await googleSignIn({ idToken: await idToken(), password: APP_PASSWORD })
+
+    const replayed = await app.inject({
+      method: POST,
+      url: REFRESH_PATH,
+      payload: { refreshToken },
+    })
+    expect(replayed.statusCode).toBe(UNAUTHORIZED)
+  })
+
   it('answers 401 for a wrong password on the link path', async () => {
     await createPasswordAccount()
 

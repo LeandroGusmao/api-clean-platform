@@ -141,6 +141,19 @@ describe('POST /auth/password', () => {
     expect((await refreshWith(after.refreshToken)).statusCode).toBe(OK_STATUS_CODE)
   })
 
+  it('refuses a rotated predecessor inside the grace window', async () => {
+    // A thief who kept the token before the last rotation must not revive the
+    // family the change just killed.
+    const session = await loggedIn()
+    const rotated = (await refreshWith(session.refreshToken)).json() as SessionTokens
+
+    await changePassword(rotated.accessToken)
+
+    expect((await refreshWith(session.refreshToken)).statusCode).toBe(
+      UNAUTHORIZED_STATUS_CODE,
+    )
+  })
+
   it('ends the sessions of other devices too', async () => {
     const phone = await loggedIn()
     const tablet = await loggedIn()

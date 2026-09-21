@@ -49,6 +49,7 @@ const ONE_MESSAGE = 1
 const ONE_EVENT = 1
 const NO_EVENTS = 0
 const ONE_TOKEN = 1
+const TWO_TOKENS = 2
 const MAX_LIFETIME_MS =
   DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS * MILLISECONDS_PER_SECOND
 const THIRTY_MINUTES_MS = 30 * 60 * MILLISECONDS_PER_SECOND
@@ -240,21 +241,23 @@ describe('RefreshTokenUseCase — refusals', () => {
 describe('RefreshTokenUseCase — grace window', () => {
   it('accepts a rotated token inside the window and issues another pair', async () => {
     store({ revokedAt: NOW, replacedBy: SUCCESSOR_ID })
+    storeSuccessor()
     clockReading = at(GRACE_WINDOW_MS)
 
     const result = await refresh()
 
     expect(result.refreshToken).not.toBe(CURRENT_TOKEN)
-    expect(repository.tokens[1]?.familyId).toBe(FAMILY_ID)
+    expect(repository.tokens[2]?.familyId).toBe(FAMILY_ID)
   })
 
   it('inherits the same way inside the window', async () => {
     store({ revokedAt: NOW, replacedBy: SUCCESSOR_ID })
+    storeSuccessor()
     clockReading = at(GRACE_WINDOW_MS)
 
     await refresh()
 
-    const successor = repository.tokens[1]
+    const successor = repository.tokens[2]
     expect(successor?.ip).toBe(ROTATION_IP)
     expect(successor?.deviceLabel).toBe(DEVICE_LABEL)
     expect(successor?.sessionStartedAt).toEqual(SESSION_STARTED_AT)
@@ -264,6 +267,7 @@ describe('RefreshTokenUseCase — grace window', () => {
     // Sliding would turn a client stuck in a retry loop into an eternal session
     // over a token that should already be dead.
     store({ revokedAt: NOW, replacedBy: SUCCESSOR_ID })
+    storeSuccessor()
     clockReading = at(GRACE_WINDOW_MS)
 
     await refresh()
@@ -339,12 +343,40 @@ describe('RefreshTokenUseCase — grace window', () => {
     await expect(refresh()).rejects.toBeInstanceOf(RefreshTokenReusedError)
   })
 
+  it('refuses the predecessor once its successor was revoked explicitly', async () => {
+    // Logout, logout-all and a password change revoke only live rows, so the
+    // predecessor keeps its `replacedBy` and its recent `revokedAt`. Forgiving
+    // it would hand a fresh token to the family the user just killed.
+    store({ revokedAt: NOW, replacedBy: SUCCESSOR_ID })
+    storeSuccessor()
+    await repository.revokeFamily(FAMILY_ID, at(ONE_MILLISECOND))
+    clockReading = at(GRACE_WINDOW_MS)
+
+    await expect(refresh()).rejects.toBeInstanceOf(RefreshTokenReusedError)
+
+    expect(repository.tokens).toHaveLength(TWO_TOKENS)
+    expect(repository.tokens.every((token) => token.revokedAt !== null)).toBe(true)
+  })
+
+  it('refuses a second replay of the same predecessor, never forking the family', async () => {
+    store({ revokedAt: NOW, replacedBy: SUCCESSOR_ID })
+    storeSuccessor()
+    clockReading = at(GRACE_WINDOW_MS)
+    await refresh()
+
+    await expect(refresh()).rejects.toBeInstanceOf(RefreshTokenReusedError)
+
+    const live = repository.tokens.filter((token) => token.revokedAt === null)
+    expect(live).toHaveLength(NO_TOKENS)
+  })
+
   it('lets the grace window WIN over expiry', async () => {
     // The normative order. A client that rotates one second before expiry and
     // loses the response arrives with a token that is revoked AND expired;
     // checking expiry first would answer 401 and log it out — the exact random
     // logout the grace window exists to remove.
     store({ revokedAt: NOW, replacedBy: SUCCESSOR_ID, expiresAt: at(ONE_MILLISECOND) })
+    storeSuccessor()
     clockReading = at(GRACE_WINDOW_MS)
 
     const result = await refresh()

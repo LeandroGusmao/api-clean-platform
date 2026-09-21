@@ -41,6 +41,7 @@ const HOLD_MS = 300
 const CONTENTION_DELAY_MS = 100
 
 const NO_ROWS = 0
+const ONE_ROW = 1
 const TWO_ROWS = 2
 const ID_PAD_LENGTH = 12
 
@@ -181,6 +182,19 @@ describe('DrizzleRefreshTokensRepository', () => {
     })
 
     expect(counts).toEqual([TWO_ROWS, NO_ROWS])
+  })
+
+  it('revoke returns one for a live token, and zero once it is already dead', async () => {
+    const counts: number[] = []
+
+    await uow(async ({ refreshTokens: repo }) => {
+      const live = token(FAMILY_A, HASH_A)
+      await repo.save(live)
+      counts.push(await repo.revoke(live.id, NOW))
+      counts.push(await repo.revoke(live.id, LATER))
+    })
+
+    expect(counts).toEqual([ONE_ROW, NO_ROWS])
   })
 
   it('revokeAllForUser revokes across every family of that user', async () => {

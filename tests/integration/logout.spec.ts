@@ -101,8 +101,9 @@ describe('POST /auth/logout', () => {
   })
 
   it('kills the sibling issued inside the grace window too', async () => {
-    // The reason logout revokes the FAMILY and not the row: a grace-window
-    // exchange leaves two live tokens, and revoking one would leave the session
+    // The reason logout revokes the FAMILY and not the row: after a grace-window
+    // exchange the token presented here is already dead and the live one is its
+    // sibling, so revoking only the presented row would leave the session
     // standing after the user asked to leave.
     const { refreshToken } = (await login()).json()
     const rotated = await refresh({ refreshToken })
@@ -113,6 +114,17 @@ describe('POST /auth/logout', () => {
     expect(
       (await refresh({ refreshToken: sibling.json().refreshToken })).statusCode,
     ).toBe(UNAUTHORIZED_STATUS_CODE)
+  })
+
+  it('refuses the rotated predecessor inside the grace window after logout', async () => {
+    const { refreshToken } = (await login()).json()
+    const rotated = await refresh({ refreshToken })
+
+    await logout({ refreshToken: rotated.json().refreshToken })
+    const rowsBefore = (await db.select().from(refreshTokens)).length
+
+    expect((await refresh({ refreshToken })).statusCode).toBe(UNAUTHORIZED_STATUS_CODE)
+    expect(await db.select().from(refreshTokens)).toHaveLength(rowsBefore)
   })
 
   it('leaves a second login of the same user signed in', async () => {
@@ -173,6 +185,17 @@ describe('POST /auth/logout-all', () => {
     expect((await refresh({ refreshToken: tablet.refreshToken })).statusCode).toBe(
       UNAUTHORIZED_STATUS_CODE,
     )
+  })
+
+  it('refuses the rotated predecessor inside the grace window', async () => {
+    const { refreshToken } = (await login()).json()
+    const rotated = (await refresh({ refreshToken })).json()
+
+    await logoutAll(rotated.accessToken)
+    const rowsBefore = (await db.select().from(refreshTokens)).length
+
+    expect((await refresh({ refreshToken })).statusCode).toBe(UNAUTHORIZED_STATUS_CODE)
+    expect(await db.select().from(refreshTokens)).toHaveLength(rowsBefore)
   })
 
   it('never touches another account', async () => {

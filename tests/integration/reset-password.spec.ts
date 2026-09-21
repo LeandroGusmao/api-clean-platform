@@ -100,6 +100,9 @@ async function forgotAndFetchToken(): Promise<string> {
   return extractResetToken((await latestMessage()).text)
 }
 
+const refreshWith = (refreshToken: string) =>
+  app.inject({ method: POST_METHOD, url: REFRESH_PATH, payload: { refreshToken } })
+
 describe('POST /auth/password/reset', () => {
   it('changes the password: 204, new password works, old one does not', async () => {
     const token = await forgotAndFetchToken()
@@ -123,6 +126,18 @@ describe('POST /auth/password/reset', () => {
       payload: { refreshToken: session.refreshToken },
     })
     expect(refreshed.statusCode).toBe(UNAUTHORIZED_STATUS_CODE)
+  })
+
+  it('refuses a rotated predecessor inside the grace window', async () => {
+    const session = (await login(PASSWORD)).json() as { refreshToken: string }
+    await refreshWith(session.refreshToken)
+    const token = await forgotAndFetchToken()
+
+    await resetWith(token)
+
+    expect((await refreshWith(session.refreshToken)).statusCode).toBe(
+      UNAUTHORIZED_STATUS_CODE,
+    )
   })
 
   it('enqueues a "password was reset" notice in the outbox after success', async () => {
