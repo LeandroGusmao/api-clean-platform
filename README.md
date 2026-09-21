@@ -92,7 +92,6 @@ A lista completa está no [`ARCHITECTURE.md`](ARCHITECTURE.md) §10.
 |---|---|
 | Entender como o código está organizado e o que pode importar o quê | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
 | Adicionar um módulo novo | [`ARCHITECTURE.md`](ARCHITECTURE.md) §15 |
-| Saber **por que** algo é do jeito que é, antes de mudar | [`docs/DECISIONS.md`](docs/DECISIONS.md) |
 | Saber o que **seu produto** ainda precisa decidir | [`docs/PRODUCT-CHOICES.md`](docs/PRODUCT-CHOICES.md) |
 | Usar ou consumir o `auth` | [`src/modules/auth/README.md`](src/modules/auth/README.md) |
 

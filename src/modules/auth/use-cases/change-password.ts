@@ -51,9 +51,9 @@ export class ChangePasswordUseCase {
      * `usersRepository.updatePasswordHash(...)` outside the transaction would
      * compile, and the amendment below would rest entirely on someone reading
      * this comment. Declaring only what is used makes the violation a compile
-     * error — the same move as `RateLimitEnv` in `infra/http/rate-limit.ts`
-     * (decision 23), and the same reasoning that chose `updatePasswordHash`
-     * over a broad `update(user)`.
+     * error — the same move as `RateLimitEnv` in `infra/http/rate-limit.ts`,
+     * and the same reasoning that chose `updatePasswordHash` over a broad
+     * `update(user)`.
      */
     private readonly usersRepository: Pick<IUsersRepository, 'findById'>,
     private readonly uow: IAuthUnitOfWork,

@@ -17,8 +17,7 @@ export abstract class AppError extends Error {
    * True when the error is itself a signal worth investigating — refresh
    * token reuse, not a plain expiry — rather than routine client failure. The
    * error handler logs these at `warn`; every other `AppError` answers the
-   * client with no log line, because its own `code` already told the story
-   * (decision 15).
+   * client with no log line, because its own `code` already told the story.
    */
   readonly securityEvent: boolean = false
 }

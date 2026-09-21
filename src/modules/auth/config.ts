@@ -1,10 +1,10 @@
 import { z } from 'zod'
 
 /**
- * 15 minutes — decision 11 keeps this short because the refresh token carries
- * the session. The number IS the revocation latency of `logout-all`: a session
- * revoked at the refresh layer still opens doors until the access token already
- * in the client's hands expires.
+ * 15 minutes, kept short because the refresh token carries the session. The
+ * number IS the revocation latency of `logout-all`: a session revoked at the
+ * refresh layer still opens doors until the access token already in the
+ * client's hands expires.
  */
 export const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 900
 
@@ -18,7 +18,7 @@ const MIN_JWT_SECRET_LENGTH = 32
 /** Presence, not policy: an empty `iss` would verify against an empty `iss`. */
 const MIN_CLAIM_LENGTH = 1
 
-/** 60 days — decision 11. Sliding: every rotation issues a fresh window. */
+/** 60 days, sliding: every rotation issues a fresh window. */
 export const DEFAULT_REFRESH_TOKEN_TTL_SECONDS = 5_184_000
 
 /**
@@ -29,7 +29,7 @@ export const DEFAULT_REFRESH_TOKEN_TTL_SECONDS = 5_184_000
 export const DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS = 7_776_000
 
 /**
- * 30 seconds — decision 11. The window in which a refresh that has already been
+ * 30 seconds. The window in which a refresh that has already been
  * rotated is still accepted, because the response carrying its successor may
  * have died in a tunnel. Without it, rotation in a mobile app produces random
  * logouts.
@@ -45,7 +45,7 @@ export const DEFAULT_REFRESH_TOKEN_GRACE_WINDOW_SECONDS = 30
  *
  * These live in the MODULE and not in the core env because the route declares
  * the ceiling, through `config` on the endpoint's schema, and the route belongs
- * to the module (decisions 14 and 23). That is also why the window is the
+ * to the module. That is also why the window is the
  * module's own: reusing the core's would make this module read a core variable.
  */
 export const DEFAULT_LOGIN_RATE_LIMIT_MAX_REQUESTS = 10
@@ -156,7 +156,7 @@ export const DEFAULT_PASSWORD_RESET_TOKEN_PRUNE_RETENTION_SECONDS = 86_400
  * Five attempts before a pending notice gives up and stops being retried
  * (design §3, §8). The interval BETWEEN attempts is the claim lease below: a
  * message whose send failed keeps its claim, so it is offered again only when
- * the claim expires (decision 40).
+ * the claim expires.
  */
 export const DEFAULT_OUTBOX_DISPATCH_MAX_ATTEMPTS = 5
 
@@ -164,7 +164,7 @@ export const DEFAULT_OUTBOX_DISPATCH_MAX_ATTEMPTS = 5
 export const DEFAULT_OUTBOX_DISPATCH_BATCH_SIZE = 100
 
 /**
- * How long a dispatch run's claim on a message lasts (decision 40). It has to
+ * How long a dispatch run's claim on a message lasts. It has to
  * outlast the longest a single send can stall — the SMTP timeouts bound that —
  * or a second run picks the message up and sends it again. It is also the wait
  * between two attempts at a message whose send failed.
@@ -203,7 +203,7 @@ export const DEFAULT_GOOGLE_SIGN_IN_RATE_LIMIT_MAX_REQUESTS = 10
 export const DEFAULT_GOOGLE_SIGN_IN_RATE_LIMIT_WINDOW_SECONDS = 60
 
 /**
- * The module owns its own variables (decision 14). `infra/config/env.ts` merges
+ * The module owns its own variables. `infra/config/env.ts` merges
  * this into the core schema so the process dies at boot listing every problem
  * at once, instead of revealing one per restart.
  */

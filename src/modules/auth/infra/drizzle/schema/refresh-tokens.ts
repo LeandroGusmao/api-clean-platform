@@ -2,9 +2,9 @@ import { index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/
 import { users } from './users.js'
 
 /**
- * One link in a rotating refresh chain (decision 11). This module owns the
+ * One link in a rotating refresh chain. This module owns the
  * table, and the foreign key to `users` is legal because both live inside
- * `auth` (decision 24).
+ * `auth`.
  *
  * NO column defaults, unlike `users`. Postgres stores `timestamptz` in
  * microseconds while a JS `Date` has milliseconds, and the grace window
@@ -57,7 +57,7 @@ export const refreshTokens = pgTable(
     /**
      * Derived from the User-Agent when the family opened, and inherited by
      * every rotation — it names the DEVICE, which does not change mid session.
-     * The raw header is deliberately not stored (decision 38).
+     * The raw header is deliberately not stored.
      */
     deviceLabel: text('device_label'),
     /**

@@ -11,8 +11,8 @@ const MISSING_SUBJECT_MESSAGE = 'Access token is missing a subject'
  * HS256 through `jose`, whose only dependency is none and which is ESM-native.
  *
  * `@fastify/jwt` was not an option: it would tie token issuance to Fastify, and
- * decision 10 requires the dependency graph to be built without an HTTP
- * framework so that a worker and a cron can share it.
+ * the dependency graph has to be built without an HTTP framework so that a
+ * worker and a cron can share it.
  */
 export class JwtTokenSigner implements ITokenSigner {
   readonly #secret: Uint8Array
@@ -23,8 +23,8 @@ export class JwtTokenSigner implements ITokenSigner {
 
   /**
    * Takes the SLICE of the config it reads, not the whole of `AuthConfig` — the
-   * same reasoning decision 23 applies to a module's slice of the container,
-   * one level down. Structural typing means the container still passes the
+   * same reasoning that hands a module only its slice of the container, one
+   * level down. Structural typing means the container still passes the
    * whole config unchanged; what it buys is that a variable added for the
    * refresh token, or for e-mail verification later, cannot break this class
    * or its spec by merely existing.

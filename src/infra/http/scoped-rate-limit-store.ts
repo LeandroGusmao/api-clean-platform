@@ -25,7 +25,7 @@ interface ChildParams {
 
 /**
  * The store handed to `@fastify/rate-limit`, splitting routes by who declares
- * the ceiling (decision 39).
+ * the ceiling.
  *
  * The plugin calls `child` for a route that declares its own `config.rateLimit`
  * and uses the store itself for every other route. So the routes whose ceiling

@@ -18,7 +18,7 @@ const POOL_ENABLED = true
 
 /**
  * Bounds on a single send, so a stalled connection cannot hold a dispatch run
- * past the claim it holds (decision 40). nodemailer's own defaults are 2
+ * past the claim it holds. nodemailer's own defaults are 2
  * minutes to connect, 30 seconds for the greeting and 10 minutes of socket
  * inactivity. These cut a stalled connection; a server that answers every
  * command slowly is not cut, because the socket timeout restarts with each reply.

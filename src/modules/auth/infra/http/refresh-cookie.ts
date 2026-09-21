@@ -4,7 +4,7 @@ import { z } from 'zod'
 export const REFRESH_COOKIE_NAME = 'refresh_token'
 
 /**
- * `/auth`, and NOT the `/auth/refresh` decision 12 wrote.
+ * `/auth`, and NOT the narrower `/auth/refresh`.
  *
  * A browser sends a cookie only to paths at or below `Path`, so the narrower
  * value never reaches `POST /auth/logout` — which would make cookie-mode logout
@@ -26,9 +26,9 @@ export const REFRESH_TRANSPORT_COOKIE = 'cookie'
  * arrived.
  *
  * Not the market default — Firebase, Supabase, Cognito and Auth0 all answer in
- * the body and leave cookies to a BFF. Decision 12 deliberately puts the cookie
- * in the API itself so one surface serves both clients, and process-level
- * configuration cannot decide it, because both clients hit the same process.
+ * the body and leave cookies to a BFF. Putting the cookie in the API itself is
+ * deliberate: one surface serves both clients, and process-level configuration
+ * cannot decide it, because both clients hit the same process.
  */
 export const refreshTransportSchema = z
   .enum([REFRESH_TRANSPORT_BODY, REFRESH_TRANSPORT_COOKIE])
@@ -68,7 +68,7 @@ export const refreshTransportSchema = z
  * and the next refresh answers 401 exactly as if no one had logged in.
  *
  * Production is unaffected (HTTPS), and so is mobile — a native client never
- * asks for this cookie (decision 12); it takes the token in the body and stores
+ * asks for this cookie; it takes the token in the body and stores
  * it in the Keychain or Keystore.
  */
 const cookieOptions = {

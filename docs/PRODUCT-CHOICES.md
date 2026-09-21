@@ -4,8 +4,8 @@
 faz, de quem usa e de qual é o risco — e por isso não têm resposta certa antes
 de existir um produto para validá-las contra.
 
-A fila de pendências do boilerplate fechou em 2026-09-20 (decisão 44). O que
-resta é esta lista, e quase tudo nela está travado no mesmo gatilho: **qual app
+A fila de pendências do boilerplate fechou em 2026-09-20. O que resta é esta
+lista, e quase tudo nela está travado no mesmo gatilho: **qual app
 derivado vem primeiro.** Os dois candidatos mudam a ordem — um agregador
 financeiro sobe MFA e criptografia em repouso; um app de alimentação sobe
 trilha de auditoria e retenção.
@@ -13,8 +13,7 @@ trilha de auditoria e retenção.
 Cada entrada diz: o que é · por que não está aqui · o que reabre · o que custa
 enquanto não for feito.
 
-O porquê de cada decisão fechada está no [`DECISIONS.md`](DECISIONS.md); a
-estrutura que o código segue, no [`ARCHITECTURE.md`](../ARCHITECTURE.md).
+A estrutura que o código segue está no [`ARCHITECTURE.md`](../ARCHITECTURE.md).
 
 ---
 
@@ -54,8 +53,8 @@ deteria é vetor de DoS contra a vítima — qualquer um trava a conta de qualqu
 pessoa sabendo só o endereço.
 
 **O que segura hoje.** O teto de 10/min por endereço no login, compartilhado
-entre réplicas via Redis (decisão 39); o custo do argon2, medido em 7,3 ms e
-19 MB por tentativa; a equalização de tempo do login, que impede descobrir
+entre réplicas via Redis; o custo do argon2, medido em 7,3 ms e 19 MB por
+tentativa; a equalização de tempo do login, que impede descobrir
 *qual* conta existe antes de atacá-la; e o teto por IP na borda, que é onde uma
 botnet é visível de verdade.
 
@@ -102,8 +101,8 @@ validação na criação da senha, que é o que de fato protege.
 
 **Por que não está aqui.** Reclassificada em 2026-09-17 de "decisão de
 arquitetura pendente" para escopo de produto, pelo mesmo argumento que fechou o
-outbox genérico (decisão 33): sem um segundo consumidor real não há como validar
-a forma certa, e "quem pode fazer o quê" varia por produto de um jeito que "como
+outbox genérico: sem um segundo consumidor real não há como validar a forma
+certa, e "quem pode fazer o quê" varia por produto de um jeito que "como
 não vazar sessão" não varia. Um papel único (`admin`/`user`) seria simples demais
 para servir de verdade; papéis com permissões associadas seria decisão tomada sem
 produto nenhum para validar contra.
@@ -113,9 +112,10 @@ usuário. A decisão certa depende do que **esse** produto precisa — papel ún
 por recurso? por organização? — e não do que este documento adivinharia hoje.
 
 **Trade-off a preservar para quando for retomada.** Se o papel for para dentro do
-JWT (decisão 11), mudança de permissão só vale no próximo refresh: janela de até
-o TTL do access token. É a mesma latência de revogação que a decisão 11 já
-aceitou para autenticação, passando a valer também para autorização.
+JWT, mudança de permissão só vale no próximo refresh: janela de até o TTL do
+access token. É a mesma latência de revogação que a autenticação já aceitou ao
+manter o banco fora do caminho autenticado, passando a valer também para
+autorização.
 
 ---
 
@@ -179,7 +179,7 @@ autenticou.
 **Por que não está aqui.** O access token não carrega `auth_time` nem `amr`,
 pela regra que o `ports/token-signer.ts` enuncia: um contrato nasce com o
 consumidor dele, e nenhuma rota pergunta isso hoje. A deleção de conta, que seria
-a candidata, resolveu com reapresentação da senha atual (decisão 37).
+a candidata, resolveu com reapresentação da senha atual.
 
 **Gatilho.** A primeira rota que precise distinguir "logado" de "logado agora" —
 transferência de valor, mudança de dado bancário, exportação em massa.
@@ -196,8 +196,8 @@ formato de token, com janela de coordenação se já houver cliente em produçã
 assinou, permitindo que o servidor tenha uma chave que assina e outras que só
 verificam.
 
-**Por que não está aqui.** Adiado em 2026-09-20 (decisão 44). Verificado no
-código: `POST /auth/refresh` não passa pelo guard e não lê o access token —
+**Por que não está aqui.** Adiado em 2026-09-20. Verificado no código:
+`POST /auth/refresh` não passa pelo guard e não lê o access token —
 consome só o refresh token opaco. Trocar o `JWT_SECRET` ao vivo **não desloga
 ninguém**: cada cliente toma um `401`, chama `/refresh` e segue, que é o mesmo
 caminho que já percorre a cada expiração. O que o `kid` compra é **timing**, não

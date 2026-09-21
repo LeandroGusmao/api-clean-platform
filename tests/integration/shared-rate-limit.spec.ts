@@ -80,8 +80,8 @@ describe('the shared rate limit', () => {
     expect((await login(first)).statusCode).toBe(TOO_MANY_REQUESTS_STATUS_CODE)
   })
 
-  // The other half of decision 39: the global ceiling is deliberately per
-  // replica, so it neither costs a round trip nor depends on Redis.
+  // The other half of the shared limiter: the global ceiling is deliberately
+  // per replica, so it neither costs a round trip nor depends on Redis.
   it('keeps the global ceiling per replica', async () => {
     const overrides = { RATE_LIMIT_MAX_REQUESTS: GLOBAL_CEILING }
     const first = await startReplica(overrides)

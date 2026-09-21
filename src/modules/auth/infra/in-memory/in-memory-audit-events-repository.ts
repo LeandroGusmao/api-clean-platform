@@ -2,7 +2,7 @@ import type { AuditEvent } from '#modules/auth/entities/audit-event'
 import type { IAuditEventsRepository } from '#modules/auth/repositories/audit-events-repository'
 
 /**
- * In-memory adapter, for the unit tests of the use cases (decision 09). Exposes
+ * In-memory adapter, for the unit tests of the use cases. Exposes
  * `events` because the port has no read: the tests inspect what was recorded.
  */
 export class InMemoryAuditEventsRepository implements IAuditEventsRepository {

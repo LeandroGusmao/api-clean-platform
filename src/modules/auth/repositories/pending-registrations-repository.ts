@@ -63,11 +63,13 @@ export interface IPendingRegistrationsRepository {
 
   /**
    * Total wipe for one address: `DELETE ... WHERE lower(email) = ?`, with no
-   * expiry or `consumed_at` filter. Called when a federated sign-in takes the
-   * address (§6 item 2 of `DECISIONS.md`) — a concurrent confirm that was about
-   * to consume one of these rows then loses its `consume` and reports the same
-   * generic failure. Distinct from `deleteExpiredByEmail`, which is opportunistic
-   * and never touches a live row.
+   * expiry or `consumed_at` filter. Called when a federated sign-in takes an
+   * address that still has pending registrations: the identity provider proved
+   * control of the address and the pending row did not, so the pending row
+   * loses. A concurrent confirm that was about to consume one of these rows
+   * then loses its `consume` and reports the same generic failure. Distinct
+   * from `deleteExpiredByEmail`, which is opportunistic and never touches a
+   * live row.
    */
   deleteAllByEmail(email: Email): Promise<void>
 

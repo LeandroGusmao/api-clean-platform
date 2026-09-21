@@ -63,8 +63,9 @@ domínio do outro módulo atravessa por contrato injetado no composition root.
 protege rotas sem importar `#modules/auth` — o verificador chega injetado.
 
 **Exceção que não dispara:** `#modules/<m>/config` em `env.ts`. A tabela
-classifica o `config.ts` do módulo como `pure`, e o merge dos schemas no boot é a
-decisão 14.
+classifica o `config.ts` do módulo como `pure`, e o merge dos schemas no boot é
+exatamente o que faz cada módulo declarar as próprias env vars e o boot validar
+todas de uma vez.
 
 ### `XMOD-PURE` — MÉDIA
 `infra/` de um módulo importando a camada **pura** de outro. A tabela permite —

@@ -7,7 +7,7 @@ const RATE_LIMIT_STORE_UNAVAILABLE_MESSAGE =
 
 /**
  * The counter behind a route's own ceiling could not be reached, and the route
- * refuses instead of answering uncounted (decision 39).
+ * refuses instead of answering uncounted.
  *
  * `securityEvent: true` is what makes the error handler log it: a transient
  * error is otherwise a 503 with no line at all, and a control that stopped

@@ -114,13 +114,13 @@ jobs:
           DATABASE_URL: postgres://api_clean_platform:api_clean_platform_local_dev@127.0.0.1:5433/api_clean_platform_test
           REDIS_URL: redis://127.0.0.1:6380
           JWT_SECRET: a-ci-secret-with-at-least-32-characters
-          # Required at boot with no default, like JWT_SECRET (decision 14).
+          # Required at boot with no default, like JWT_SECRET.
           # Any non-empty value lets the process start; this step never
           # exchanges a real Google ID token.
           GOOGLE_CLIENT_ID: a-ci-google-client-id.apps.googleusercontent.com
           # Required with no default, and deliberately so: a shared default
           # would stamp two deployments alike and let one accept the other's
-          # tokens (decision 38). This step never verifies a token, so any
+          # tokens. This step never verifies a token, so any
           # non-empty pair boots.
           JWT_ISSUER: api-clean-platform-ci
           JWT_AUDIENCE: api-clean-platform-ci

@@ -12,7 +12,7 @@ import type { IUsersRepository } from './users-repository.js'
  *
  * `refreshTokens` is what the rotation writes twice in one transaction —
  * revoking the current token and inserting its successor — which is the case
- * decision 22 was written for.
+ * this contract was written for.
  *
  * `pendingRegistrations` is here for the same reason: confirmation consumes the
  * pending row, inserts the `users` row and its first refresh token in one

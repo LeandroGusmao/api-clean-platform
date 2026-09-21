@@ -11,7 +11,7 @@ export interface LogoutCommand {
  * Ends one session by revoking the family of the presented token.
  *
  * Takes the unit of work even though it writes to a single repository, which
- * the guidance of decision 22 would not obviously require. The reason is the
+ * the unit-of-work guidance would not obviously require. The reason is the
  * RETRY, not atomicity: the rotation locks one row and then updates the whole
  * family, while this updates the family directly — overlapping row sets locked
  * in different orders, a plain AB-BA, so `40P01` is reachable. Outside the

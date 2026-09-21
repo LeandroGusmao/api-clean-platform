@@ -7,7 +7,7 @@ import type { Email } from '#modules/auth/value-objects/email'
 const SINGLE_ROW = 1
 
 /**
- * In-memory adapter, for the unit tests of the use cases (decision 09).
+ * In-memory adapter, for the unit tests of the use cases.
  *
  * Mirrors `DrizzleUsersRepository` on email uniqueness only, and only for the
  * ASCII inputs the tests use: `Email.create`'s `toLowerCase()` is

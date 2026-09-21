@@ -15,7 +15,7 @@ const NO_ROW_AFFECTED = 0
 /** One row increment for attempts counter. */
 const ONE_INCREMENT = 1
 
-/** One message per claim, so the lease only has to cover one send (decision 40). */
+/** One message per claim, so the lease only has to cover one send. */
 const ONE_MESSAGE_PER_CLAIM = 1
 
 /**

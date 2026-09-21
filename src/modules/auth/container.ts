@@ -18,9 +18,10 @@ const MILLISECONDS_PER_SECOND = 1000
  * plus the `MAIL_*` keys the SMTP adapter needs.
  *
  * `Pick<Env, ...>` and never `Env`: with the whole type this module could read
- * `DATABASE_URL`, and decision 23 would rest on nobody doing it rather than on
- * the compiler. `makeContainer` still passes `env` whole and structural typing
- * narrows it here, so no call site changes.
+ * `DATABASE_URL`, and the rule that a module sees only its own slice would
+ * rest on nobody doing it rather than on the compiler. `makeContainer` still
+ * passes `env` whole and structural typing narrows it here, so no call site
+ * changes.
  */
 export type AuthContainerConfig = AuthConfig &
   Pick<
@@ -83,7 +84,7 @@ import { SignInWithGoogleUseCase } from './use-cases/sign-in-with-google.js'
 /**
  * The module's slice of the dependency graph. This file is `composition`: it is
  * the one place inside the module allowed to know concrete implementations —
- * that is the whole point of a composition root (decision 08).
+ * that is the whole point of a composition root.
  *
  * Stateless objects (repository, providers) are singletons here. Instantiating
  * a class costs nanoseconds against milliseconds of network and database, so
@@ -327,9 +328,9 @@ export function makeAuthContainer(
       idGenerator,
     ),
     /**
-     * Not a use case: there is nothing to orchestrate. Decision 11 keeps the
-     * database out of the authenticated path, so verification is signature
-     * checking and nothing else. Published here so the composition root can
+     * Not a use case: there is nothing to orchestrate. The database stays out
+     * of the authenticated path, so verification is signature checking and
+     * nothing else. Published here so the composition root can
      * build the generic guard without any module coupling.
      */
     verifyAccessToken: (token: string) => tokenSigner.verify(token),
@@ -432,7 +433,7 @@ export function makeAuthContainer(
      */
     uow,
     /**
-     * The module's maintenance jobs for the `cron.ts` entrypoint (decision 30).
+     * The module's maintenance jobs for the `cron.ts` entrypoint.
      * `run-cron.ts` concatenates every module's list; nothing here knows how
      * they are scheduled.
      */

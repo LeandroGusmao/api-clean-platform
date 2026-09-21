@@ -4,7 +4,7 @@ import type { IOutboxMessagesRepository } from '#modules/auth/repositories/outbo
 const ONE_INCREMENT = 1
 
 /**
- * In-memory adapter, for the unit tests of the use cases (decision 09). Models
+ * In-memory adapter, for the unit tests of the use cases. Models
  * the claim (`claimNext`), not row locks: the tests are sequential, and a run
  * that overlaps another is simulated by interleaving `await`s.
  */

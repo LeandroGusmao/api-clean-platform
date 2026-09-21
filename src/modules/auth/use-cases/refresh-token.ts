@@ -58,10 +58,10 @@ type RotationOutcome =
 const REUSE_DETECTED: RotationOutcome = { reused: true }
 
 /**
- * Rotates a refresh token (decision 11): the presented token is spent, a
+ * Rotates a refresh token: the presented token is spent, a
  * successor is issued in the same family, and a token presented after it was
  * already spent revokes the entire family. The owner's notice is written in the
- * same transaction as that revocation (decision 41).
+ * same transaction as that revocation.
  *
  * Receives the unit of work and NO repository directly — the rule of §9 of the
  * unit of work design, which neither the compiler nor the linter can enforce:
@@ -172,7 +172,7 @@ export class RefreshTokenUseCase {
         // was lost in a tunnel, the successor killed here is the one that
         // reached nobody. It DOES require the client to serialise its refresh
         // calls — two concurrent refreshes of the same token would leave it
-        // holding a successor this line killed (decision 11).
+        // holding a successor this line killed.
         //
         // Revoked BEFORE the replacement is issued, so "at most one live token
         // per family" holds even in the middle of the transaction.
@@ -235,7 +235,7 @@ export class RefreshTokenUseCase {
     // The family's ceiling can already be behind us while this token is still
     // alive: the max lifetime was lowered after it was issued. Issuing would
     // mint a successor born expired, so the rotation is refused before anything
-    // is written (decision 42).
+    // is written.
     const sessionStartedAt = context.sessionStartedAt ?? now
     if (this.issuer.ceilingFor(sessionStartedAt).getTime() <= now.getTime()) {
       throw new InvalidRefreshTokenError()

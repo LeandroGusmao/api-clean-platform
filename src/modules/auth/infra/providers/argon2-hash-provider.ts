@@ -32,7 +32,7 @@ export class Argon2HashProvider implements IHashProvider {
     return hash(plain)
   }
 
-  /** Argument order follows decision 21, which is the reverse of the library's. */
+  /** Argument order follows the port, which is the reverse of the library's. */
   compare(plain: string, hashed: string): Promise<boolean> {
     return verify(hashed, plain)
   }

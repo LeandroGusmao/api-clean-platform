@@ -469,8 +469,8 @@ function checkImports(file, lp, layer, imports) {
 
     if (layer === 'global-infra' && spec.startsWith('#modules/')) {
       // `#modules/<m>/config` is deliberate: the boundary table classifies a
-      // module's config.ts as `pure`, and env.ts merges those schemas at boot
-      // (decision 14). Everything else is graded by what it reaches.
+      // module's config.ts as `pure`, and env.ts merges those schemas at boot.
+      // Everything else is graded by what it reaches.
       const isModuleConfig = /^#modules\/[^/]+\/config$/.test(spec)
 
       if (spec.includes('/infra/') || isContainer) {

@@ -54,7 +54,7 @@ export interface TrustedRefreshTokenProps {
 }
 
 /**
- * One link in a rotating refresh chain (decision 11).
+ * One link in a rotating refresh chain.
  *
  * State lives in `#` private fields, which are genuinely private and
  * non-enumerable at runtime: `JSON.stringify(token)` yields `{}`, so the digest
@@ -96,8 +96,7 @@ export class RefreshToken {
    * Born active. `expiresAt` is derived from the injected clock rather than
    * from a column default: Postgres stores `timestamptz` in microseconds while
    * a JS `Date` has milliseconds, and the grace window compares instants — so
-   * both sides of every comparison have to come from the same source
-   * (decision 11).
+   * both sides of every comparison have to come from the same source.
    */
   static create(props: CreateRefreshTokenProps): RefreshToken {
     return new RefreshToken({
@@ -139,7 +138,7 @@ export class RefreshToken {
 
   /**
    * True when this token was revoked BY ROTATION and recently enough to be the
-   * retry of a response that got lost — the mobile case decision 11 describes:
+   * retry of a response that got lost — the mobile case this window exists for:
    * the phone sends the refresh, the server rotates and answers, the answer
    * dies in a tunnel, and the app retries with the token it still has.
    *

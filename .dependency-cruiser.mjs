@@ -56,7 +56,7 @@ export default {
     {
       name: 'own-container-type-only',
       comment:
-        'Decision 23 types the plugin by the slice it receives; as a value it would be a runtime edge.',
+        'The plugin is typed by the slice it receives; as a value it would be a runtime edge.',
       severity: 'error',
       from: { path: OWN_MODULE_INFRA, pathNot: TEST },
       to: { path: OWN_CONTAINER, dependencyTypesNot: [TYPE_ONLY] },

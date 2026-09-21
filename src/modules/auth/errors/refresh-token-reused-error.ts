@@ -9,8 +9,8 @@ const REFRESH_TOKEN_REUSED_MESSAGE =
  * window. The family is revoked before this is thrown.
  *
  * A separate code from `InvalidRefreshTokenError`, and `securityEvent: true`
- * on top of it — decision 15 keeps the use case from logging, so this flag is
- * what makes the error handler emit a `warn` line carrying the code. Folding
+ * on top of it — the use case itself never logs, so this flag is what makes
+ * the error handler emit a `warn` line carrying the code. Folding
  * this into `InvalidRefreshTokenError`, or dropping the flag, would erase the
  * only trace that reuse detection ever fired — the security event this whole
  * design exists to produce. The client also acts differently on the code:

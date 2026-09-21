@@ -6,9 +6,8 @@ refresh token), troca e recuperação de senha e logout. Outros módulos só rec
 o `id` do usuário já autenticado — não importam nada daqui.
 
 Este documento é para quem **consome** ou **lê** o `auth` e quer entender o
-fluxo. O porquê de cada decisão está em
-[`docs/DECISIONS.md`](../../../docs/DECISIONS.md); a estrutura que o código
-segue, em [`ARCHITECTURE.md`](../../../ARCHITECTURE.md).
+fluxo. A estrutura que o código segue está em
+[`ARCHITECTURE.md`](../../../ARCHITECTURE.md).
 
 ---
 

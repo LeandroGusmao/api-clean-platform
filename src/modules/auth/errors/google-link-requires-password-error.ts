@@ -10,8 +10,8 @@ const GOOGLE_LINK_REQUIRES_PASSWORD_MESSAGE =
  *
  * Deliberately specific — "this email already has a password account" — and that
  * is safe here alone: the caller already proved control of the address through
- * Google, so this is not an enumeration oracle (decision §6, item 3). It is the
- * one place in `auth` where telling the truth costs nothing.
+ * Google, so this is not an enumeration oracle. It is the one place in `auth`
+ * where telling the truth costs nothing.
  */
 export class GoogleLinkRequiresPasswordError extends ConflictError {
   readonly code = GOOGLE_LINK_REQUIRES_PASSWORD_CODE

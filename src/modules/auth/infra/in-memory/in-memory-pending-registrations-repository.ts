@@ -6,7 +6,7 @@ const ONE_INCREMENT = 1
 const ATTEMPTS_RESET = 0
 
 /**
- * In-memory adapter, for the unit tests of the use cases (decision 09).
+ * In-memory adapter, for the unit tests of the use cases.
  *
  * It models NO row lock and NO conditional-update race: a unit test runs one
  * call at a time. Atomicity of `consume` and `registerFailedAttempt` is proved

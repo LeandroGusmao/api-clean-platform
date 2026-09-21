@@ -26,7 +26,7 @@ export interface LoginUserResult {
 
 /**
  * Authenticates by email and password, issuing a short-lived access token and
- * the opaque refresh token that carries the session (decision 11).
+ * the opaque refresh token that carries the session.
  *
  * Takes the refresh repository DIRECTLY and not the unit of work, and that is
  * deliberate on both counts: it writes to one repository, so there is no

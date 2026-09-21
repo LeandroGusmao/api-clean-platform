@@ -43,7 +43,7 @@ function labelFor(userAgent: string | undefined): string {
  * conversion has rules, and a second copy of them is a second thing to get
  * wrong.
  *
- * The raw User-Agent is deliberately not returned (decision 38).
+ * The raw User-Agent is deliberately not returned.
  */
 export function buildDeviceContext(request: FastifyRequest): DeviceContext {
   return {

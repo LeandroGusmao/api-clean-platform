@@ -60,7 +60,7 @@ export interface IRefreshTokensRepository {
    * (design §3.4). Returns the deleted-row count for the run log.
    *
    * An unconditional `DELETE`: no transaction, no lock, no ordering. The prune
-   * tables share no invariant, and `replaced_by` carries no FK (decision 11)
+   * tables share no invariant, and `replaced_by` carries no FK
    * exactly so a chain need not be deleted in order.
    */
   deleteExpiredBefore(cutoff: Date): Promise<number>

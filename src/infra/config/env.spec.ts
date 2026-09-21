@@ -524,7 +524,7 @@ describe('MAIL_USER and MAIL_PASSWORD must travel together', () => {
 const MILLISECONDS_PER_SECOND = 1000
 
 // The claim on an outbox message has to outlast the longest a single send can
-// stall, or a second run picks the message up and sends it again (decision 40).
+// stall, or a second run picks the message up and sends it again.
 // The two numbers live in different modules, so nothing else keeps them together.
 describe('the outbox claim lease', () => {
   it('outlasts a stalled SMTP send at the shipped defaults', () => {

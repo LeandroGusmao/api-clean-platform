@@ -42,7 +42,7 @@ const HASH_COLLISION_MESSAGE =
  * `NestedTransactionError` are not: this is a defect, not one of the seven
  * semantic categories. It falls through to the error handler's generic branch
  * and answers 500 — which is what it is. And it carries no `code`, because in
- * this project `code` on an error is PUBLIC CONTRACT (decision 13), and there
+ * this project `code` on an error is PUBLIC CONTRACT, and there
  * is nothing a client could do with this one.
  *
  * What it adds over the `PersistenceError` this would otherwise become is not

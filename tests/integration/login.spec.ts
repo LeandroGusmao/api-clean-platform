@@ -226,7 +226,7 @@ describe('POST /auth/login', () => {
     expect(response.json().refreshToken).toBeUndefined()
   })
 
-  it('sets the cookie with every attribute decision 12 requires', async () => {
+  it('sets the cookie with every attribute the transport requires', async () => {
     const response = await login({
       email: EMAIL,
       password: PASSWORD,

@@ -2,7 +2,7 @@ import { RefreshToken } from '#modules/auth/entities/refresh-token'
 import type { IRefreshTokensRepository } from '#modules/auth/repositories/refresh-tokens-repository'
 
 /**
- * In-memory adapter, for the unit tests of the use cases (decision 09).
+ * In-memory adapter, for the unit tests of the use cases.
  *
  * It models NO row lock, because there is nothing to lock: a unit test runs one
  * call at a time. Concurrency is proved against real Postgres, in

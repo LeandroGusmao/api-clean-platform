@@ -4,7 +4,7 @@ import { users } from './users.js'
 /**
  * One link between a local user and an identity a provider vouches for. This
  * module owns the table, and the foreign key to `users` is legal because both
- * live inside `auth` (decision 24). Cascade on delete: the link is meaningless
+ * live inside `auth`. Cascade on delete: the link is meaningless
  * without its user.
  *
  * NO column defaults, like `refresh-tokens.ts`: `created_at` comes from `IClock`

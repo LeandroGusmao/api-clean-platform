@@ -12,7 +12,7 @@ const PRETTY_TRANSPORT_TARGET = 'pino-pretty'
  * to build for itself — what changed is who owns it.
  *
  * It had to leave `server.ts` because the composition root is shared by `http`,
- * `worker` and `cron` (decision 10), and a worker forced to build its own pino
+ * `worker` and `cron`, and a worker forced to build its own pino
  * would rebuild `redact` alongside it. That list is what keeps a password hash
  * or a bearer token out of the logs, so a second copy of it is how the first
  * worker leaks one. Owning the logger here is what makes the protection

@@ -6,7 +6,7 @@ type RefreshTokenRow = typeof refreshTokens.$inferSelect
 
 /**
  * Entity to row. This file is the only place that knows both shapes — the pure
- * layer never learns what a row looks like (decision 20).
+ * layer never learns what a row looks like.
  */
 export const toPersistenceRefreshToken = (token: RefreshToken): NewRefreshTokenRow => ({
   id: token.id,

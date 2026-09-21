@@ -18,9 +18,9 @@ const LOGOUT_ALL_PATH = '/logout-all'
 const LOGOUT_ALL_SUMMARY = 'End every session of this account'
 const LOGOUT_ALL_DESCRIPTION =
   'Revokes every refresh token of the authenticated user, on every device. ' +
-  'Access tokens already issued stay valid until they expire — decision 11 ' +
-  'keeps the database out of the authenticated path, so revocation latency is ' +
-  'the access token TTL.'
+  'Access tokens already issued stay valid until they expire: the database ' +
+  'stays out of the authenticated path, so revocation latency is the access ' +
+  'token TTL.'
 
 /**
  * No body schema, so no 400: this endpoint reads nothing from the request but

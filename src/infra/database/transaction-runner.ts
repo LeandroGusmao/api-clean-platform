@@ -20,7 +20,7 @@ const NESTED_TRANSACTION_MESSAGE =
 /**
  * Deliberately NOT an `AppError`, for the same reason `PersistenceError` is not:
  * nesting is a programming defect, not one of the six semantic categories of
- * decision 13. It falls through to the error handler's generic branch and
+ * the error taxonomy. It falls through to the error handler's generic branch and
  * answers 500 — which is what it is.
  */
 export class NestedTransactionError extends Error {
@@ -116,11 +116,11 @@ function backoffFor(attempt: number): number {
  * genuine nested call made DURING the transaction (still `open: true`) is
  * still blocked.
  *
- * That is what separates it from the ambient-transaction pattern decision 22
+ * That is what separates it from the ambient-transaction pattern this project
  * rejected — the transaction stays explicit in `work`'s parameter, and the
  * only thing this flag can do is throw. It is the project's second use of
- * `AsyncLocalStorage`, which decision 15 had accepted as a one-off; the
- * amendment records why detection is not propagation.
+ * `AsyncLocalStorage`, and it earns that exception precisely because it only
+ * DETECTS nesting: it never propagates the transaction.
  */
 const insideTransaction = new AsyncLocalStorage<{ open: boolean }>()
 

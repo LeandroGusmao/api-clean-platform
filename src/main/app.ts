@@ -32,7 +32,7 @@ export async function buildApp(
 ): Promise<FastifyInstance> {
   // One logger for the whole process, handed to both halves. Without this the
   // container would have to build its own, and a worker or cron entrypoint
-  // (decision 10) would rebuild `redact` alongside it — the list that keeps a
+  // would rebuild `redact` alongside it — the list that keeps a
   // password hash out of the logs is not something to have two copies of.
   const logger = createLogger(env, { stream: options.logStream })
   const app = buildServer(env, { ...options, logger })
@@ -44,7 +44,7 @@ export async function buildApp(
   const redis = createRedis(env, logger)
   app.addHook('onClose', () => closeRedis(redis))
   // The process starts even when Redis is down: the routes that count in it
-  // refuse (decision 39) and the rest serve, and the client keeps reconnecting.
+  // refuse and the rest serve, and the client keeps reconnecting.
   // Refusing to boot would turn a Redis maintenance window into an outage of the
   // whole API.
   if (!(await connectRedis(redis))) {

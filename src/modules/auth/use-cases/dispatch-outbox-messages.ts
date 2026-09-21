@@ -15,7 +15,7 @@ export interface DispatchResult {
  * failure on one row must not block or roll back the others (same isolation
  * `runJobs` gives two different `CronJob`s).
  *
- * Each row is claimed before it is sent (decision 40), so two runs that overlap
+ * Each row is claimed before it is sent, so two runs that overlap
  * work on different rows instead of sending the same one twice. The claim lasts
  * `leaseMs`: a run that dies mid-send leaves a claim that simply expires.
  *

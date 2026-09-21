@@ -90,8 +90,8 @@ describe('createTransactionRunner', () => {
     const boom = new Error(BOOM_MESSAGE)
 
     // `toBe`, not `toThrow`: identity is the contract. A wrapped error would
-    // still satisfy a message match while breaking the taxonomy of decision 13,
-    // which is what lets `EmailAlreadyInUseError` still answer 409 from inside
+    // still satisfy a message match while breaking the error taxonomy, which
+    // is what lets `EmailAlreadyInUseError` still answer 409 from inside
     // a transaction.
     await expect(
       runner(async () => {

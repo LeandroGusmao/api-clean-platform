@@ -5,7 +5,7 @@ import type {
 } from '#modules/auth/repositories/password-reset-tokens-repository'
 
 /**
- * In-memory adapter, for the unit tests of the use cases (decision 09). Models
+ * In-memory adapter, for the unit tests of the use cases. Models
  * NO row lock and NO conditional-update race: a unit test runs one call at a
  * time. Atomicity is proved against real Postgres in
  * `tests/integration/drizzle-password-reset-tokens-repository.spec.ts`.

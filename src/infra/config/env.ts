@@ -32,7 +32,7 @@ export const DEFAULT_DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS = 10_000
 
 /**
  * Redis backs the routes that declare their own rate limit ceiling, and those
- * routes refuse while it is down (decision 39). These bound how long a request
+ * routes refuse while it is down. These bound how long a request
  * waits on it: a command that is not answered quickly must fail, not queue.
  * The command timeout is far above a healthy round trip and far below any
  * request timeout.
@@ -252,7 +252,7 @@ const MAIL_CREDENTIALS_PAIR_MESSAGE =
   'refusing to start'
 
 /**
- * Every module's schema merged, validated once at boot (decision 14). A module
+ * Every module's schema merged, validated once at boot. A module
  * declaring a variable and forgetting this line would ship an unvalidated
  * `undefined` to production — which is why no module reads `process.env` itself.
  *

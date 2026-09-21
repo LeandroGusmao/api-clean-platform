@@ -31,7 +31,7 @@ const DELETE_ACCOUNT_DESCRIPTION =
   'none — though it still sends a body, an empty JSON object, since a ' +
   'request with no body at all is rejected as malformed. Access tokens ' +
   'already issued stay valid until they expire, with nothing left to ' +
-  'reach — decision 11.'
+  'reach.'
 
 const MIN_SUBMITTED_PASSWORD_LENGTH = 1
 

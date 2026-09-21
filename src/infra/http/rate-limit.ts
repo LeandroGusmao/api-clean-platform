@@ -9,7 +9,7 @@ const MILLISECONDS_PER_SECOND = 1000
 
 /**
  * Only the two values the limiter consumes. Declaring the narrow type IS the
- * slice (decision 23): a caller passes `env` whole and this function still
+ * slice: a caller passes `env` whole and this function still
  * cannot see `DATABASE_URL` — reaching for it is a compile error, not a review
  * comment.
  */
@@ -33,7 +33,7 @@ export type RateLimitEnv = Pick<
  *
  * A route that declares its own ceiling counts in `redis`, shared by every
  * replica, and refuses while it is unreachable. Every other route counts in
- * process, so N replicas give N times the global ceiling (decision 39). Without
+ * process, so N replicas give N times the global ceiling. Without
  * `redis`, every route counts in process.
  */
 export async function registerRateLimit(

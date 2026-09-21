@@ -3,7 +3,7 @@ import type { Env } from '#infra/config/env'
 
 /**
  * Only what the client reads, so reaching for another variable is a compile
- * error rather than a review comment (decision 23).
+ * error rather than a review comment.
  */
 export type RedisEnv = Pick<
   Env,
@@ -36,9 +36,9 @@ const CLIENT_ENDED_STATUS = 'end'
  *
  * A command with no live connection fails at once. ioredis's default is to hold
  * it in an offline queue until the reconnect succeeds, which would leave a
- * request on a route that counts here hanging instead of answering 503
- * (decision 39). `commandTimeout` covers the other case: a connection that is
- * up and no longer answering.
+ * request on a route that counts here hanging instead of answering 503.
+ * `commandTimeout` covers the other case: a connection that is up and no
+ * longer answering.
  */
 export function createRedis(env: RedisEnv, log: RedisLogger): Redis {
   const redis = new Redis(env.REDIS_URL, {

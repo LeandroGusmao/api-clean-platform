@@ -11,7 +11,7 @@
   //
   // `in-memory/` is excluded for the same reason one step removed: those
   // repositories live under `src/` because the unit tests of the pure layer
-  // need them (decision 09), but they are test doubles. Shipping one means
+  // need them, but they are test doubles. Shipping one means
   // every derived app carries a repository that silently accepts a duplicate
   // id, one import away from a container. Nothing in production imports them,
   // so if that ever changes the build fails loudly — which is the right

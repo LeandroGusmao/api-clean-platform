@@ -236,7 +236,7 @@ describe('POST /auth/password', () => {
     ).toEqual(expect.any(String))
   })
 
-  it('sets the cookie with every attribute decision 12 requires', async () => {
+  it('sets the cookie with every attribute the transport requires', async () => {
     const session = await loggedIn()
 
     const response = await changePassword(session.accessToken, {

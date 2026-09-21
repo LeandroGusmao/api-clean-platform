@@ -36,7 +36,7 @@ const CHANGE_PASSWORD_DESCRIPTION =
   'Replaces the password of the authenticated user, who must present the ' +
   'current one. Every session on every device is revoked, and this device ' +
   'receives a fresh token pair in the response. Access tokens already issued ' +
-  'stay valid until they expire — decision 11.'
+  'stay valid until they expire.'
 
 /**
  * A new example, distinct from `EXAMPLE_PASSWORD`: the two fields must differ
@@ -58,7 +58,7 @@ const MIN_SUBMITTED_PASSWORD_LENGTH = 1
  * here as well as in the `Password` value object is deliberate: this is what
  * gives the client a 400 with a per-field `details` array and what publishes
  * the policy in the OpenAPI document, while the value object keeps the use case
- * safe for the non-HTTP entrypoints of decision 10.
+ * safe for the non-HTTP entrypoints.
  */
 const bodySchema = z.object({
   currentPassword: z

@@ -56,7 +56,7 @@ export default defineConfig({
       // exits the process on an invalid environment, so without this the whole
       // integration project fails to boot rather than failing a test.
       JWT_SECRET: TEST_JWT_SECRET,
-      // Same story: required with no default (decision 14), so the integration
+      // Same story: required with no default, so the integration
       // project cannot boot without it.
       GOOGLE_CLIENT_ID: TEST_GOOGLE_CLIENT_ID,
       // Required with no default for the same reason as JWT_SECRET above: they

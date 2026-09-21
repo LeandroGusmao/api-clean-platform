@@ -55,7 +55,7 @@ export interface TrustedUserProps {
  * stray `log.info({ user })`.
  *
  * The entity does not know the shape of a database row — converting is
- * `infra/drizzle/user-mapper.ts`'s job (decision 20).
+ * `infra/drizzle/user-mapper.ts`'s job.
  */
 export class User {
   readonly #id: string
@@ -101,7 +101,7 @@ export class User {
   /**
    * Born verified and WITHOUT a password: the only caller is
    * `SignInWithGoogleUseCase`, and the identity provider has already proven
-   * control of the address (§6 item 2 of `DECISIONS.md`). A null `passwordHash`
+   * control of the address. A null `passwordHash`
    * is the honest state — there is no password — and `login-user.ts` funnels it
    * to the decoy compare through `?? dummyHash`.
    */

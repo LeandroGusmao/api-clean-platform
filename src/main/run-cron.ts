@@ -138,7 +138,7 @@ export function cronExitCode(outcomes: readonly JobOutcome[]): number {
 }
 
 /**
- * Builds the framework-free graph (decision 10), runs the selected cron jobs,
+ * Builds the framework-free graph, runs the selected cron jobs,
  * and closes the pool. Does not log or call `process.exit` — `cron.ts` owns
  * both, so this stays a function returning data.
  *

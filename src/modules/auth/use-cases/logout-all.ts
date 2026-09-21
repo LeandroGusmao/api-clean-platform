@@ -8,7 +8,7 @@ import type { IClock } from '#shared/ports/clock'
  * endpoint reads it with `getPrincipal`.
  *
  * Note what this does NOT do: an access token already issued stays valid until
- * it expires. That is the revocation latency decision 11 accepted when it kept
+ * it expires. That is the revocation latency accepted in exchange for keeping
  * the database out of the authenticated path, and it is the TTL of the access
  * token — one hour by default.
  *

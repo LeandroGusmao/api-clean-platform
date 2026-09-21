@@ -30,7 +30,7 @@ export interface IssuedSessionContext {
  * The plaintext token and the row that remembers it. The plaintext exists only
  * long enough to reach the client — nothing persists it, and the server can
  * never reproduce it, which is why the grace window issues a NEW pair instead
- * of replaying the old one (decision 11).
+ * of replaying the old one.
  */
 export interface IssuedRefreshToken {
   token: string

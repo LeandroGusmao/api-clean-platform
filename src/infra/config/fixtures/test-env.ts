@@ -69,7 +69,7 @@ import {
  * spread it — `{ ...TEST_ENV, NODE_ENV: NODE_ENV_DEVELOPMENT }`.
  *
  * The import from `#modules/auth/config` mirrors `env.ts` itself, which merges
- * the module's schema for the same reason (decision 14).
+ * the module's schema for the same reason.
  */
 export const TEST_ENV: Env = {
   NODE_ENV: NODE_ENV_TEST,

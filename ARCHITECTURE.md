@@ -10,12 +10,11 @@ documento, e os outros apontam:
 | Documento | Responde |
 |---|---|
 | este | como o código está organizado, e o que vale |
-| [`docs/DECISIONS.md`](docs/DECISIONS.md) | **por que** cada escolha, e o que foi recusado |
 | [`docs/PRODUCT-CHOICES.md`](docs/PRODUCT-CHOICES.md) | o que cada produto derivado ainda precisa decidir |
 | [`README.md`](README.md) | por onde começar |
 
-Os comentários do código citam as decisões por número (`decisão 11`), nunca
-re-argumentam.
+Os comentários do código explicam o código em que estão: por que aquilo existe
+e por que é assim. Nenhum deles depende de outro documento para fazer sentido.
 
 **Stack hoje:** Node 24 LTS (Krypton) · TypeScript 7 ESM · Fastify 5 · Zod 4 · PostgreSQL · Drizzle · OpenAPI · Vitest · Biome · pnpm
 
@@ -74,9 +73,9 @@ src/
 │   │   ├── client.ts               # pool pg + instância Drizzle
 │   │   ├── driver-error.ts         # converte erro do driver antes de sair do infra/
 │   │   ├── transaction-runner.ts   # abre a transação, faz commit/rollback e recusa aninhamento
-│   │   ├── unit-of-work.ts         # createUnitOfWork(runner, buildRepos) — casca genérica (decisão 22)
+│   │   ├── unit-of-work.ts         # createUnitOfWork(runner, buildRepos) — casca genérica
 │   │   └── seeds/
-│   │       └── seed-module.ts      # contrato do seed de dev; fora do dist (decisão 32)
+│   │       └── seed-module.ts      # contrato do seed de dev; fora do dist
 │   ├── health/
 │   │   └── checks/
 │   │       └── database-check.ts   # um arquivo por dependência checada
@@ -109,7 +108,7 @@ src/
 │       └── request-context.ts      # AsyncLocalStorage do traceId
 ├── modules/
 │   └── auth/                        # domínio + infra do módulo
-│       ├── config.ts                # schema Zod das env vars do módulo (decisão 14)
+│       ├── config.ts                # schema Zod das env vars do módulo
 │       ├── entities/user.ts         # puro — estado em campos `#`
 │       ├── value-objects/           # puro — email.ts, password.ts
 │       ├── repositories/            # SÓ contratos — users-repository.ts, refresh-tokens-repository.ts
@@ -121,12 +120,12 @@ src/
 │       └── infra/                   # tudo que toca o mundo externo
 │           ├── drizzle/
 │           │   ├── schema/users.ts  # um arquivo por tabela, nomeado pela tabela
-│           │   ├── user-mapper.ts   # entidade -> row (decisão 20)
+│           │   ├── user-mapper.ts   # entidade -> row
 │           │   ├── drizzle-users-repository.ts
 │           │   ├── drizzle-refresh-tokens-repository.ts
 │           │   └── auth-repositories.ts    # monta AuthRepos — único lugar que instancia os repositórios do módulo
-│           ├── in-memory/           # repositório de teste (decisão 09)
-│           ├── seeds/               # cenários de `pnpm db:seed` do módulo; fora do dist (decisão 32)
+│           ├── in-memory/           # repositório de teste
+│           ├── seeds/               # cenários de `pnpm db:seed` do módulo; fora do dist
 │           ├── providers/           # adapters dos contratos de ports/ — argon2, jose
 │           └── http/
 │               ├── constants.ts     # status HTTP e tag do OpenAPI do módulo
@@ -145,14 +144,14 @@ src/
 │   └── ports/                       # contratos transversais
 │       ├── clock.ts                 # IClock — tempo entra por aqui (R7)
 │       ├── id-generator.ts          # IIdGenerator — identidade entra por aqui (R7)
-│       └── unit-of-work.ts          # IUnitOfWork<TRepos> — contrato genérico e transversal (decisão 22)
+│       └── unit-of-work.ts          # IUnitOfWork<TRepos> — contrato genérico e transversal
 └── main/
     ├── container.ts                 # composition root: junta os módulos
     ├── app.ts                      # compõe a aplicação: docs + rotas + deps, SEM escutar
     ├── http.ts                     # entrypoint: sobe o servidor e trata shutdown
     └── seeds/
         ├── index.ts                # entrypoint de `pnpm db:seed`: argv, log, exit code
-        └── runner.ts               # travas de alvo, seleção, ordem, uma transação (decisão 32)
+        └── runner.ts               # travas de alvo, seleção, ordem, uma transação
 
 tests/
 └── integration/
@@ -236,6 +235,39 @@ O custo é real e foi aceito: todo cruzamento paga uma interface e um adaptador,
 inclusive os triviais. Quando a regra entrou, a árvore inteira já a respeitava —
 zero violações em 257 módulos.
 
+**Como o cruzamento se escreve, então.** A regra de ouro é que a comunicação
+entre módulos acontece na camada de use case ou por contrato de domínio —
+**nunca** invocando o handler HTTP de outro módulo, nem fazendo chamada HTTP
+interna ao próprio servidor. Três formas, em ordem de acoplamento:
+
+1. **Porta de repositório no consumidor** *(a mais comum)* — o módulo chamador
+   declara na sua camada pura a porta estreita que precisa, e o adaptador em
+   `src/main/` delega ao repositório do módulo alvo. Teste unitário trivial com
+   um dublê em memória da porta.
+2. **Porta de use case no consumidor** — quando o cruzamento envolve efeito
+   colateral ou regra de domínio do outro módulo (reservar estoque, aplicar
+   cupom), a porta descreve a operação, não a leitura, e o adaptador executa o
+   use case do alvo.
+3. **Evento de domínio** — para desacoplamento completo, ou preparando extração
+   para serviço separado. O chamador persiste em estado pendente e publica o
+   evento pelo outbox transacional; o módulo alvo reage e publica o resultado;
+   o chamador atualiza o estado.
+
+A diferença entre 1 e 2 é o que a porta descreve, não onde ela mora: nos três
+casos ela é declarada pelo **consumidor**, porque importar o contrato do módulo
+alvo já é módulo alcançando módulo.
+
+**Antipadrões, e por que cada um falha:**
+
+- **Chamada HTTP interna** — `fetch('/products/123')` dentro do mesmo processo.
+  Paga latência, serialização e um ponto de falha de rede para atravessar uma
+  fronteira que é um `import`.
+- **Reuso de handler HTTP** — chamar o handler de outro módulo dentro de um
+  fluxo. Handler traduz entrada HTTP em parâmetro de use case e formata
+  resposta; reusá-lo arrasta contrato de transporte para dentro do domínio.
+- **Importar `infra/` de outro módulo** — pegar `DrizzleUsersRepository` em vez
+  de uma porta. É a linha `module-infra` da tabela acima, e o lint barra.
+
 **`services/` é a linha mais nova, e o que mora ali é estreito:** uma operação de
 domínio que precisa de colaboradores e não pertence a uma entidade só. O
 `RefreshTokenIssuer` é o caso que a criou — cunhar um elo da cadeia de refresh
@@ -252,8 +284,8 @@ comece a receber repositório é sinal de que virou use case com outro nome.
 > argumento concreto a favor de a tabela existir antes do lint: ela pegou o que
 > a revisão humana deixou passar.
 
-**Duas regras do Unit of Work (decisão 22) que nem o compilador nem o lint
-alcançam** — a tabela acima classifica arquivo por caminho, e as duas a seguir
+**Duas regras do Unit of Work que nem o compilador nem o lint alcançam** — a
+tabela acima classifica arquivo por caminho, e as duas a seguir
 dependem do que o código faz dentro dele:
 
 - **Use case que recebe o Unit of Work não recebe também um repositório
@@ -282,9 +314,9 @@ o que leria como "ninguém pode importar um container". Não é isso:
 | qualquer outro | — | proibido |
 
 A segunda linha é a que surpreende. `routes.ts` e `endpoints/register.ts` fazem
-`import type { AuthContainer }` porque a decisão 23 tipa o plugin pela fatia que
-ele recebe — é o que transforma "alcançar o use case de outro módulo" em erro de
-compilação. Sendo `import type`, some na compilação: nenhuma dependência em
+`import type { AuthContainer }` porque o plugin é tipado pela fatia do container
+que ele recebe — é o que transforma "alcançar o use case de outro módulo" em
+erro de compilação. Sendo `import type`, some na compilação: nenhuma dependência em
 runtime, nenhum ciclo.
 
 A terceira linha é literal: o `container.ts` de um módulo nunca é alcançado pelo
@@ -326,8 +358,8 @@ Tipagem 100% inferida, e o mesmo grafo serve os três entrypoints porque é
 montado **sem Fastify** — requisito para worker e cron existirem depois sem
 duplicar wiring. `env` chega inteiro em `makeContainer`, e cada módulo declara
 só a fatia que precisa — `makeAuthContainer` pede `AuthConfig`, então `auth` nem
-enxerga `DATABASE_URL`. Tipagem estrutural dá de graça a regra da decisão 23,
-sem nenhum código de recorte. Objeto stateless (repositório, provider) é
+enxerga `DATABASE_URL`. Tipagem estrutural dá essa regra de graça, sem nenhum
+código de recorte. Objeto stateless (repositório, provider) é
 singleton no container; o custo de um `new` é nanosegundos contra milissegundos
 de rede, e o problema do `new` no handler nunca foi performance, foi
 acoplamento.
@@ -363,9 +395,9 @@ id receberia uma porta que também cunha segredos.
 
 Pela mesma economia, um contrato nasce com os métodos — ou os campos — que têm
 consumidor. O payload do access token tem `sub`, `iat` e `exp`, e não `jti`,
-porque nada no sistema consome uma denylist — é a decisão 11 quem recusou essa
-ideia. Campo sem consumidor é código que N apps derivados copiam sem nunca
-exercitar.
+porque nada no sistema consome uma denylist — o refresh opaco e revogável é que
+faz esse papel, e uma denylist de access token foi recusada junto. Campo sem
+consumidor é código que N apps derivados copiam sem nunca exercitar.
 
 **Divisão de responsabilidade que já vale:** `infra/http/server.ts` constrói e
 configura a instância Fastify e a devolve **sem nenhuma rota**. Quem registra
@@ -594,7 +626,7 @@ O logger é um **pino próprio**, criado por `createLogger` em
 `infra/observability/logger.ts` e entregue ao Fastify por `loggerInstance`. Ele
 saiu de dentro do `server.ts` quando a transação passou a poder registrar
 tentativas de retry: o composition root é compartilhado por `http`, `worker` e
-`cron` (decisão 10), e um worker que montasse o próprio pino duplicaria o
+`cron`, e um worker que montasse o próprio pino duplicaria o
 `REDACT_PATHS` — a lista que mantém hash de senha e token fora do log. `buildApp`
 cria um só e o passa aos dois lados.
 
@@ -840,9 +872,10 @@ servidores gravando "14:00" e nenhuma forma de saber qual.
 > `…13.159767` vira `…13.159`.
 >
 > Irrelevante para `created_at`. Relevante para qualquer comparação exata de
-> instantes onde um lado venha do banco e o outro do `IClock` — ver decisão 11.
-> Quando o `IClock` for a fonte, tudo passa a ser gravado com precisão de ms de
-> qualquer forma, e a assimetria sobra só nas linhas escritas pelo default.
+> instantes onde um lado venha do banco e o outro do `IClock` — exatamente as
+> comparações que a rotação do refresh token faz. Quando o `IClock` for a
+> fonte, tudo passa a ser gravado com precisão de ms de qualquer forma, e a
+> assimetria sobra só nas linhas escritas pelo default.
 
 `GET /health` consulta o banco (`select 1`) a cada chamada: responde `200` com
 o banco no ar, `503` com o banco fora. Sem preflight no boot — o processo sobe
@@ -856,9 +889,10 @@ tabela, nomeado pela tabela** — o diretório já diz "schema do Drizzle", ent�
 nome do arquivo não repete. Uma foreign key
 só atravessa arquivos **do mesmo módulo**; entre módulos, referencia-se por id
 sem constraint, e a integridade fica na aplicação. Todas as tabelas vivem em
-`public` — um schema do Postgres por módulo foi considerado e adiado.
-Raciocínio completo na decisão 24 do
-[`docs/DECISIONS.md`](docs/DECISIONS.md).
+`public` — um schema do Postgres por módulo foi considerado e adiado: ele
+isola de verdade, mas custa search_path em toda conexão, migration por schema e
+um pool que não compartilha plano entre módulos, para resolver uma colisão de
+nome que a convenção de nomear tabela por módulo já evita.
 
 ---
 
@@ -972,7 +1006,7 @@ datas ainda como `Date`.
 
 Datas ficam `Date` de propósito: formatar é trabalho do transporte, e devolver
 ISO da camada pura faria ela servir HTTP especificamente, deixando os entrypoints
-de worker e cron (decisão 10) fazendo parse de volta.
+de worker e cron fazendo parse de volta.
 
 Os endpoints checados por `/health` vivem em `infra/health/checks/`, um arquivo
 por dependência. O endpoint só agrega e traduz para HTTP: `redis-check.ts` é o
@@ -1021,7 +1055,7 @@ app em produção sem deixar rastro no diff.
 subclasse que o marca `true` — hoje só `RefreshTokenReusedError` — diz ao error
 handler que a falha em si é o sinal, não o tráfego normal de cliente que as
 outras seis categorias são; o handler responde do mesmo jeito, mas também
-escreve um `warn` com o `code` antes de responder (decisão 15). Sem o marcador,
+escreve um `warn` com o `code` antes de responder. Sem o marcador,
 um reuso de refresh detectado — família inteira revogada — e um token expirado
 comum seriam a mesma linha de log: nenhuma.
 
@@ -1484,6 +1518,16 @@ aí o primeiro passo seria pnpm workspaces, não ele. Módulos aqui são
 **diretórios**, não pacotes; `worker` e `cron`, quando existirem, são entrypoints
 do mesmo pacote.
 
+**Nenhum "1.0 do boilerplate" para outros times enquanto o Drizzle não tiver
+GA.** O `drizzle-orm` está pinado em `1.0.0-rc.4` exato, sem caret — release
+candidate. O roadmap ainda tem itens que tocam código deste repositório:
+"Relational Queries V2 API" (mitigada pela R1, que proíbe `db.query.*`), "down
+migrations" (assumida pela R4, que fixa migrations forward-only) e a branch
+`casing-rework` (mitigada pela R2, que nomeia toda coluna explicitamente). Cada
+mitigação custou pouco, mas nenhuma delas vale como promessa de estabilidade
+para N apps derivados: o argumento não é que algum formato vá mudar, é que ainda
+não existe versão estável para prometer em cima.
+
 ---
 
 ## 13. O que ainda não existe
@@ -1515,7 +1559,7 @@ Ciclo de vida de `POST /auth/login`. Cada passo nomeia o arquivo real.
 1. main/http.ts
    Valida o env, abre o banco, monta o container.
    Pede a instância Fastify a infra/http/server.ts e registra os plugins
-   de módulo, cada um com seu prefixo e SUA FATIA do container (decisão 23).
+   de módulo, cada um com seu prefixo e SUA FATIA do container.
 
 2. modules/auth/infra/http/routes.ts
    Agrega os endpoints do módulo e repassa a fatia recebida.

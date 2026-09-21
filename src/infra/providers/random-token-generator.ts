@@ -1,7 +1,7 @@
 import { randomBytes, randomInt } from 'node:crypto'
 import type { ITokenGenerator } from '#shared/ports/token-generator'
 
-/** 256 bits — the size decision 11 gives the refresh token. */
+/** 256 bits — the size of an opaque refresh token. */
 export const DEFAULT_OPAQUE_TOKEN_BYTES = 32
 
 /**

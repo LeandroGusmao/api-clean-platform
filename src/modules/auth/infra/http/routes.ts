@@ -19,7 +19,7 @@ import { signInWithGoogleRoute } from './endpoints/sign-in-with-google.js'
  * The module's HTTP surface. Thin by design: a new endpoint is a new file plus
  * one line here.
  *
- * It receives only the module's own slice of the container (decision 23), plus
+ * It receives only the module's own slice of the container, plus
  * the guard the composition root built — the guard is generic global infra, so
  * the module never imports a protection mechanism of its own.
  */

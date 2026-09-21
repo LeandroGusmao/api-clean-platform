@@ -7,8 +7,8 @@ import type { IUsersRepository } from '#modules/auth/repositories/users-reposito
  * Flat by design: the `Email` value object is unwrapped here, so no consumer has
  * to know the entity's internal types. Timestamps stay `Date` — formatting one
  * is the transport's concern, and returning an ISO string would make this pure
- * use case serve HTTP specifically, leaving the worker and cron entrypoints of
- * decision 10 to parse it back.
+ * use case serve HTTP specifically, leaving the worker and cron entrypoints to
+ * parse it back.
  */
 export interface UserProfileResult {
   id: string
