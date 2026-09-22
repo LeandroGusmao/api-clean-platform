@@ -15,6 +15,9 @@
 const MAILPIT_BASE_URL = 'http://127.0.0.1:8025'
 const MESSAGES_ENDPOINT = `${MAILPIT_BASE_URL}/api/v1/messages`
 const LATEST_MESSAGE_ENDPOINT = `${MAILPIT_BASE_URL}/api/v1/message/latest`
+const SEARCH_ENDPOINT = `${MAILPIT_BASE_URL}/api/v1/search`
+const SEARCH_QUERY_PARAM = 'query'
+const RECIPIENT_SEARCH_PREFIX = 'to:'
 
 const DELETE_METHOD = 'DELETE'
 
@@ -66,6 +69,10 @@ interface MailpitMessagesResponse {
   messages: MailpitMessageSummary[]
 }
 
+interface MailpitSearchResponse {
+  messages_count: number
+}
+
 interface MailpitFullMessage {
   Subject: string
   Text: string
@@ -82,6 +89,15 @@ export async function messageCount(): Promise<number> {
   const response = await fetch(MESSAGES_ENDPOINT)
   const body = (await response.json()) as MailpitMessagesResponse
   return body.total
+}
+
+/** How many messages Mailpit holds for one recipient address. */
+export async function messageCountTo(address: string): Promise<number> {
+  const url = new URL(SEARCH_ENDPOINT)
+  url.searchParams.set(SEARCH_QUERY_PARAM, `${RECIPIENT_SEARCH_PREFIX}"${address}"`)
+  const response = await fetch(url)
+  const body = (await response.json()) as MailpitSearchResponse
+  return body.messages_count
 }
 
 /** The most recently received message, in full — including its plaintext body. */
@@ -137,6 +153,26 @@ export async function waitForMessageCount(expectedCount: number): Promise<void> 
       throw new Error(
         `timed out waiting for Mailpit to hold ${expectedCount} message(s); ` +
           `it holds ${count} after ${POLL_TIMEOUT_MS}ms`,
+      )
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
+  }
+}
+
+/**
+ * Polls until at least one message addressed to `address` is in Mailpit, or
+ * throws once `POLL_TIMEOUT_MS` has passed. For a sentinel sent after the
+ * messages under test: once it is visible, the earlier ones are too, and their
+ * exact count can be asserted rather than waited for.
+ */
+export async function waitForMessageTo(address: string): Promise<void> {
+  const deadline = Date.now() + POLL_TIMEOUT_MS
+
+  while ((await messageCountTo(address)) === 0) {
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `timed out waiting for a message to ${address} after ${POLL_TIMEOUT_MS}ms`,
       )
     }
 

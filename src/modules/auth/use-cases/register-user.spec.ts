@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { PendingRegistration } from '#modules/auth/entities/pending-registration'
 import { User } from '#modules/auth/entities/user'
 import { InvalidEmailError } from '#modules/auth/errors/invalid-email-error'
+import { InMemoryAccountExistsNoticesRepository } from '#modules/auth/infra/in-memory/in-memory-account-exists-notices-repository'
 import { InMemoryPendingRegistrationsRepository } from '#modules/auth/infra/in-memory/in-memory-pending-registrations-repository'
 import { InMemoryUsersRepository } from '#modules/auth/infra/in-memory/in-memory-users-repository'
+import type { IAccountExistsNoticesRepository } from '#modules/auth/repositories/account-exists-notices-repository'
 import type { IPendingRegistrationsRepository } from '#modules/auth/repositories/pending-registrations-repository'
 import { EmailVerificationIssuer } from '#modules/auth/services/email-verification-issuer'
 import { RegisterUserUseCase } from '#modules/auth/use-cases/register-user'
@@ -14,6 +16,7 @@ import type { IIdGenerator } from '#shared/ports/id-generator'
 
 const ID = '0f1c8a2e-7b4d-4c9f-9a3e-2d5b6c7e8f90'
 const EXISTING_USER_ID = '9b8a7c6d-5e4f-4a3b-9c8d-7e6f5a4b3c2d'
+const OTHER_USER_ID = '1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f'
 const EXISTING_PENDING_ID = '3a2b1c0d-9e8f-4a7b-8c6d-5e4f3a2b1c0d'
 const NOW = new Date('2026-09-07T12:00:00.000Z')
 const CREATED_AT = new Date('2026-01-01T08:00:00.000Z')
@@ -21,6 +24,7 @@ const HASH_PREFIX = 'hashed:'
 const DIGEST_PREFIX = 'digest:'
 
 const EMAIL = 'joao@example.com'
+const OTHER_EMAIL = 'maria@example.com'
 const MIXED_CASE_EMAIL = '  JOAO@Example.COM  '
 const INVALID_EMAIL = 'not-an-email'
 const EXISTING_PASSWORD_HASH = `${HASH_PREFIX}whatever-they-chose`
@@ -50,6 +54,7 @@ const ALREADY_EXISTS_SUBJECT = 'Someone tried to register with your address'
 const PRUNE = 'pendingRegistrations.deleteExpiredByEmail'
 const PENDING_SAVE = 'pendingRegistrations.save'
 const EMAIL_SEND = 'email.send'
+const NOTICE_CLAIM = 'accountExistsNotices.claim'
 
 // One-method ports do not deserve their own file.
 const clock: IClock = { now: () => NOW }
@@ -59,6 +64,7 @@ let callLog: string[]
 let sent: EmailMessage[]
 let usersRepository: InMemoryUsersRepository
 let pendingRepo: InMemoryPendingRegistrationsRepository
+let noticesRepo: InMemoryAccountExistsNoticesRepository
 let emailSender: IEmailSender
 let issuer: EmailVerificationIssuer
 let useCase: RegisterUserUseCase
@@ -81,10 +87,21 @@ function trackedPending(): Pick<
   }
 }
 
+/** Wraps the in-memory notices repo so a test can assert the write order. */
+function trackedNotices(): IAccountExistsNoticesRepository {
+  return {
+    claim: (params) => {
+      callLog.push(NOTICE_CLAIM)
+      return noticesRepo.claim(params)
+    },
+  }
+}
+
 function buildUseCase(): RegisterUserUseCase {
   return new RegisterUserUseCase(
     usersRepository,
     trackedPending(),
+    trackedNotices(),
     issuer,
     emailSender,
     clock,
@@ -99,6 +116,7 @@ beforeEach(() => {
   sent = []
   usersRepository = new InMemoryUsersRepository()
   pendingRepo = new InMemoryPendingRegistrationsRepository()
+  noticesRepo = new InMemoryAccountExistsNoticesRepository()
 
   emailSender = {
     send: async (message) => {
@@ -119,11 +137,11 @@ beforeEach(() => {
   useCase = buildUseCase()
 })
 
-function storeVerifiedUser(): void {
+function storeVerifiedUser(id = EXISTING_USER_ID, email = EMAIL): void {
   usersRepository.users.push(
     User.fromTrusted({
-      id: EXISTING_USER_ID,
-      email: Email.fromTrusted(EMAIL),
+      id,
+      email: Email.fromTrusted(email),
       passwordHash: EXISTING_PASSWORD_HASH,
       emailVerifiedAt: NOW,
       createdAt: CREATED_AT,
@@ -204,7 +222,61 @@ describe('RegisterUserUseCase', () => {
     expect(sent[0]?.subject).toBe(ALREADY_EXISTS_SUBJECT)
     expect(sent[0]?.text).not.toContain(CODE)
     expect(pendingRepo.rows).toHaveLength(0)
-    expect(callLog).toEqual([EMAIL_SEND])
+    expect(callLog).toEqual([NOTICE_CLAIM, EMAIL_SEND])
+  })
+
+  it('sends no second "already have an account" notice inside the cooldown', async () => {
+    storeVerifiedUser()
+
+    await useCase.execute({ email: EMAIL })
+    await useCase.execute({ email: EMAIL })
+    await useCase.execute({ email: EMAIL })
+
+    expect(sent).toHaveLength(1)
+    expect(callLog).toEqual([NOTICE_CLAIM, EMAIL_SEND, NOTICE_CLAIM, NOTICE_CLAIM])
+  })
+
+  it('stamps the notice with the clock and claims it against the resend cooldown', async () => {
+    storeVerifiedUser()
+
+    await useCase.execute({ email: EMAIL })
+
+    expect(noticesRepo.sentAt.get(EXISTING_USER_ID)).toEqual(NOW)
+  })
+
+  it('sends the notice again once the previous one leaves the cooldown', async () => {
+    storeVerifiedUser()
+    noticesRepo.sentAt.set(
+      EXISTING_USER_ID,
+      new Date(NOW.getTime() - OUTSIDE_COOLDOWN_AGE_MS),
+    )
+
+    await useCase.execute({ email: EMAIL })
+
+    expect(sent).toHaveLength(1)
+    expect(sent[0]?.subject).toBe(ALREADY_EXISTS_SUBJECT)
+  })
+
+  it('holds the notice while the previous one is inside the cooldown', async () => {
+    storeVerifiedUser()
+    noticesRepo.sentAt.set(
+      EXISTING_USER_ID,
+      new Date(NOW.getTime() - INSIDE_COOLDOWN_AGE_MS),
+    )
+
+    await useCase.execute({ email: EMAIL })
+
+    expect(sent).toHaveLength(0)
+  })
+
+  it('keeps the notice cooldown per account', async () => {
+    storeVerifiedUser()
+    storeVerifiedUser(OTHER_USER_ID, OTHER_EMAIL)
+
+    await useCase.execute({ email: EMAIL })
+    await useCase.execute({ email: OTHER_EMAIL })
+
+    expect(sent.map((message) => message.to)).toEqual([EMAIL, OTHER_EMAIL])
   })
 
   it('sends nothing when a usable pending got a code inside the cooldown', async () => {

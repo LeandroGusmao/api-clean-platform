@@ -1,5 +1,6 @@
 import { PendingRegistration } from '#modules/auth/entities/pending-registration'
 import { accountAlreadyExistsEmail } from '#modules/auth/notifications/emails'
+import type { IAccountExistsNoticesRepository } from '#modules/auth/repositories/account-exists-notices-repository'
 import type { IPendingRegistrationsRepository } from '#modules/auth/repositories/pending-registrations-repository'
 import type { IUsersRepository } from '#modules/auth/repositories/users-repository'
 import type {
@@ -32,12 +33,14 @@ const NO_DELIVERY: DeliverVerification = async () => {}
  *
  * It **answers the same way** whether the address is free, already has a pending
  * registration, or belongs to a verified account: what differs is the email the
- * address receives, and only its owner can read it.
+ * address receives, and only its owner can read it — and how often: each
+ * branch sends at most one email per address per resend cooldown.
  *
  * The order is normative: the value object before anything else, so a bad
  * payload never reaches a repository; the prune and the insert are plain
  * autocommit statements; the send after the write, so no email ever describes
- * a registration that failed to persist.
+ * a registration that failed to persist, and no notice goes out that the
+ * cooldown has not recorded.
  */
 export class RegisterUserUseCase {
   constructor(
@@ -47,6 +50,7 @@ export class RegisterUserUseCase {
       IPendingRegistrationsRepository,
       'findUnconsumedByEmail' | 'save' | 'deleteExpiredByEmail'
     >,
+    private readonly accountExistsNotices: IAccountExistsNoticesRepository,
     private readonly issuer: EmailVerificationIssuer,
     private readonly emailSender: IEmailSender,
     private readonly clock: IClock,
@@ -77,7 +81,18 @@ export class RegisterUserUseCase {
       // matched through Postgres `lower()` while `Email.create` folds with
       // JavaScript's `toLowerCase()`, and the two can disagree on exotic
       // codepoints.
-      return () => this.emailSender.send(accountAlreadyExistsEmail(existingUser.email))
+      const claimed = await this.accountExistsNotices.claim({
+        userId: existingUser.id,
+        sentAt: now,
+        cooldownCutoff: new Date(now.getTime() - this.resendCooldownMs),
+      })
+
+      // The SAME cooldown as the pending branch below, on purpose: both go quiet
+      // and speak again at the same instants, so a repeated register cannot
+      // tell the two apart by whether it paid for a send.
+      return claimed
+        ? () => this.emailSender.send(accountAlreadyExistsEmail(existingUser.email))
+        : NO_DELIVERY
     }
 
     const pendings = await this.pendingRegistrations.findUnconsumedByEmail(email)

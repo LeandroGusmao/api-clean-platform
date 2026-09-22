@@ -49,6 +49,14 @@ Sem ele, ou com ele inválido/expirado, a resposta é `401`.
    endereço"). Isso é deliberado: ninguém descobre por este endpoint se um
    e-mail tem conta.
 
+   Repetir o cadastro não repete o e-mail: cada endereço recebe **no máximo um
+   e-mail por minuto** (`EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS`) por este
+   endpoint, seja o código, seja o aviso. Para uma conta existente, a marca do
+   último aviso fica em `account_exists_notices`, gravada por um upsert
+   condicional no Postgres — vale entre réplicas e sob requisições concorrentes.
+   O intervalo é o mesmo nos dois casos de propósito: com intervalos diferentes,
+   o tempo de resposta de uma repetição revelaria se o endereço tem conta.
+
 2. **`POST /auth/email/verify/resend`** *(opcional)* — corpo `{ email }`.
    Responde `202` sempre. Reenvia o código para um cadastro em andamento, uma
    vez por minuto no máximo.

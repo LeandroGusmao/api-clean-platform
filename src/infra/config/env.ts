@@ -29,6 +29,13 @@ export const DEFAULT_DATABASE_STATEMENT_TIMEOUT_MS = 10_000
 export const DEFAULT_DATABASE_LOCK_TIMEOUT_MS = 5_000
 /** The net against a hung callback holding a connection AND its locks forever. */
 export const DEFAULT_DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS = 10_000
+/**
+ * How long `GET /health` waits on the database, enforced by the client. The
+ * three timeouts above are enforced by the server, so a server that stops
+ * answering never applies them. Keep it under the orchestrator's own probe
+ * timeout, so the probe reports the outage instead of being cut off.
+ */
+export const DEFAULT_DATABASE_HEALTH_CHECK_TIMEOUT_MS = 2_000
 
 /**
  * Redis backs the routes that declare their own rate limit ceiling, and those
@@ -202,6 +209,14 @@ const coreEnvSchema = z.object({
   DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS: timeoutMs(
     DEFAULT_DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS,
   ),
+  // `.positive()` and not `timeoutMs`: nothing on the server stands behind this
+  // one, so 0 has no "leave it to the server" meaning — and to `pg` it would
+  // mean no deadline at all.
+  DATABASE_HEALTH_CHECK_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_DATABASE_HEALTH_CHECK_TIMEOUT_MS),
   // No default, like `DATABASE_URL`: two deployments must not share a Redis by
   // accident and count each other's requests.
   REDIS_URL: z.url(),

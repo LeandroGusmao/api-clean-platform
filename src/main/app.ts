@@ -2,6 +2,7 @@ import fastifyCookie from '@fastify/cookie'
 import type { FastifyInstance } from 'fastify'
 import type { Env } from '#infra/config/env'
 import { createDatabase } from '#infra/database/client'
+import { createDatabaseCheck } from '#infra/health/checks/database-check'
 import { makeAuthGuard } from '#infra/http/auth-guard'
 import { registerCors } from '#infra/http/cors'
 import { healthRoute } from '#infra/http/endpoints/health'
@@ -75,7 +76,10 @@ export async function buildApp(
   // registered after it.
   await registerOpenApi(app, env)
 
-  await app.register(healthRoute, { db, redis })
+  await app.register(healthRoute, {
+    checkDatabase: createDatabaseCheck(pool, env.DATABASE_HEALTH_CHECK_TIMEOUT_MS),
+    redis,
+  })
 
   // The graph is built here, not in `http.ts`: `buildApp` is the composition
   // root the suites exercise, so anything wired here reaches the tests too.

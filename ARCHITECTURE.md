@@ -428,6 +428,11 @@ dependência. Só o banco decide o status (`200` / `503`); o Redis é reportado 
 derrubar a sonda. O processo sobe mesmo com o banco fora, para que o `/health`
 consiga reportar a falha.
 
+A checagem do banco tem prazo **no cliente**
+(`DATABASE_HEALTH_CHECK_TIMEOUT_MS`): os timeouts do pool são aplicados pelo
+servidor, e um servidor que parou de responder não aplica nenhum. Consulta que
+estoura o prazo descarta a conexão em vez de devolvê-la ao pool.
+
 ---
 
 ## 8. Erros

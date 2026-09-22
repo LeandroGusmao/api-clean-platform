@@ -1,8 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import type { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
-import type { Database } from '#infra/database/client'
-import { checkDatabase } from '#infra/health/checks/database-check'
+import type { DatabaseCheck } from '#infra/health/checks/database-check'
 import { checkRedis, type HealthRedis } from '#infra/health/checks/redis-check'
 
 const HEALTH_CHECK_PATH = '/health'
@@ -34,9 +33,9 @@ const downSchema = z.object({
 })
 
 export const healthRoute: FastifyPluginAsync<{
-  db: Database
+  checkDatabase: DatabaseCheck
   redis: HealthRedis
-}> = async (app, { db, redis }) => {
+}> = async (app, { checkDatabase, redis }) => {
   app.withTypeProvider<ZodTypeProvider>().get(
     HEALTH_CHECK_PATH,
     {
@@ -64,7 +63,7 @@ export const healthRoute: FastifyPluginAsync<{
     },
     async (request, reply) => {
       const [database, redisCheck] = await Promise.all([
-        checkDatabase(db),
+        checkDatabase(),
         checkRedis(redis),
       ])
       // Not logged here: an outage is already reported once, when the client

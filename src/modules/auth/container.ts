@@ -36,6 +36,7 @@ export type AuthContainerConfig = AuthConfig &
   >
 
 import { authRepositories } from './infra/drizzle/auth-repositories.js'
+import { DrizzleAccountExistsNoticesRepository } from './infra/drizzle/drizzle-account-exists-notices-repository.js'
 import { Argon2HashProvider } from './infra/providers/argon2-hash-provider.js'
 import { JoseGoogleIdentityVerifier } from './infra/providers/jose-google-identity-verifier.js'
 import { JwtTokenSigner } from './infra/providers/jwt-token-signer.js'
@@ -233,6 +234,8 @@ export function makeAuthContainer(
     registerUser: new RegisterUserUseCase(
       usersRepository,
       pendingRegistrationsRepository,
+      // Never inside a transaction, so it stays out of `authRepositories`.
+      new DrizzleAccountExistsNoticesRepository(db),
       emailVerificationIssuer,
       emailSender,
       clock,
