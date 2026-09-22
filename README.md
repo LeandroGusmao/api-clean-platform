@@ -79,6 +79,7 @@ pnpm db:up               # sobe os containers
 pnpm db:migrate          # aplica migrations pendentes
 pnpm db:generate --name=<nome>   # gera migration do schema; SEMPRE com --name
 pnpm db:seed             # estado conhecido no banco local
+pnpm db:reset            # dropa o schema, reaplica as migrations e semeia — sem `db:migrate` manual
 pnpm db:studio           # inspeciona o banco
 ```
 

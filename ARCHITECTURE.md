@@ -77,7 +77,8 @@ src/
     ├── container.ts         # junta os containers dos módulos
     ├── app.ts               # compõe a aplicação HTTP, SEM escutar
     ├── http.ts  cron.ts     # entrypoints
-    └── seeds/               # entrypoint de `pnpm db:seed`
+    ├── seeds/               # entrypoint de `pnpm db:seed`
+    └── reset/               # entrypoint de `pnpm db:reset`: dropa, migra, semeia
 
 tests/integration/           # suítes contra Postgres e Redis reais
 tools/boundaries/            # o lint de fronteira e suas fixtures
@@ -527,6 +528,7 @@ pnpm db:generate --name=<nome>   # gera migration — SEMPRE com --name
 pnpm db:migrate        # aplica migrations pendentes
 pnpm db:studio         # drizzle-kit studio
 pnpm db:seed           # estado conhecido no banco LOCAL (--list, --all, auth, auth:<cenário>)
+pnpm db:reset          # dropa o schema, reaplica TODAS as migrations e roda o seed padrão
 ```
 
 ---

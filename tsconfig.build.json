@@ -3,11 +3,12 @@
   // code they cover, and `tsc` emits everything it typechecks — so keeping them
   // out of `dist/` means keeping them out of this file's inputs.
   //
-  // `fixtures/` and `seeds/` are excluded on the same grounds as `in-memory/`
-  // below. `fixtures/` holds test-only data — including a hardcoded JWT secret —
-  // and `seeds/` holds development data with a published password; neither has
-  // business in a published build. All are globs, not paths, so any module may
-  // add either folder and get the exclusion for free.
+  // `fixtures/`, `seeds/` and `reset/` are excluded on the same grounds as
+  // `in-memory/` below. `fixtures/` holds test-only data — including a
+  // hardcoded JWT secret — `seeds/` holds development data with a published
+  // password, and `reset/` drops and recreates the schema it points at; none
+  // of the three has business in a published build. All are globs, not
+  // paths, so any module may add any of them and get the exclusion for free.
   //
   // `in-memory/` is excluded for the same reason one step removed: those
   // repositories live under `src/` because the unit tests of the pure layer
@@ -24,5 +25,11 @@
     "sourceMap": true
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["**/*.spec.ts", "**/in-memory/**", "**/fixtures/**", "**/seeds/**"]
+  "exclude": [
+    "**/*.spec.ts",
+    "**/in-memory/**",
+    "**/fixtures/**",
+    "**/seeds/**",
+    "**/reset/**"
+  ]
 }

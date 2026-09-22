@@ -43,7 +43,8 @@
     "db:generate": "node --env-file-if-exists=.env node_modules/drizzle-kit/bin.cjs generate",
     "db:migrate": "node --env-file-if-exists=.env node_modules/drizzle-kit/bin.cjs migrate",
     "db:studio": "node --env-file-if-exists=.env node_modules/drizzle-kit/bin.cjs studio",
-    "db:seed": "node --conditions=development --env-file-if-exists=.env --import tsx src/main/seeds/index.ts"
+    "db:seed": "node --conditions=development --env-file-if-exists=.env --import tsx src/main/seeds/index.ts",
+    "db:reset": "node --conditions=development --env-file-if-exists=.env --import tsx src/main/reset/index.ts"
   },
   "dependencies": {
     "@fastify/cookie": "11.1.2",
