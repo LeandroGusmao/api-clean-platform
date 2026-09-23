@@ -30,6 +30,7 @@ const EMAIL = 'joao@example.com'
 const OTHER_EMAIL = 'maria@example.com'
 const PASSWORD_HASH = 'argon2-irrelevant'
 const HASH_LENGTH = 64
+const DEVICE_LABEL = 'Chrome on Windows'
 const EXPECTED_JOBS = 6
 const ONE_JOB = 1
 const ROWS_DELETED_PER_JOB = 1
@@ -101,6 +102,8 @@ async function seedDeadAndRecentRows(): Promise<void> {
       tokenHash: 'a'.repeat(HASH_LENGTH),
       familyId: randomUUID(),
       expiresAt: dead,
+      deviceLabel: DEVICE_LABEL,
+      sessionStartedAt: dead,
       createdAt: dead,
     },
     {
@@ -109,6 +112,8 @@ async function seedDeadAndRecentRows(): Promise<void> {
       tokenHash: 'b'.repeat(HASH_LENGTH),
       familyId: randomUUID(),
       expiresAt: recent,
+      deviceLabel: DEVICE_LABEL,
+      sessionStartedAt: recent,
       createdAt: recent,
     },
   ])
@@ -193,7 +198,7 @@ describe('runCron', () => {
         type: 'PASSWORD_CHANGED',
         userId,
         ip: null,
-        deviceLabel: null,
+        deviceLabel: DEVICE_LABEL,
         occurredAt: ago(ABOVE_AUDIT_RETENTION_MS),
       },
       {
@@ -201,7 +206,7 @@ describe('runCron', () => {
         type: 'PASSWORD_CHANGED',
         userId,
         ip: null,
-        deviceLabel: null,
+        deviceLabel: DEVICE_LABEL,
         occurredAt: ago(RECENTLY_MS),
       },
     ])

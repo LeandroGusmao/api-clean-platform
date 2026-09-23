@@ -33,11 +33,11 @@ describe('AuditEvent', () => {
     expect(event.occurredAt).toEqual(NOW)
   })
 
-  it('accepts an absent address and label', () => {
-    const event = create({ ip: null, label: null })
+  it('accepts an address that did not parse, keeping the label', () => {
+    const event = create({ ip: null, label: DEVICE_LABEL })
 
     expect(event.ip).toBeNull()
-    expect(event.deviceLabel).toBeNull()
+    expect(event.deviceLabel).toBe(DEVICE_LABEL)
   })
 
   it('has exactly the five security event types', () => {

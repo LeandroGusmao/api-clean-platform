@@ -22,8 +22,7 @@ const SESSIONS_DESCRIPTION =
   'unexpired row — a family is opened by login and stays the same chain ' +
   'through every rotation, so it IS the session. `ip` follows the client and ' +
   'reflects the latest rotation, while `deviceLabel` and `startedAt` describe ' +
-  'the session as a whole. Both are null on a session opened before they were ' +
-  'recorded; `startedAt` never is, falling back to `createdAt`.'
+  'the session as a whole. `ip` is null when the address did not parse.'
 
 const sessionSchema = z.object({
   id: z.uuid().meta({ examples: [EXAMPLE_SESSION_ID] }),
@@ -33,10 +32,7 @@ const sessionSchema = z.object({
     .string()
     .nullable()
     .meta({ examples: [EXAMPLE_SESSION_IP] }),
-  deviceLabel: z
-    .string()
-    .nullable()
-    .meta({ examples: [EXAMPLE_DEVICE_LABEL] }),
+  deviceLabel: z.string().meta({ examples: [EXAMPLE_DEVICE_LABEL] }),
   startedAt: z.date(),
 })
 

@@ -29,6 +29,7 @@ const BOOM_MESSAGE = 'boom — abort the unit of work'
 
 const AUDIT_EVENT_ID = '5c4b3a29-1807-4f6e-9d5c-4b3a29180716'
 const AUDIT_USER_ID = '7d6c5b4a-3928-4170-8e6d-5c4b3a291807'
+const DEVICE_LABEL = 'Chrome on Windows'
 const NO_EVENTS = 0
 const ONE_EVENT = 1
 
@@ -82,7 +83,7 @@ function makeAuditEvent() {
     id: AUDIT_EVENT_ID,
     type: AuditEventType.PasswordChanged,
     userId: AUDIT_USER_ID,
-    device: { ip: null, label: null },
+    device: { ip: null, label: DEVICE_LABEL },
     now: NOW,
   })
 }

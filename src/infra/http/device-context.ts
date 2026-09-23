@@ -5,9 +5,9 @@ import { parsedClientIp } from './client-ip.js'
 /**
  * What the owner sees when the User-Agent names nothing recognisable.
  *
- * A named value rather than `null`, because on the row `null` means the line is
- * older than the column — and "we could not identify this device" has to stay
- * distinguishable from "we never recorded one".
+ * A named value rather than `null`, which is what lets the column be `NOT NULL`:
+ * every session carries a label the owner can read, and "we could not identify
+ * this device" is an answer rather than an absence.
  */
 export const UNKNOWN_DEVICE_LABEL = 'Unknown device'
 

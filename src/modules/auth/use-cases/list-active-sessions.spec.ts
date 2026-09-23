@@ -77,7 +77,7 @@ describe('ListActiveSessionsUseCase', () => {
     })
   })
 
-  it('falls back to createdAt for a session older than the columns', async () => {
+  it('reports a session whose address did not parse', async () => {
     await refreshTokensRepository.save(
       RefreshToken.create({
         id: nextId(),
@@ -88,17 +88,16 @@ describe('ListActiveSessionsUseCase', () => {
         ttlSeconds: TTL_SECONDS,
         lifetimeCeiling: FAR_CEILING,
         ip: null,
-        deviceLabel: null,
-        sessionStartedAt: null,
+        deviceLabel: DEVICE_LABEL,
+        sessionStartedAt: SESSION_STARTED_AT,
       }),
     )
 
     const [session] = await useCase.execute(USER_ID)
 
     expect(session?.ip).toBeNull()
-    expect(session?.deviceLabel).toBeNull()
-    // Never null on the wire, so no client has to render "no start".
-    expect(session?.startedAt).toEqual(NOW)
+    expect(session?.deviceLabel).toBe(DEVICE_LABEL)
+    expect(session?.startedAt).toEqual(SESSION_STARTED_AT)
   })
 
   it('excludes a revoked session', async () => {

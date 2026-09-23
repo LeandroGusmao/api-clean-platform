@@ -49,6 +49,7 @@ const HASH_LENGTH = 64
 const REFRESH_HASH = 'a'.repeat(HASH_LENGTH)
 const RESET_HASH = 'b'.repeat(HASH_LENGTH)
 const FAMILY_ID = '11112222-3333-4444-8555-666677778888'
+const DEVICE_LABEL = 'Chrome on Windows'
 const GOOGLE_PROVIDER_NAME = 'google'
 const GOOGLE_SUBJECT = 'google-subject-1234567890'
 const CHILD_EXPIRES_AT = new Date('2026-12-31T12:00:00.000Z')
@@ -109,6 +110,8 @@ async function storeChildRows(userId: keyof typeof CHILD_IDS) {
     tokenHash: `${REFRESH_HASH}${ids.refresh}`,
     familyId: FAMILY_ID,
     expiresAt: CHILD_EXPIRES_AT,
+    deviceLabel: DEVICE_LABEL,
+    sessionStartedAt: NOW,
     createdAt: NOW,
   })
   await db.insert(federatedIdentities).values({

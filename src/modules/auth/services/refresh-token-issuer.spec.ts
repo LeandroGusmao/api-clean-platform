@@ -70,16 +70,14 @@ describe('RefreshTokenIssuer', () => {
     expect(entity.sessionStartedAt).toEqual(SESSION_STARTED_AT)
   })
 
-  it('accepts a fully absent context', () => {
+  it('accepts an address that did not parse', () => {
     const { entity } = makeIssuer().issue(USER_ID, FAMILY_ID, NOW, {
       ip: null,
-      deviceLabel: null,
-      sessionStartedAt: null,
+      deviceLabel: DEVICE_LABEL,
+      sessionStartedAt: SESSION_STARTED_AT,
     })
 
     expect(entity.ip).toBeNull()
-    expect(entity.deviceLabel).toBeNull()
-    expect(entity.sessionStartedAt).toBeNull()
   })
 
   it('mints a family id per call, so one login never joins another chain', () => {
@@ -110,18 +108,6 @@ describe('RefreshTokenIssuer', () => {
 
     expect(entity.expiresAt).toEqual(
       new Date(NOW.getTime() + HALF_TTL_SECONDS * MILLISECONDS_PER_SECOND),
-    )
-  })
-
-  it('counts a fresh family from now when the context carries no start', () => {
-    const { entity } = makeIssuer().issue(USER_ID, FAMILY_ID, NOW, {
-      ip: null,
-      deviceLabel: null,
-      sessionStartedAt: null,
-    })
-
-    expect(entity.expiresAt).toEqual(
-      new Date(NOW.getTime() + TTL_SECONDS * MILLISECONDS_PER_SECOND),
     )
   })
 })

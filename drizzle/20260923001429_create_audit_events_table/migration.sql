@@ -3,7 +3,7 @@ CREATE TABLE "audit_events" (
 	"type" text NOT NULL,
 	"user_id" uuid NOT NULL,
 	"ip" text,
-	"device_label" text,
+	"device_label" text NOT NULL,
 	"occurred_at" timestamp with time zone NOT NULL
 );
 --> statement-breakpoint

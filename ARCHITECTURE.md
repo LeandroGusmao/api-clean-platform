@@ -346,6 +346,16 @@ pnpm db:generate --name=create_users_table   # SEMPRE com --name
 - **Nunca renomeie uma migration aplicada.** O migrator compara pelo **nome da
   pasta**: renomear a faz rodar de novo.
 - `drizzle/` fica fora do Biome — é saída de ferramenta.
+- **A baseline atual foi regerada uma vez, em 2026-09-22.** O histórico anterior
+  tinha onze migrations, das quais três só alteravam tabela já criada — e
+  `ALTER TABLE ADD COLUMN` anexa a coluna no fim, então a ordem física deixava
+  de dizer o que a tabela significa. Como o boilerplate nunca rodou fora de
+  máquina local, as onze foram trocadas por oito, uma por tabela, com cada
+  coluna na posição que ela ocupa no schema. R4 vale a partir desta baseline:
+  quem precisar de uma mudança, gera a próxima migration.
+  **Banco local criado antes dela não aceita as novas** — o migrator tenta
+  recriar tabela que já existe. Recrie: `pnpm db:reset` no de desenvolvimento,
+  `docker compose restart postgres-test` no de teste, que é `tmpfs`.
 
 ### Regras dos repositórios
 

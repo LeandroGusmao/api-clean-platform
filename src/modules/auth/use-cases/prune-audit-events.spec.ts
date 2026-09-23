@@ -4,6 +4,7 @@ import { InMemoryAuditEventsRepository } from '#modules/auth/infra/in-memory/in-
 import { PruneAuditEventsUseCase } from '#modules/auth/use-cases/prune-audit-events'
 
 const USER_ID = '3f2a1b4c-5d6e-4f70-8192-a3b4c5d6e7f8'
+const DEVICE_LABEL = 'Chrome on Windows'
 const NOW = new Date('2026-09-20T12:00:00.000Z')
 const RETENTION_MS = 1000 * 60 * 60
 const ONE_SECOND_MS = 1000
@@ -16,7 +17,7 @@ const eventAt = (id: string, occurredAt: Date) =>
     id,
     type: AuditEventType.AccountDeleted,
     userId: USER_ID,
-    device: { ip: null, label: null },
+    device: { ip: null, label: DEVICE_LABEL },
     now: occurredAt,
   })
 

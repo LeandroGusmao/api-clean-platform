@@ -6,6 +6,9 @@ CREATE TABLE "refresh_tokens" (
 	"expires_at" timestamp with time zone NOT NULL,
 	"revoked_at" timestamp with time zone,
 	"replaced_by" uuid,
+	"ip" text,
+	"device_label" text NOT NULL,
+	"session_started_at" timestamp with time zone NOT NULL,
 	"created_at" timestamp with time zone NOT NULL
 );
 --> statement-breakpoint

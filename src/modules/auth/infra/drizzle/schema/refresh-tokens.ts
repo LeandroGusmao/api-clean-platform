@@ -47,24 +47,27 @@ export const refreshTokens = pgTable(
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
     replacedBy: uuid('replaced_by'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
     /**
      * The request that created THIS row, so a rotation records where the client
-     * is now. Null on a row older than the column, and also when the address
-     * did not parse — `parsedClientIp` refuses to store attacker-chosen text.
+     * is now. Nullable because the address may not parse — `parsedClientIp`
+     * refuses to store attacker-chosen text, and null is what it returns.
      */
     ip: text('ip'),
     /**
      * Derived from the User-Agent when the family opened, and inherited by
      * every rotation — it names the DEVICE, which does not change mid session.
-     * The raw header is deliberately not stored.
+     * The raw header is deliberately not stored. Never null: a User-Agent that
+     * names nothing recognisable still yields `UNKNOWN_DEVICE_LABEL`.
      */
-    deviceLabel: text('device_label'),
+    deviceLabel: text('device_label').notNull(),
     /**
      * When the family opened. Carried across rotations because rotation
      * discards the row that knew it.
      */
-    sessionStartedAt: timestamp('session_started_at', { withTimezone: true }),
+    sessionStartedAt: timestamp('session_started_at', {
+      withTimezone: true,
+    }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   },
   (table) => [
     uniqueIndex(REFRESH_TOKENS_TOKEN_HASH_UNIQUE_INDEX).on(table.tokenHash),

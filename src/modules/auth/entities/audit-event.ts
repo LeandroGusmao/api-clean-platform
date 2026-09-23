@@ -13,10 +13,14 @@ export const AuditEventType = {
 
 export type AuditEventType = (typeof AuditEventType)[keyof typeof AuditEventType]
 
-/** Where the event came from. Both nullable: an address can fail to parse. */
+/**
+ * Where the event came from. The address is nullable because it can fail to
+ * parse; the label never is, since a User-Agent that names nothing recognisable
+ * still yields one.
+ */
 export interface AuditEventDevice {
   ip: string | null
-  label: string | null
+  label: string
 }
 
 export interface CreateAuditEventProps {
@@ -42,7 +46,7 @@ export class AuditEvent {
   readonly #type: AuditEventType
   readonly #userId: string
   readonly #ip: string | null
-  readonly #deviceLabel: string | null
+  readonly #deviceLabel: string
   readonly #occurredAt: Date
 
   private constructor(props: CreateAuditEventProps) {
@@ -77,7 +81,7 @@ export class AuditEvent {
     return this.#ip
   }
 
-  get deviceLabel(): string | null {
+  get deviceLabel(): string {
     return this.#deviceLabel
   }
 

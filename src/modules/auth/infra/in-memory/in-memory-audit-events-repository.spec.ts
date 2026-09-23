@@ -3,6 +3,7 @@ import { AuditEvent, AuditEventType } from '#modules/auth/entities/audit-event'
 import { InMemoryAuditEventsRepository } from '#modules/auth/infra/in-memory/in-memory-audit-events-repository'
 
 const USER_ID = '3f2a1b4c-5d6e-4f70-8192-a3b4c5d6e7f8'
+const DEVICE_LABEL = 'Chrome on Windows'
 const CUTOFF = new Date('2026-09-20T12:00:00.000Z')
 const ONE_SECOND_MS = 1000
 const NO_EVENTS = 0
@@ -14,7 +15,7 @@ const eventAt = (id: string, occurredAt: Date) =>
     id,
     type: AuditEventType.PasswordChanged,
     userId: USER_ID,
-    device: { ip: null, label: null },
+    device: { ip: null, label: DEVICE_LABEL },
     now: occurredAt,
   })
 

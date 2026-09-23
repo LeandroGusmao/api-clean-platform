@@ -124,7 +124,7 @@ describe('RefreshToken device context', () => {
     expect(token.sessionStartedAt).toEqual(SESSION_STARTED_AT)
   })
 
-  it('accepts a fully absent context, for a row older than the columns', () => {
+  it('accepts an address that did not parse, keeping the rest of the context', () => {
     const token = RefreshToken.create({
       id: TOKEN_ID,
       userId: USER_ID,
@@ -134,13 +134,13 @@ describe('RefreshToken device context', () => {
       ttlSeconds: TTL_SECONDS,
       lifetimeCeiling: FAR_CEILING,
       ip: null,
-      deviceLabel: null,
-      sessionStartedAt: null,
+      deviceLabel: DEVICE_LABEL,
+      sessionStartedAt: SESSION_STARTED_AT,
     })
 
     expect(token.ip).toBeNull()
-    expect(token.deviceLabel).toBeNull()
-    expect(token.sessionStartedAt).toBeNull()
+    expect(token.deviceLabel).toBe(DEVICE_LABEL)
+    expect(token.sessionStartedAt).toEqual(SESSION_STARTED_AT)
   })
 })
 

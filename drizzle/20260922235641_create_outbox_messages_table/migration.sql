@@ -7,6 +7,7 @@ CREATE TABLE "outbox_messages" (
 	"last_error" text,
 	"dispatched_at" timestamp with time zone,
 	"failed_at" timestamp with time zone,
+	"claimed_until" timestamp with time zone,
 	"created_at" timestamp with time zone NOT NULL
 );
 --> statement-breakpoint

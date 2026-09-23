@@ -19,14 +19,13 @@ import type { ITokenDigest } from '#shared/ports/token-digest'
 /**
  * The address follows the client, so it comes from this request; the label
  * names the device and the start names the family, so both ride along from the
- * row being replaced. A row older than the columns adopts its own `createdAt`:
- * later than the true start, but stable from then on.
+ * row being replaced.
  */
 function inherit(current: RefreshToken, ip: string | null): IssuedSessionContext {
   return {
     ip,
     deviceLabel: current.deviceLabel,
-    sessionStartedAt: current.sessionStartedAt ?? current.createdAt,
+    sessionStartedAt: current.sessionStartedAt,
   }
 }
 
@@ -164,7 +163,7 @@ export class RefreshTokenUseCase {
                   id: this.idGenerator.generate(),
                   message: reuseDetectedEmail(owner.email, {
                     deviceLabel: current.deviceLabel,
-                    sessionStartedAt: current.sessionStartedAt ?? current.createdAt,
+                    sessionStartedAt: current.sessionStartedAt,
                     ip: command.ip,
                   }),
                   now,

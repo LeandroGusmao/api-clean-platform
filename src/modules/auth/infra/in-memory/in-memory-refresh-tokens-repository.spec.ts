@@ -8,6 +8,7 @@ const OTHER_FAMILY_ID = '99990000-1111-4222-8333-444455556666'
 const NOW = new Date('2026-08-31T12:00:00.000Z')
 const LATER = new Date('2026-08-31T12:00:05.000Z')
 const EXPIRES_AT = new Date('2026-09-30T12:00:00.000Z')
+const DEVICE_LABEL = 'Chrome on Windows'
 const NO_TOKENS = 0
 const TWO_TOKENS = 2
 
@@ -22,8 +23,8 @@ const token = (id: string, familyId: string, revokedAt: Date | null) =>
     replacedBy: null,
     createdAt: NOW,
     ip: null,
-    deviceLabel: null,
-    sessionStartedAt: null,
+    deviceLabel: DEVICE_LABEL,
+    sessionStartedAt: NOW,
   })
 
 describe('InMemoryRefreshTokensRepository.revokeFamily', () => {

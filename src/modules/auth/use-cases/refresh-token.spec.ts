@@ -117,8 +117,8 @@ const store = (props: {
   replacedBy?: string
   expiresAt?: Date
   familyId?: string
-  deviceLabel?: string | null
-  sessionStartedAt?: Date | null
+  deviceLabel?: string
+  sessionStartedAt?: Date
 }) =>
   repository.tokens.push(
     RefreshToken.fromTrusted({
@@ -131,11 +131,8 @@ const store = (props: {
       replacedBy: props.replacedBy ?? null,
       createdAt: NOW,
       ip: ORIGINAL_IP,
-      deviceLabel: props.deviceLabel === undefined ? DEVICE_LABEL : props.deviceLabel,
-      sessionStartedAt:
-        props.sessionStartedAt === undefined
-          ? SESSION_STARTED_AT
-          : props.sessionStartedAt,
+      deviceLabel: props.deviceLabel ?? DEVICE_LABEL,
+      sessionStartedAt: props.sessionStartedAt ?? SESSION_STARTED_AT,
     }),
   )
 
@@ -204,16 +201,6 @@ describe('RefreshTokenUseCase — rotation', () => {
     expect(successor?.ip).toBe(ROTATION_IP)
     expect(successor?.deviceLabel).toBe(DEVICE_LABEL)
     expect(successor?.sessionStartedAt).toEqual(SESSION_STARTED_AT)
-  })
-
-  it('adopts the replaced row createdAt when the start predates the column', async () => {
-    store({ sessionStartedAt: null })
-
-    await refresh()
-
-    // Later than the true start, and stable from here on — better than a
-    // session that can never report one.
-    expect(repository.tokens[1]?.sessionStartedAt).toEqual(NOW)
   })
 })
 
@@ -540,14 +527,9 @@ describe('RefreshTokenUseCase — reuse notice', () => {
     expect(outboxMessages.messages).toHaveLength(NO_MESSAGES)
   })
 
-  it('adopts the row createdAt for a start that predates the column, and copes with no label or address', async () => {
+  it('copes with a presenting address that did not parse', async () => {
     storeOwner()
-    store({
-      revokedAt: NOW,
-      replacedBy: SUCCESSOR_ID,
-      sessionStartedAt: null,
-      deviceLabel: null,
-    })
+    store({ revokedAt: NOW, replacedBy: SUCCESSOR_ID })
     storeSuccessor()
     clockReading = at(PAST_GRACE)
 
@@ -556,8 +538,8 @@ describe('RefreshTokenUseCase — reuse notice', () => {
     ).rejects.toBeInstanceOf(RefreshTokenReusedError)
 
     const [notice] = outboxMessages.messages
-    expect(notice?.text).toContain(NOW.toISOString())
-    expect(notice?.text).toContain('an unknown device')
+    expect(notice?.text).toContain(SESSION_STARTED_AT.toISOString())
+    expect(notice?.text).toContain(DEVICE_LABEL)
     expect(notice?.text).toContain('an unrecognized address')
   })
 })
@@ -599,15 +581,6 @@ describe('RefreshTokenUseCase — session lifetime ceiling', () => {
     clockReading = at(ONE_MILLISECOND)
 
     await expect(refresh()).rejects.toBeInstanceOf(InvalidRefreshTokenError)
-  })
-
-  it('counts the ceiling from createdAt for a row older than the column', async () => {
-    // `inherit` adopts `createdAt` (NOW) as the start, so the ceiling is far away.
-    store({ sessionStartedAt: null })
-
-    await refresh()
-
-    expect(repository.tokens[1]?.expiresAt).toEqual(at(TTL_MS))
   })
 })
 

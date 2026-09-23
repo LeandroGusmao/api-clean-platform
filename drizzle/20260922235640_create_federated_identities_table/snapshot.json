@@ -1,20 +1,14 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "79cd7b2f-612c-4207-b525-30e005543545",
+  "id": "aaf07ea4-9ac5-40d3-9960-6e9cc8851f19",
   "prevIds": [
-    "85e990ae-8743-4f70-a97d-771ff443b836"
+    "2a64e69e-9c4e-4981-bc46-d64914ef2dd6"
   ],
   "ddl": [
     {
       "isRlsEnabled": false,
       "name": "federated_identities",
-      "entityType": "tables",
-      "schema": "public"
-    },
-    {
-      "isRlsEnabled": false,
-      "name": "outbox_messages",
       "entityType": "tables",
       "schema": "public"
     },
@@ -119,123 +113,6 @@
       "entityType": "columns",
       "schema": "public",
       "table": "federated_identities"
-    },
-    {
-      "type": "uuid",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "outbox_messages"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "to",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "outbox_messages"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "subject",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "outbox_messages"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "text",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "outbox_messages"
-    },
-    {
-      "type": "integer",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "attempts",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "outbox_messages"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "last_error",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "outbox_messages"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "dispatched_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "outbox_messages"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "failed_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "outbox_messages"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "created_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "outbox_messages"
     },
     {
       "type": "uuid",
@@ -524,6 +401,45 @@
       "table": "refresh_tokens"
     },
     {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "ip",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "refresh_tokens"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "device_label",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "refresh_tokens"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "session_started_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "refresh_tokens"
+    },
+    {
       "type": "timestamp with time zone",
       "typeSchema": null,
       "notNull": true,
@@ -690,27 +606,6 @@
       "entityType": "indexes",
       "schema": "public",
       "table": "federated_identities"
-    },
-    {
-      "nameExplicit": true,
-      "columns": [
-        {
-          "value": "created_at",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": null
-        }
-      ],
-      "isUnique": false,
-      "where": "\"dispatched_at\" is null and \"failed_at\" is null",
-      "with": "",
-      "method": "btree",
-      "concurrently": false,
-      "name": "outbox_messages_pending_idx",
-      "entityType": "indexes",
-      "schema": "public",
-      "table": "outbox_messages"
     },
     {
       "nameExplicit": true,
@@ -939,16 +834,6 @@
       "name": "federated_identities_pkey",
       "schema": "public",
       "table": "federated_identities",
-      "entityType": "pks"
-    },
-    {
-      "columns": [
-        "id"
-      ],
-      "nameExplicit": false,
-      "name": "outbox_messages_pkey",
-      "schema": "public",
-      "table": "outbox_messages",
       "entityType": "pks"
     },
     {

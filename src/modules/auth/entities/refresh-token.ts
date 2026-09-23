@@ -30,12 +30,12 @@ export interface CreateRefreshTokenProps {
    * would silently give the family no ceiling at all.
    */
   lifetimeCeiling: Date
-  /** The request that created this row. Null only on a row older than the column. */
+  /** The request that created this row. Null when the address did not parse. */
   ip: string | null
   /** Names the device, not the request, so rotation inherits it. */
-  deviceLabel: string | null
+  deviceLabel: string
   /** When the family opened. Rotation inherits it, having discarded the row that knew it. */
-  sessionStartedAt: Date | null
+  sessionStartedAt: Date
 }
 
 /** The complete state of an already-persisted token. See `User.fromTrusted`. */
@@ -49,8 +49,8 @@ export interface TrustedRefreshTokenProps {
   replacedBy: string | null
   createdAt: Date
   ip: string | null
-  deviceLabel: string | null
-  sessionStartedAt: Date | null
+  deviceLabel: string
+  sessionStartedAt: Date
 }
 
 /**
@@ -74,8 +74,8 @@ export class RefreshToken {
   readonly #replacedBy: string | null
   readonly #createdAt: Date
   readonly #ip: string | null
-  readonly #deviceLabel: string | null
-  readonly #sessionStartedAt: Date | null
+  readonly #deviceLabel: string
+  readonly #sessionStartedAt: Date
 
   private constructor(props: TrustedRefreshTokenProps) {
     this.#id = props.id
@@ -88,7 +88,7 @@ export class RefreshToken {
     this.#createdAt = cloneDate(props.createdAt)
     this.#ip = props.ip
     this.#deviceLabel = props.deviceLabel
-    this.#sessionStartedAt = cloneNullableDate(props.sessionStartedAt)
+    this.#sessionStartedAt = cloneDate(props.sessionStartedAt)
     Object.freeze(this)
   }
 
@@ -188,11 +188,11 @@ export class RefreshToken {
     return this.#ip
   }
 
-  get deviceLabel(): string | null {
+  get deviceLabel(): string {
     return this.#deviceLabel
   }
 
-  get sessionStartedAt(): Date | null {
-    return cloneNullableDate(this.#sessionStartedAt)
+  get sessionStartedAt(): Date {
+    return cloneDate(this.#sessionStartedAt)
   }
 }

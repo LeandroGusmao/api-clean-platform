@@ -1,9 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "4d0d0d3c-3293-4045-9c3a-96891c540ae1",
+  "id": "a34f5167-0e8e-4979-b30c-c7b8351ff9f8",
   "prevIds": [
-    "9e1ba70c-173f-421d-8621-5bdc1556718e"
+    "aaf07ea4-9ac5-40d3-9960-6e9cc8851f19"
   ],
   "ddl": [
     {
@@ -537,19 +537,6 @@
       "table": "refresh_tokens"
     },
     {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "created_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "refresh_tokens"
-    },
-    {
       "type": "text",
       "typeSchema": null,
       "notNull": false,
@@ -565,7 +552,7 @@
     {
       "type": "text",
       "typeSchema": null,
-      "notNull": false,
+      "notNull": true,
       "dimensions": 0,
       "default": null,
       "generated": null,
@@ -578,12 +565,25 @@
     {
       "type": "timestamp with time zone",
       "typeSchema": null,
-      "notNull": false,
+      "notNull": true,
       "dimensions": 0,
       "default": null,
       "generated": null,
       "identity": null,
       "name": "session_started_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "refresh_tokens"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
       "entityType": "columns",
       "schema": "public",
       "table": "refresh_tokens"

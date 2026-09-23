@@ -10,6 +10,7 @@ import { users } from '#modules/auth/infra/drizzle/schema/users'
 // the index would break the database and still keep this suite green.
 const TOKEN_HASH_UNIQUE_INDEX = 'refresh_tokens_token_hash_unique'
 const FOREIGN_KEY_VIOLATION = '23503'
+const NOT_NULL_VIOLATION = '23502'
 
 const EMAIL = 'joao@example.com'
 const PASSWORD_HASH = '$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHQ$hash'
@@ -32,6 +33,20 @@ const NO_ROWS = 0
 const TWO_ROWS = 2
 
 const USER_MISSING_MESSAGE = 'no user row was stored'
+
+// Raw SQL because the Drizzle types make the omission itself impossible to
+// write — the point of these two is what the TABLE does when something else
+// reaches it.
+const INSERT_WITHOUT_DEVICE_LABEL = `
+  INSERT INTO refresh_tokens
+    (id, user_id, token_hash, family_id, expires_at, session_started_at, created_at)
+  VALUES ($1, $2, $3, $4, $5, $6, $7)
+`
+const INSERT_WITHOUT_SESSION_START = `
+  INSERT INTO refresh_tokens
+    (id, user_id, token_hash, family_id, expires_at, device_label, created_at)
+  VALUES ($1, $2, $3, $4, $5, $6, $7)
+`
 
 let db: Database
 let pool: Pool
@@ -66,6 +81,8 @@ const row = (overrides: Partial<typeof refreshTokens.$inferInsert> = {}) => ({
   tokenHash: TOKEN_HASH,
   familyId: FAMILY_ID,
   expiresAt: EXPIRES_AT,
+  deviceLabel: DEVICE_LABEL,
+  sessionStartedAt: SESSION_STARTED_AT,
   createdAt: CREATED_AT,
   ...overrides,
 })
@@ -108,17 +125,48 @@ describe('refresh_tokens table', () => {
     expect(stored?.replacedBy).toBeNull()
   })
 
-  it('stores the device context as nullable, and defaults none of it', async () => {
-    // A row written before these columns existed has no context, and nothing
-    // may invent one for it: an inserted default would make "never recorded"
-    // read exactly like "recorded and unrecognised".
-    await db.insert(refreshTokens).values(row())
+  it('stores ip as nullable, and defaults none of it', async () => {
+    // The address is the one part of the context that legitimately goes
+    // missing: `parsedClientIp` returns null rather than store text the client
+    // chose. A default here would invent an address nobody connected from.
+    await db.insert(refreshTokens).values(row({ ip: null }))
 
     const [stored] = await db.select().from(refreshTokens)
 
     expect(stored?.ip).toBeNull()
-    expect(stored?.deviceLabel).toBeNull()
-    expect(stored?.sessionStartedAt).toBeNull()
+  })
+
+  it('refuses a row with no device label', async () => {
+    // Every session carries a label the owner can read — an unrecognised
+    // User-Agent still yields one. A row without it would render as a blank
+    // device on the sessions screen.
+    await expect(
+      pool.query(INSERT_WITHOUT_DEVICE_LABEL, [
+        TOKEN_ID,
+        userId,
+        TOKEN_HASH,
+        FAMILY_ID,
+        EXPIRES_AT,
+        SESSION_STARTED_AT,
+        CREATED_AT,
+      ]),
+    ).rejects.toMatchObject({ code: NOT_NULL_VIOLATION })
+  })
+
+  it('refuses a row with no session start', async () => {
+    // The absolute ceiling is counted from this instant. A row without it has
+    // no ceiling to count from, so the session would renew forever.
+    await expect(
+      pool.query(INSERT_WITHOUT_SESSION_START, [
+        TOKEN_ID,
+        userId,
+        TOKEN_HASH,
+        FAMILY_ID,
+        EXPIRES_AT,
+        DEVICE_LABEL,
+        CREATED_AT,
+      ]),
+    ).rejects.toMatchObject({ code: NOT_NULL_VIOLATION })
   })
 
   it('round-trips the device context', async () => {

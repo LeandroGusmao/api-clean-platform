@@ -22,8 +22,8 @@ export interface SessionDevice {
  */
 export interface IssuedSessionContext {
   ip: string | null
-  deviceLabel: string | null
-  sessionStartedAt: Date | null
+  deviceLabel: string
+  sessionStartedAt: Date
 }
 
 /**
@@ -62,9 +62,6 @@ export class RefreshTokenIssuer {
     context: IssuedSessionContext,
   ): IssuedRefreshToken {
     const token = this.tokenGenerator.opaque()
-    // A context with no start (a row older than the column) is counted from
-    // `now`, the same choice `inherit` makes one level up.
-    const sessionStartedAt = context.sessionStartedAt ?? now
 
     return {
       token,
@@ -75,7 +72,7 @@ export class RefreshTokenIssuer {
         familyId,
         now,
         ttlSeconds: this.ttlSeconds,
-        lifetimeCeiling: this.ceilingFor(sessionStartedAt),
+        lifetimeCeiling: this.ceilingFor(context.sessionStartedAt),
         ip: context.ip,
         deviceLabel: context.deviceLabel,
         sessionStartedAt: context.sessionStartedAt,

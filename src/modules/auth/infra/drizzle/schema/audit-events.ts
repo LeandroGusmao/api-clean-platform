@@ -16,8 +16,10 @@ export const auditEvents = pgTable(
     id: uuid('id').primaryKey(),
     type: text('type').notNull(),
     userId: uuid('user_id').notNull(),
+    /** Nullable: `parsedClientIp` returns null for an address that did not parse. */
     ip: text('ip'),
-    deviceLabel: text('device_label'),
+    /** Never null: an unrecognised User-Agent still yields `UNKNOWN_DEVICE_LABEL`. */
+    deviceLabel: text('device_label').notNull(),
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
   },
   (table) => [

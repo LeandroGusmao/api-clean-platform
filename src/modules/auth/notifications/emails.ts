@@ -11,7 +11,6 @@ const PASSWORD_RESET_COMPLETED_SUBJECT = 'Your password was reset'
 const GOOGLE_ACCOUNT_LINKED_SUBJECT = 'A Google sign-in was connected to your account'
 const ACCOUNT_DELETED_SUBJECT = 'Your account was deleted'
 const REUSE_DETECTED_SUBJECT = 'A session on your account was signed out'
-const UNKNOWN_DEVICE = 'an unknown device'
 const UNRECOGNIZED_ADDRESS = 'an unrecognized address'
 
 /**
@@ -126,7 +125,7 @@ export function googleAccountLinkedEmail(to: Email): EmailMessage {
 }
 
 export interface ReuseDetectedSession {
-  deviceLabel: string | null
+  deviceLabel: string
   sessionStartedAt: Date
   /** Who PRESENTED the spent token — possibly the owner's own client. */
   ip: string | null
@@ -142,7 +141,6 @@ export function reuseDetectedEmail(
   to: Email,
   session: ReuseDetectedSession,
 ): EmailMessage {
-  const device = session.deviceLabel ?? UNKNOWN_DEVICE
   const address = session.ip ?? UNRECOGNIZED_ADDRESS
 
   return {
@@ -151,7 +149,7 @@ export function reuseDetectedEmail(
     text:
       'A sign-in credential from one of your sessions was used a second time, ' +
       'which is suspicious. We signed that session out: it was on ' +
-      `${device} and started at ${session.sessionStartedAt.toISOString()}.\n\n` +
+      `${session.deviceLabel} and started at ${session.sessionStartedAt.toISOString()}.\n\n` +
       `The attempt came from ${address}.\n\n` +
       'If you do not recognise this, reset your password immediately. If it ' +
       'was you, for instance an app that misbehaved, sign in again and no ' +
