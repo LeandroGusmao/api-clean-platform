@@ -1,4 +1,4 @@
-import { passwordResetEmail } from '#modules/auth/notifications/emails'
+import { passwordResetEmail } from '#modules/auth/emails/messages'
 import type { Email } from '#modules/auth/value-objects/email'
 import type { IEmailSender } from '#shared/ports/email-sender'
 import type { ITokenDigest } from '#shared/ports/token-digest'

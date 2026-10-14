@@ -6,7 +6,7 @@
  * RegExp, because dependency-cruiser takes them as strings.
  */
 export const PURE =
-  '^src/(shared/|modules/[^/]+/(entities|value-objects|repositories|ports|use-cases|services|dtos|errors|notifications)/|modules/[^/]+/config\\.ts$)'
+  '^src/(shared/|modules/[^/]+/(entities|value-objects|repositories|ports|use-cases|services|dtos|errors|emails)/|modules/[^/]+/config\\.ts$)'
 export const MODULE_INFRA = '^src/modules/[^/]+/infra/'
 export const GLOBAL_INFRA = '^src/infra/'
 export const COMPOSITION = '^(src/main/|src/modules/[^/]+/container\\.ts$)'

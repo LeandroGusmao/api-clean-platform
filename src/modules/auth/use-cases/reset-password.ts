@@ -1,7 +1,7 @@
+import { passwordResetCompletedEmail } from '#modules/auth/emails/messages'
 import { AuditEvent, AuditEventType } from '#modules/auth/entities/audit-event'
 import { OutboxMessage } from '#modules/auth/entities/outbox-message'
 import { PasswordResetFailedError } from '#modules/auth/errors/password-reset-failed-error'
-import { passwordResetCompletedEmail } from '#modules/auth/notifications/emails'
 import type { IHashProvider } from '#modules/auth/ports/hash-provider'
 import type { IPasswordResetTokensRepository } from '#modules/auth/repositories/password-reset-tokens-repository'
 import type { IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'

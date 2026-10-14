@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
+import { passwordResetCompletedEmail } from '#modules/auth/emails/messages'
 import { AuditEventType } from '#modules/auth/entities/audit-event'
 import { PasswordResetToken } from '#modules/auth/entities/password-reset-token'
 import { User } from '#modules/auth/entities/user'
@@ -8,7 +9,6 @@ import { InMemoryAuditEventsRepository } from '#modules/auth/infra/in-memory/in-
 import { InMemoryOutboxMessagesRepository } from '#modules/auth/infra/in-memory/in-memory-outbox-messages-repository'
 import { InMemoryRefreshTokensRepository } from '#modules/auth/infra/in-memory/in-memory-refresh-tokens-repository'
 import { InMemoryUsersRepository } from '#modules/auth/infra/in-memory/in-memory-users-repository'
-import { passwordResetCompletedEmail } from '#modules/auth/notifications/emails'
 import type { IHashProvider } from '#modules/auth/ports/hash-provider'
 import { noopAuthRepos } from '#modules/auth/repositories/noop-auth-repos'
 import type { AuthRepos, IAuthUnitOfWork } from '#modules/auth/repositories/unit-of-work'

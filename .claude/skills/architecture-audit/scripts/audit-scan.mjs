@@ -156,7 +156,7 @@ function layerPath(file) {
  * stay under `infra/providers/`; only the contract side was renamed.
  */
 const PURE_DIRECTORIES =
-  /^(entities|value-objects|repositories|ports|use-cases|services|dtos|errors|notifications)\//
+  /^(entities|value-objects|repositories|ports|use-cases|services|dtos|errors|emails)\//
 
 // ARCHITECTURE §2: `fixtures/` and `in-memory/` are classified as `test` by folder name.
 const TEST_ELEMENT = /(\.spec\.ts$|^tests\/|\/fixtures\/|\/in-memory\/)/

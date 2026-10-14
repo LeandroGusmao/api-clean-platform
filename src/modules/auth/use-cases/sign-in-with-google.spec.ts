@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
 import { DEFAULT_REFRESH_TOKEN_MAX_LIFETIME_SECONDS } from '#modules/auth/config'
+import { googleAccountLinkedEmail } from '#modules/auth/emails/messages'
 import { AuditEventType } from '#modules/auth/entities/audit-event'
 import {
   FederatedIdentity,
@@ -16,7 +17,6 @@ import { InMemoryFederatedIdentitiesRepository } from '#modules/auth/infra/in-me
 import { InMemoryOutboxMessagesRepository } from '#modules/auth/infra/in-memory/in-memory-outbox-messages-repository'
 import { InMemoryRefreshTokensRepository } from '#modules/auth/infra/in-memory/in-memory-refresh-tokens-repository'
 import { InMemoryUsersRepository } from '#modules/auth/infra/in-memory/in-memory-users-repository'
-import { googleAccountLinkedEmail } from '#modules/auth/notifications/emails'
 import type {
   GoogleIdentity,
   IGoogleIdentityVerifier,

@@ -63,7 +63,7 @@ src/
 │   └── providers/           # adapters for the shared/ports/ contracts
 ├── modules/
 │   └── <module>/            # today only `auth`
-│       ├── entities/  value-objects/  services/  use-cases/  errors/  notifications/
+│       ├── entities/  value-objects/  services/  use-cases/  errors/  emails/
 │       ├── repositories/  ports/        # contracts ONLY
 │       ├── config.ts                    # Zod schema of the module's env vars
 │       ├── container.ts                 # assembles the module's concrete graph
@@ -95,7 +95,7 @@ If you cannot say which module a piece belongs to, it is global
 
 | Element | Pattern | May import |
 |---|---|---|
-| `pure` | `src/modules/*/{entities,value-objects,repositories,ports,use-cases,services,dtos,errors,notifications}/**` · `src/modules/*/config.ts` · `src/shared/**` | only `pure` |
+| `pure` | `src/modules/*/{entities,value-objects,repositories,ports,use-cases,services,dtos,errors,emails}/**` · `src/modules/*/config.ts` · `src/shared/**` | only `pure` |
 | `module-infra` | `src/modules/*/infra/**` | `pure` · `global-infra` · the `module-infra` **of its own module** |
 | `global-infra` | `src/infra/**` | `pure` · `global-infra` |
 | `composition` | `src/modules/*/container.ts` · `src/main/**` | everything |

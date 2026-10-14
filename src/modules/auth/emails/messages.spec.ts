@@ -5,7 +5,7 @@ import {
   passwordResetCompletedEmail,
   passwordResetEmail,
   reuseDetectedEmail,
-} from '#modules/auth/notifications/emails'
+} from '#modules/auth/emails/messages'
 import { Email } from '#modules/auth/value-objects/email'
 
 const TO = Email.fromTrusted('joao@example.com')

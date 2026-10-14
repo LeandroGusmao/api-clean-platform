@@ -1,3 +1,4 @@
+import { googleAccountLinkedEmail } from '#modules/auth/emails/messages'
 import { AuditEvent, AuditEventType } from '#modules/auth/entities/audit-event'
 import {
   FederatedIdentity,
@@ -8,7 +9,6 @@ import { User } from '#modules/auth/entities/user'
 import { GoogleLinkRequiresPasswordError } from '#modules/auth/errors/google-link-requires-password-error'
 import { GoogleSignInConflictError } from '#modules/auth/errors/google-sign-in-conflict-error'
 import { InvalidCredentialsError } from '#modules/auth/errors/invalid-credentials-error'
-import { googleAccountLinkedEmail } from '#modules/auth/notifications/emails'
 import type { IGoogleIdentityVerifier } from '#modules/auth/ports/google-identity-verifier'
 import type { IHashProvider } from '#modules/auth/ports/hash-provider'
 import type { ITokenSigner } from '#modules/auth/ports/token-signer'

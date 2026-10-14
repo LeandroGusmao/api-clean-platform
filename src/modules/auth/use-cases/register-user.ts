@@ -1,5 +1,5 @@
+import { accountAlreadyExistsEmail } from '#modules/auth/emails/messages'
 import { PendingRegistration } from '#modules/auth/entities/pending-registration'
-import { accountAlreadyExistsEmail } from '#modules/auth/notifications/emails'
 import type { IAccountExistsNoticesRepository } from '#modules/auth/repositories/account-exists-notices-repository'
 import type { IPendingRegistrationsRepository } from '#modules/auth/repositories/pending-registrations-repository'
 import type { IUsersRepository } from '#modules/auth/repositories/users-repository'
