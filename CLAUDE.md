@@ -1,7 +1,7 @@
 # Language
 
 - All code (identifiers, strings, log messages, error messages) and all comments must be written in **English**.
-- Markdown documentation files (`*.md`) may be written in **Portuguese**.
+- All documentation (`*.md`, skills, agents, specs and plans) must also be written in **English**.
 
 # No Magic Strings/Numbers
 

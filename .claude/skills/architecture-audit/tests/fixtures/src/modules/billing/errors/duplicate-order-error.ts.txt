@@ -2,7 +2,7 @@ import { ConflictError } from '#shared/errors/app-error'
 
 const DUPLICATE_ORDER_CODE = 'DUPLICATE_ORDER'
 
-/** Correto: estende uma das seis categorias. Não pode disparar. */
+/** Correct: extends one of the seven categories. Must not fire. */
 export class DuplicateOrderError extends ConflictError {
   readonly code = DUPLICATE_ORDER_CODE
 }

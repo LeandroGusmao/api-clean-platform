@@ -1,11 +1,11 @@
-# Documento com links
+# Document with links
 
-Link para um irmão que existe: [vizinho](./good-neighbour.md).
-Link para arquivo que sumiu num move: [handler](../src/infra/http/error-handler.ts).
-Link para pasta inexistente: [specs](./specs/design.md).
-Âncora interna, não é caminho: [seção](#os-arquivos).
-Link externo, fora do alcance: [zod](https://zod.dev).
+Link to a sibling that exists: [neighbour](./good-neighbour.md).
+Link to a file that vanished in a move: [handler](../src/infra/http/error-handler.ts).
+Link to a missing folder: [specs](./specs/design.md).
+Internal anchor, not a path: [section](#the-files).
+External link, out of reach: [zod](https://zod.dev).
 
 ```md
-Dentro de bloco de código não conta: [falso](./nao-existe.md)
+Inside a code block it does not count: [fake](./does-not-exist.md)
 ```

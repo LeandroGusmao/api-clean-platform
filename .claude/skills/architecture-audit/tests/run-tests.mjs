@@ -132,20 +132,18 @@ try {
 
     failures += 1
     console.log(`FAIL  ${fixture}`)
-    if (missing.length > 0) console.log(`        não detectado: ${missing.join(', ')}`)
-    if (extra.length > 0) console.log(`        falso positivo: ${extra.join(', ')}`)
+    if (missing.length > 0) console.log(`        not detected: ${missing.join(', ')}`)
+    if (extra.length > 0) console.log(`        false positive: ${extra.join(', ')}`)
   }
 
   const unknown = Object.keys(actual).filter((file) => !(file in EXPECTED))
   for (const file of unknown) {
     failures += 1
-    console.log(`FAIL  ${file} não está no manifesto: ${actual[file].join(', ')}`)
+    console.log(`FAIL  ${file} is not in the manifest: ${actual[file].join(', ')}`)
   }
 } finally {
   rmSync(workspace, { recursive: true, force: true })
 }
 
-console.log(
-  failures === 0 ? '\nTodos os casos passaram.' : `\n${failures} caso(s) falhou(ram).`,
-)
+console.log(failures === 0 ? '\nAll cases passed.' : `\n${failures} case(s) failed.`)
 process.exit(failures === 0 ? 0 : 1)

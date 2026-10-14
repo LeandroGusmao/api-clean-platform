@@ -2,6 +2,6 @@ export abstract class AppError extends Error {
   abstract readonly code: string
 }
 
-/** A própria taxonomia: estas SÃO as seis irmãs, não podem disparar. */
+/** The taxonomy itself: these ARE the seven siblings, they must not fire. */
 export abstract class NotFoundError extends AppError {}
 export abstract class ConflictError extends AppError {}

@@ -1,35 +1,35 @@
-# Erros
+# Errors
 
-Taxonomia semântica na camada pura, um único tradutor para HTTP. O use case
-lança, o endpoint não trata, o handler responde.
+A semantic taxonomy in the pure layer, a single translator to HTTP. The use case
+throws, the endpoint does not handle it, the handler responds.
 
-> **Aqui está como usar.** O porquê de cada escolha está no
+> **This is how to use it.** The reason behind each choice is in
 > [`ARCHITECTURE.md`](../../../ARCHITECTURE.md) §8.
 
 ---
 
-## Os arquivos
+## The files
 
-| arquivo | camada | faz |
+| file | layer | does |
 |---|---|---|
-| [`app-error.ts`](./app-error.ts) | pura | `AppError` + as 6 categorias abstratas |
-| `src/modules/<m>/errors/*.ts` | pura | os erros concretos do módulo |
-| [`error-handler.ts`](../../infra/http/errors/error-handler.ts) | infra | traduz erro → status + corpo |
-| [`error-response.ts`](../../infra/http/errors/error-response.ts) | infra | schema Zod do corpo de erro |
-| [`validation-issues.ts`](../../infra/http/errors/validation-issues.ts) | infra | issue do Zod → `code` do contrato |
+| [`app-error.ts`](./app-error.ts) | pure | `AppError` + the 7 abstract categories |
+| `src/modules/<m>/errors/*.ts` | pure | the module's concrete errors |
+| [`error-handler.ts`](../../infra/http/errors/error-handler.ts) | infra | translates error → status + body |
+| [`error-response.ts`](../../infra/http/errors/error-response.ts) | infra | Zod schema of the error body |
+| [`validation-issues.ts`](../../infra/http/errors/validation-issues.ts) | infra | Zod issue → the contract's `code` |
 
-Erro concreto mora onde é lançado: erro de domínio em
-`src/modules/<m>/errors/`; erro de uma peça de infra compartilhada, no próprio
-arquivo dela — `InvalidAccessTokenError` é declarado dentro de
-[`auth-guard.ts`](../../infra/http/auth-guard.ts), porque quem o lança é o guard,
-e não um módulo. `src/shared/errors/` guarda só as categorias abstratas: erro
-concreto nenhum entra aqui.
+A concrete error lives where it is thrown: a domain error in
+`src/modules/<m>/errors/`; an error from a shared infra piece, in that piece's own
+file — `InvalidAccessTokenError` is declared inside
+[`auth-guard.ts`](../../infra/http/auth-guard.ts), because the guard is what
+throws it, not a module. `src/shared/errors/` holds only the abstract categories:
+no concrete error goes in here.
 
 ---
 
-## Como usar
+## How to use
 
-**1. Crie o erro no seu módulo**
+**1. Create the error in your module**
 
 ```ts
 // src/modules/auth/errors/invalid-credentials-error.ts
@@ -47,17 +47,17 @@ export class InvalidCredentialsError extends UnauthorizedError {
 }
 ```
 
-O `code` é escrito à mão, nunca derivado do nome da classe: renomear a classe não
-pode mudar o contrato público. O literal fica numa constante nomeada como todo
-literal do projeto, e a mensagem é em inglês (`CLAUDE.md`).
+The `code` is written by hand, never derived from the class name: renaming the
+class must not change the public contract. The literal sits in a named constant
+like every literal in the project, and the message is in English (`CLAUDE.md`).
 
-**2. Lance no use case**
+**2. Throw it in the use case**
 
 ```ts
 if (!user) throw new InvalidCredentialsError()
 ```
 
-**3. Não trate no endpoint**
+**3. Do not handle it in the endpoint**
 
 ```ts
 async (request, reply) => {
@@ -67,78 +67,80 @@ async (request, reply) => {
 }
 ```
 
-Sai `401` com `{"error":{"code":"INVALID_CREDENTIALS", ...}}`: nenhum
-`try/catch`, nenhum status de falha decidido aqui.
+It comes out as `401` with `{"error":{"code":"INVALID_CREDENTIALS", ...}}`: no
+`try/catch`, no failure status decided here.
 
-**4. Declare o status no schema da rota**
+**4. Declare the status in the route's schema**
 
 ```ts
 response: {
   [OK_STATUS]: okSchema,
-  [BAD_REQUEST_STATUS]: errorResponseSchema,   // validação do Zod
+  [BAD_REQUEST_STATUS]: errorResponseSchema,   // Zod validation
   [UNAUTHORIZED_STATUS]: errorResponseSchema,  // InvalidCredentialsError
 },
 ```
 
-É a única linha de HTTP que o erro custa, e ela não é opcional: não tratar não é
-o mesmo que não documentar. O OpenAPI é o contrato de onde o cliente gera código,
-e o recorte é o que **aquela rota** produz — o `500` do handler genérico e o `415`
-de content-type são universais e não se repetem em todo arquivo
-([`ARCHITECTURE.md`](../../../ARCHITECTURE.md) §7).
+It is the only line of HTTP the error costs, and it is not optional: not handling
+is not the same as not documenting. The OpenAPI is the contract the client
+generates code from, and the cut is what **that route** produces — the generic
+handler's `500` and the content-type `415` are universal and are not repeated in
+every file ([`ARCHITECTURE.md`](../../../ARCHITECTURE.md) §7).
 
 ---
 
-## Qual categoria escolher
+## Which category to choose
 
-A pergunta é "que tipo de falha é esta", não "que status eu quero". O status vem
-junto.
+The question is "what kind of failure is this", not "what status do I want". The
+status comes along with it.
 
-| categoria | use quando | status |
+| category | use when | status |
 |---|---|---|
-| `NotFoundError` | o recurso pedido não existe | `404` |
-| `ConflictError` | o estado atual colide com a operação | `409` |
-| `UnauthorizedError` | não autenticado, ou credencial inválida | `401` |
-| `ForbiddenError` | autenticado, mas sem permissão | `403` |
-| `ValidationError` | o **valor** é inválido pela regra de domínio | `400` |
-| `BusinessRuleError` | o valor é válido, a **operação** não é permitida | `422` |
+| `NotFoundError` | the requested resource does not exist | `404` |
+| `ConflictError` | the current state collides with the operation | `409` |
+| `UnauthorizedError` | not authenticated, or an invalid credential | `401` |
+| `ForbiddenError` | authenticated, but without permission | `403` |
+| `ValidationError` | the **value** is invalid by a domain rule | `400` |
+| `BusinessRuleError` | the value is valid, the **operation** is not allowed | `422` |
+| `TransientError` | a temporary failure that retrying may fix | `503` + `Retry-After` |
 
-As duas confusões comuns:
+The two common mix-ups:
 
-- **`401` vs `403`** — se o usuário logar de novo e o erro sumir, é `401`; se
-  continuar, é `403`.
-- **`Validation` vs `BusinessRule`** — `"abc"` não é um CPF: `ValidationError`.
-  Saldo `R$ 10` é válido, sacar `R$ 50` dele não é: `BusinessRuleError`.
+- **`401` vs `403`** — if the user logs in again and the error goes away, it is
+  `401`; if it persists, it is `403`.
+- **`Validation` vs `BusinessRule`** — `"abc"` is not a valid tax ID number:
+  `ValidationError`. A balance of 10 is valid, withdrawing 50 from it is not:
+  `BusinessRuleError`.
 
-`ValidationError` é validação de **domínio**, lançada por value object ou use
-case. Payload inválido no corpo da requisição é pego pelo Zod antes do seu código
-rodar e tem ramo próprio.
+`ValidationError` is **domain** validation, thrown by a value object or a use
+case. An invalid payload in the request body is caught by Zod before your code
+runs and has a branch of its own.
 
 ---
 
-## Comportamento do handler
+## Handler behavior
 
 ```mermaid
 flowchart TD
-    E([erro]) --> Z{"veio do Zod?"}
-    Z -->|sim| R1["400 · VALIDATION_ERROR · details por campo"]
-    Z -->|não| A{"AppError de uma das 6?"}
-    A -->|sim| R2["status da categoria · code do erro"]
-    A -->|não| C{"tem statusCode entre 400 e 499?"}
-    C -->|sim| R3["status preservado · BAD_REQUEST"]
-    C -->|não| R4["500 · INTERNAL_SERVER_ERROR · corpo genérico"]
+    E([error]) --> Z{"from Zod?"}
+    Z -->|yes| R1["400 · VALIDATION_ERROR · per-field details"]
+    Z -->|no| A{"AppError of one of the 7?"}
+    A -->|yes| R2["category status · the error's code"]
+    A -->|no| C{"has a statusCode between 400 and 499?"}
+    C -->|yes| R3["status preserved · BAD_REQUEST"]
+    C -->|no| R4["500 · INTERNAL_SERVER_ERROR · generic body"]
 ```
 
-- **A ordem é carregada de significado.** Erro de validação do Fastify carrega
-  `statusCode: 400`; se o ramo do 4xx viesse antes, engoliria o `details[]`.
-- **O ramo do 500 não vaza nada** — mensagem fixa, sem stack e sem texto de
-  driver. O erro completo vai para o log, correlacionado pelo `traceId`.
-- **`AppError` fora das seis categorias cai no 500**, de propósito: é erro de
-  programação, não problema do cliente.
-- **Rota inexistente** responde `404 ROUTE_NOT_FOUND`, no mesmo formato.
+- **The order carries meaning.** A Fastify validation error carries
+  `statusCode: 400`; if the 4xx branch came first, it would swallow `details[]`.
+- **The 500 branch leaks nothing** — a fixed message, no stack and no driver text.
+  The full error goes to the log, correlated by the `traceId`.
+- **An `AppError` outside the seven categories falls into the 500**, on purpose: it
+  is a programming error, not a client problem.
+- **A nonexistent route** answers `404 ROUTE_NOT_FOUND`, in the same format.
 
 ---
 
-## A resposta
+## The response
 
 ```jsonc
 {
@@ -151,7 +153,7 @@ flowchart TD
 ```
 
 ```jsonc
-// validação ganha detalhe por campo
+// validation gets per-field detail
 {
   "error": {
     "code": "VALIDATION_ERROR",
@@ -165,46 +167,46 @@ flowchart TD
 }
 ```
 
-- **`code` é contrato**, estável, e serve de chave de i18n no cliente.
-- **`message` não é contrato** — é para log e debug, e não deve ser exibida crua
-  num app traduzido.
-- **`traceId`** é o mesmo valor da linha de log daquela requisição.
-- `field` é omitido quando o problema é o corpo inteiro, não um campo.
+- **`code` is a contract**, stable, and works as an i18n key on the client.
+- **`message` is not a contract** — it is for log and debug, and must not be shown
+  raw in a translated app.
+- **`traceId`** is the same value as in that request's log line.
+- `field` is omitted when the problem is the whole body, not a single field.
 
 ---
 
-## Regras
+## Rules
 
 | ✅ | ❌ |
 |---|---|
 | `throw new InvalidCredentialsError()` | `return { error: 'invalid' }` |
 | `readonly code = INVALID_CREDENTIALS_CODE` | `readonly code = 'INVALID_CREDENTIALS'` |
-| constante escrita à mão | `code` derivado do nome da classe |
-| estender uma das seis categorias | estender `AppError` direto |
-| erro concreto onde ele é lançado | erro concreto novo em `src/shared/errors/` |
-| endpoint sem `try/catch` | `try/catch` traduzindo erro para status |
-| `[UNAUTHORIZED_STATUS]: errorResponseSchema` na rota | rota que declara só o caminho feliz |
+| a hand-written constant | a `code` derived from the class name |
+| extend one of the seven categories | extend `AppError` directly |
+| a concrete error where it is thrown | a new concrete error in `src/shared/errors/` |
+| an endpoint without `try/catch` | `try/catch` translating an error into a status |
+| `[UNAUTHORIZED_STATUS]: errorResponseSchema` on the route | a route that declares only the happy path |
 | `import { X } from '#shared/errors/app-error'` | `import ... from '../../../shared/...'` |
 
-**Nunca** adicione `statusCode` a um erro da camada pura. É o atalho óbvio e é o
-que este desenho existe para impedir.
+**Never** add `statusCode` to a pure-layer error. It is the obvious shortcut, and
+it is what this design exists to prevent.
 
 ---
 
-## Testes
+## Tests
 
-Não teste que `NotFoundError` vira `404` — já está coberto em
-[`error-handler.spec.ts`](../../infra/http/errors/error-handler.spec.ts), categoria por
-categoria.
+Do not test that `NotFoundError` becomes `404` — it is already covered in
+[`error-handler.spec.ts`](../../infra/http/errors/error-handler.spec.ts), category
+by category.
 
-No use case, verifique o tipo:
+In the use case, check the type:
 
 ```ts
 await expect(useCase.execute(input)).rejects.toBeInstanceOf(InvalidCredentialsError)
 ```
 
-Na borda HTTP, verifique o contrato — com constante nomeada no próprio spec,
-nunca importada do erro, senão o teste vira tautologia:
+At the HTTP edge, check the contract — with a named constant in the spec itself,
+never imported from the error, otherwise the test becomes a tautology:
 
 ```ts
 const UNAUTHORIZED_STATUS = 401
@@ -214,9 +216,10 @@ expect(response.statusCode).toBe(UNAUTHORIZED_STATUS)
 expect(response.json().error.code).toBe(INVALID_CREDENTIALS_CODE)
 ```
 
-Nenhum endpoint tem spec ainda: acima está a forma que o primeiro deve ter. O
-padrão já roda em [`auth-guard.spec.ts`](../../infra/http/auth-guard.spec.ts),
-que fixa `401` e `INVALID_ACCESS_TOKEN` exatamente assim.
+Endpoints are covered by the integration specs in `tests/integration/` (for
+example `login.spec.ts`); the same pattern runs in
+[`auth-guard.spec.ts`](../../infra/http/auth-guard.spec.ts), which pins `401` and
+`INVALID_ACCESS_TOKEN` exactly this way.
 
-<sub>O diagrama é Mermaid: o GitHub renderiza nativamente; no VS Code exige a
-extensão <i>Markdown Preview Mermaid Support</i>.</sub>
+<sub>The diagram is Mermaid: GitHub renders it natively; in VS Code it requires
+the <i>Markdown Preview Mermaid Support</i> extension.</sub>

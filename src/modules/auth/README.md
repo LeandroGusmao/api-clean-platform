@@ -1,236 +1,269 @@
-# Módulo `auth`
+# The `auth` module
 
-Autenticação e sessão. É o único módulo que sabe o que é uma credencial: cuida
-de cadastro, verificação de e-mail, login (por senha ou com Google), sessão (via
-refresh token), troca e recuperação de senha e logout. Outros módulos só recebem
-o `id` do usuário já autenticado — não importam nada daqui.
+Authentication and session. It is the only module that knows what a credential
+is: it handles sign-up, e-mail verification, login (by password or with Google),
+session (through the refresh token), password change and recovery, session management, account deletion and logout.
+Other modules only receive the `id` of the already-authenticated user — they
+import nothing from here.
 
-Este documento é para quem **consome** ou **lê** o `auth` e quer entender o
-fluxo. A estrutura que o código segue está em
+This document is for whoever **consumes** or **reads** `auth` and wants to
+understand the flow. The structure the code follows is in
 [`ARCHITECTURE.md`](../../../ARCHITECTURE.md).
 
 ---
 
 ## Endpoints
 
-Todos sob o prefixo `/auth`.
+All under the `/auth` prefix.
 
-| Endpoint | O que faz | Precisa de token? |
+| Endpoint | What it does | Needs a token? |
 |---|---|---|
-| `POST /register` | Inicia o cadastro de um e-mail e envia um código | não |
-| `POST /email/verify/resend` | Reenvia o código de verificação | não |
-| `POST /email/verify` | Confirma o e-mail com o código + a senha escolhida; **cria a conta** e abre a sessão | não |
-| `POST /login` | Autentica por e-mail e senha; abre a sessão | não |
-| `POST /google` | Troca um ID token do Google por uma sessão; cria ou vincula a conta | não |
-| `POST /refresh` | Rotaciona o refresh token (renova a sessão) | refresh token |
-| `POST /logout` | Encerra esta sessão | refresh token |
-| `POST /logout-all` | Encerra **todas** as sessões da conta | access token |
-| `POST /password` | Troca a senha; encerra as outras sessões | access token |
-| `POST /password/forgot` | Inicia a recuperação de senha; envia um token por e-mail | não |
-| `POST /password/reset` | Redefine a senha com o token; encerra **todas** as sessões | não |
-| `GET /me` | Perfil do usuário autenticado | access token |
+| `POST /register` | Starts the sign-up of an e-mail and sends a code | no |
+| `POST /email/verify/resend` | Resends the verification code | no |
+| `POST /email/verify` | Confirms the e-mail with the code + the chosen password; **creates the account** and opens the session | no |
+| `POST /login` | Authenticates by e-mail and password; opens the session | no |
+| `POST /google` | Exchanges a Google ID token for a session; creates or links the account | no |
+| `POST /refresh` | Rotates the refresh token (renews the session) | refresh token |
+| `POST /logout` | Ends this session | refresh token |
+| `POST /logout-all` | Ends **all** the account's sessions | access token |
+| `POST /password` | Changes the password; ends the other sessions | access token |
+| `POST /password/forgot` | Starts password recovery; sends a token by e-mail | no |
+| `POST /password/reset` | Resets the password with the token; ends **all** sessions | no |
+| `GET /me` | Profile of the authenticated user | access token |
+| `DELETE /me` | Deletes the account and everything tied to it, for good | access token |
+| `GET /sessions` | Lists the account's active sessions | access token |
 
-Rota protegida = manda o access token no header `Authorization: Bearer <token>`.
-Sem ele, ou com ele inválido/expirado, a resposta é `401`.
+A protected route = send the access token in the `Authorization: Bearer <token>`
+header. Without it, or with it invalid/expired, the response is `401`.
 
 ---
 
-## Fluxos
+## Flows
 
-### Cadastro — a conta nasce no passo 3
+### Sign-up — the account is born at step 3
 
-1. **`POST /auth/register`** — corpo `{ email }`. Responde **`202` sempre**, sem
-   corpo. Um código de 6 dígitos é enviado para o endereço. **Nenhuma conta é
-   criada ainda** — só um registro pendente, que expira em 15 minutos.
+1. **`POST /auth/register`** — body `{ email }`. **Always** answers **`202`**,
+   with no body. A 6-digit code is sent to the address. **No account is created
+   yet** — only a pending registration, which expires in 15 minutes.
 
-   A resposta é idêntica para um endereço livre, um endereço com cadastro em
-   andamento e um endereço que já tem conta. O que muda é **o e-mail que o
-   endereço recebe** (um código, ou um aviso "alguém tentou criar conta com seu
-   endereço"). Isso é deliberado: ninguém descobre por este endpoint se um
-   e-mail tem conta.
+   The response is identical for a free address, an address with a sign-up in
+   progress and an address that already has an account. What changes is **the
+   e-mail the address receives** (a code, or a notice "someone tried to create an
+   account with your address"). That is deliberate: nobody finds out through this
+   endpoint whether an e-mail has an account.
 
-   Repetir o cadastro não repete o e-mail: cada endereço recebe **no máximo um
-   e-mail por minuto** (`EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS`) por este
-   endpoint, seja o código, seja o aviso. Para uma conta existente, a marca do
-   último aviso fica em `account_exists_notices`, gravada por um upsert
-   condicional no Postgres — vale entre réplicas e sob requisições concorrentes.
-   O intervalo é o mesmo nos dois casos de propósito: com intervalos diferentes,
-   o tempo de resposta de uma repetição revelaria se o endereço tem conta.
+   Repeating the sign-up does not repeat the e-mail: each address receives **at
+   most one e-mail per minute** (`EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS`)
+   through this endpoint, whether it is the code or the notice. For an existing
+   account, the mark of the last notice is kept in `account_exists_notices`,
+   written by a conditional upsert in Postgres — it holds across replicas and
+   under concurrent requests. The interval is the same in both cases on purpose:
+   with different intervals, the response time of a repeat would reveal whether
+   the address has an account.
 
-2. **`POST /auth/email/verify/resend`** *(opcional)* — corpo `{ email }`.
-   Responde `202` sempre. Reenvia o código para um cadastro em andamento, uma
-   vez por minuto no máximo.
+2. **`POST /auth/email/verify/resend`** *(optional)* — body `{ email }`. Always
+   answers `202`. Resends the code for a sign-up in progress, at most once per
+   minute.
 
-3. **`POST /auth/email/verify`** — corpo
-   `{ email, code, password, refreshTransport? }`. Responde `200` com
-   `{ accessToken, refreshToken? }`. **Aqui a conta é criada**, já verificada,
-   com **a senha enviada neste request**, e a sessão é aberta.
+3. **`POST /auth/email/verify`** — body
+   `{ email, code, password, refreshTransport? }`. Answers `200` with
+   `{ accessToken, refreshToken? }`. **This is where the account is created**,
+   already verified, with **the password sent in this request**, and the session
+   is opened.
 
-   Código inexistente, errado, expirado ou com tentativas esgotadas (5) →
-   **`422 EMAIL_VERIFICATION_FAILED`**, um erro só para todos os casos.
+   A nonexistent, wrong or expired code, or one with attempts exhausted (5) →
+   **`422 EMAIL_VERIFICATION_FAILED`**, a single error for every case.
 
-**Por que a senha só entra no passo 3:** o código só chega na caixa do dono do
-endereço, então quem completa a confirmação é quem escolhe a senha. Isso fecha o
-*account pre-hijacking* — um atacante não consegue fazer a conta da vítima nascer
-com uma senha que ele conhece.
+**Why the password only comes in at step 3:** the code only reaches the inbox of
+the address's owner, so whoever completes the confirmation is the one who picks
+the password. That closes *account pre-hijacking* — an attacker cannot make the
+victim's account be born with a password they know.
 
 ### Login
 
-**`POST /auth/login`** — corpo `{ email, password, refreshTransport? }`.
-Responde `200` com `{ accessToken, refreshToken? }`.
+**`POST /auth/login`** — body `{ email, password, refreshTransport? }`.
+Answers `200` with `{ accessToken, refreshToken? }`.
 
-- **`401 INVALID_CREDENTIALS`** — e-mail ou senha errados. Não diz qual. Uma
-  conta só-Google (sem senha) cai aqui em qualquer tentativa.
-- **`403 EMAIL_NOT_VERIFIED`** — credencial certa, e-mail ainda não confirmado.
-  Na prática toda conta nasce verificada (passo 3 do cadastro, ou o login com
-  Google); este gate fica como defesa em profundidade.
+- **`401 INVALID_CREDENTIALS`** — wrong e-mail or password. It does not say
+  which. A Google-only account (no password) lands here on any attempt.
+- **`403 EMAIL_NOT_VERIFIED`** — right credential, e-mail not yet confirmed. In
+  practice every account is born verified (step 3 of the sign-up, or the Google
+  login); this gate stays as defense in depth.
 
-### Login com Google
+### Login with Google
 
-**`POST /auth/google`** — corpo `{ idToken, password?, refreshTransport? }`. O
-cliente roda o SDK do Google, obtém o **ID token** e o manda aqui. A API verifica
-a assinatura contra o JWKS público do Google (`email_verified: true` é
-obrigatório) e emite `200` com `{ accessToken, refreshToken? }` — a mesma sessão
-do `login`.
+**`POST /auth/google`** — body `{ idToken, password?, refreshTransport? }`. The
+client runs Google's SDK, obtains the **ID token** and sends it here. The API
+verifies the signature against Google's public JWKS (`email_verified: true` is
+required) and issues `200` with `{ accessToken, refreshToken? }` — the same
+session as `login`.
 
-- **E-mail novo** → cria uma conta **verificada e sem senha**, vincula a
-  identidade Google, e abre a sessão.
-- **Cadastro pendente para o e-mail** → o Google ganha: a conta nasce verificada
-  e os pendentes daquele endereço são apagados.
-- **Segundo sign-in do mesmo Google** → caminho rápido; casa a identidade
-  guardada e abre a sessão.
-- **E-mail já tem conta com senha** → **`409 GOOGLE_LINK_REQUIRES_PASSWORD`**.
-  Reenvie o mesmo request com `password` (a senha **do app**) para provar a posse
-  e vincular o Google; senha errada → **`401 INVALID_CREDENTIALS`**. O vínculo
-  dispara um e-mail de aviso ao dono. Depois de vinculada, a conta entra tanto
-  pelo Google quanto pela senha.
-- **`401 INVALID_GOOGLE_IDENTITY`** — token inválido, expirado, de outro
-  `client_id`, de outro emissor, ou com `email_verified` falso. Um erro só para
-  todos.
+- **New e-mail** → creates a **verified, password-less** account, links the Google
+  identity, and opens the session.
+- **Pending sign-up for the e-mail** → Google wins: the account is born verified
+  and the pending registrations for that address are deleted.
+- **Second sign-in from the same Google** → fast path; matches the stored identity
+  and opens the session.
+- **The e-mail already has an account with a password** →
+  **`409 GOOGLE_LINK_REQUIRES_PASSWORD`**. Resend the same request with
+  `password` (the **app's** password) to prove ownership and link Google; a wrong
+  password → **`401 INVALID_CREDENTIALS`**. The link triggers a notice e-mail to
+  the owner. Once linked, the account signs in with either Google or the password.
+- **`401 INVALID_GOOGLE_IDENTITY`** — a token that is invalid, expired, from
+  another `client_id`, from another issuer, or with a false `email_verified`. A
+  single error for all of them.
 
-### Sessão — dois tokens
+### Session — two tokens
 
-- **access token** — JWT de vida curta (1 h). Autoriza as rotas protegidas.
-  Verificado por assinatura, sem ir ao banco.
-- **refresh token** — valor opaco de vida longa (60 dias, deslizante). Carrega a
-  sessão. Volta no corpo da resposta **ou** num cookie `HttpOnly`, conforme
-  `refreshTransport` (`"body"` — padrão — ou `"cookie"`).
+- **access token** — a short-lived JWT (1 h). Authorizes the protected routes.
+  Verified by signature, without going to the database.
+- **refresh token** — an opaque, long-lived value (60 days, sliding). Carries the
+  session. It comes back in the response body **or** in an `HttpOnly` cookie,
+  depending on `refreshTransport` (`"body"` — the default — or `"cookie"`).
 
-**`POST /auth/refresh`** — corpo `{ refreshToken? }` (ou o cookie). **Rotaciona**:
-cada uso invalida o token apresentado e devolve um par novo. Reapresentar um
-token já rotacionado (fora de uma janela de graça de 30 s) é tratado como
-**reuso** — a "família" inteira daquela sessão é revogada e a resposta é `401`.
+**`POST /auth/refresh`** — body `{ refreshToken? }` (or the cookie). **Rotates**:
+each use invalidates the presented token and returns a new pair. Presenting an
+already-rotated token again (outside a 30 s grace window) is treated as **reuse**
+— the whole "family" of that session is revoked and the response is `401`.
 
-Cada login abre uma **família própria**. Encerrar a sessão num aparelho não
-afeta os outros.
+Each login opens a **family of its own**. Ending the session on one device does
+not affect the others.
 
-### Troca de senha
+### Password change
 
-**`POST /auth/password`** *(access token)* — corpo
-`{ currentPassword, newPassword, refreshTransport? }`. Responde `200` com um par
-novo. Exige a senha atual (`422 INVALID_CURRENT_PASSWORD` se errada), **encerra
-todas as outras sessões** e envia um e-mail avisando o dono da conta.
+**`POST /auth/password`** *(access token)* — body
+`{ currentPassword, newPassword, refreshTransport? }`. Answers `200` with a new
+pair. It requires the current password (`422 INVALID_CURRENT_PASSWORD` if wrong),
+**ends all the other sessions** and sends an e-mail notifying the account owner.
 
-### Recuperação de senha
+### Password recovery
 
-**`POST /auth/password/forgot`** — corpo `{ email }`. Responde **`202` sempre**,
-sem corpo. Se o endereço tem conta, um token de reset vai para a caixa dele. Se
-não tem, **nada acontece** — mesma resposta. Um token vivo por conta, substituído
-a cada `forgot`, com TTL de 30 minutos. Novo envio bloqueado por cooldown de 60
-segundos: o cooldown limita com que frequência o `forgot` reenvia um token, não o
-resgate pelo `reset`.
+**`POST /auth/password/forgot`** — body `{ email }`. **Always** answers **`202`**,
+with no body. If the address has an account, a reset token goes to its inbox. If
+it does not, **nothing happens** — same response. One live token per account,
+replaced on each `forgot`, with a 30-minute TTL. A new send is blocked by a
+60-second cooldown: the cooldown limits how often `forgot` resends a token, not
+its redemption through `reset`.
 
-**`POST /auth/password/reset`** — corpo `{ token, newPassword }`. Redefine a
-senha, **revoga todas as sessões** da conta e responde `204` sem corpo. Token
-inexistente / errado / expirado / já usado → um erro só, genérico (`422
-PASSWORD_RESET_FAILED`). A resposta não carrega tokens — o cliente entra de novo
-com a senha recém-definida.
+**`POST /auth/password/reset`** — body `{ token, newPassword }`. Resets the
+password, **revokes all** the account's sessions and answers `204` with no body. A
+nonexistent / wrong / expired / already-used token → a single, generic error
+(`422 PASSWORD_RESET_FAILED`). The response carries no tokens — the client signs
+in again with the newly set password.
 
-O token é um **valor opaco de 256 bits**, determinístico para lookup por índice
-único. Código de 6 dígitos não seria seguro neste contexto (grau de takeover) e
-teto de tentativas apertado paga proteção fraca contra botnet distribuída — 256
-bits fecham força bruta por construção.
+The token is a **256-bit opaque value**, deterministic for lookup by a unique
+index. A 6-digit code would not be safe in this context (account-takeover grade)
+and a tight attempt ceiling buys weak protection against a distributed botnet —
+256 bits close off brute force by construction.
 
 ### Logout
 
-- **`POST /auth/logout`** — corpo `{ refreshToken? }` (ou o cookie). Responde
-  `204`. Revoga a família inteira daquele token.
-- **`POST /auth/logout-all`** *(access token)* — responde `204`. Revoga todas as
-  famílias da conta.
+- **`POST /auth/logout`** — body `{ refreshToken? }` (or the cookie). Answers
+  `204`. Revokes the whole family of that token.
+- **`POST /auth/logout-all`** *(access token)* — answers `204`. Revokes all the
+  account's families.
 
-### Perfil
+### Profile
 
-**`GET /auth/me`** *(access token)* — responde `200` com
-`{ id, email, emailVerifiedAt, createdAt }`. O hash da senha nunca sai daqui.
+**`GET /auth/me`** *(access token)* — answers `200` with
+`{ id, email, emailVerifiedAt, createdAt }`. The password hash never leaves here.
+
+### Active sessions
+
+**`GET /auth/sessions`** *(access token)* — answers `200` with an array, one
+entry per session: `{ id, createdAt, expiresAt, ip, deviceLabel, startedAt }`. A
+session is a refresh-token family that still has a live, unrevoked, unexpired
+row — a login opens it and it stays the same chain through every rotation. `ip`
+follows the client and reflects the latest rotation, while `deviceLabel` and
+`startedAt` describe the session as a whole; `ip` is `null` when the address did
+not parse.
+
+### Account deletion
+
+**`DELETE /auth/me`** *(access token)* — body `{ password? }`. Answers `204` with
+no body. Deletes the account and everything tied to it: every session, every
+linked provider, every password reset token, and any pending registration for the
+address. **Irreversible** — there is no grace period and nothing is exported
+first.
+
+- An account with a password must present it; a wrong one →
+  **`422 INVALID_CURRENT_PASSWORD`**.
+- An account that only signs in with Google has no password to present, but still
+  sends a body — an empty JSON object — since a request with no body at all is
+  rejected as malformed.
+- The user id comes from the access token, never from the body.
+- Access tokens already issued stay valid until they expire, with nothing left to
+  reach. A refresh cookie sent with the request is cleared.
 
 ---
 
-## Dados de seed (desenvolvimento)
+## Seed data (development)
 
-`pnpm db:seed` cria, **só no banco local**, contas sob `@seed.local` — rodar de
-novo apaga e recria esse namespace, e nada fora dele. Cada valor mora no arquivo
-do cenário que o usa, em `infra/seeds/`.
+`pnpm db:seed` creates, **in the local database only**, accounts under
+`@seed.local` — running it again deletes and recreates that namespace, and nothing
+outside it. Each value lives in the file of the scenario that uses it, in
+`infra/seeds/`.
 
-| Cenário | Conta | Como usar |
+| Scenario | Account | How to use |
 |---|---|---|
-| `auth:base-users` (default) | `dev@seed.local` | login com a senha `seed-Dev-2026!` |
-| | `google@seed.local` | só Google, sem senha — login por senha responde `401` |
-| `auth:pending-registration` | `pending@seed.local` | `POST /auth/email/verify` com o código `123456` e uma senha válida |
+| `auth:base-users` (default) | `dev@seed.local` | login with the password `seed-Dev-2026!` |
+| | `google@seed.local` | Google only, no password — password login answers `401` |
+| `auth:pending-registration` | `pending@seed.local` | `POST /auth/email/verify` with the code `123456` and a valid password |
 
-A senha fica aqui e em `SEED_PASSWORD` (`infra/seeds/index.ts`), nunca no log do
-seed.
+The password is kept here and in `SEED_PASSWORD` (`infra/seeds/index.ts`), never in
+the seed's log.
 
-## Formato de erro
+## Error format
 
-Todo erro tem a mesma forma:
+Every error has the same shape:
 
 ```jsonc
 {
   "error": {
-    "code": "INVALID_CREDENTIALS",   // SCREAMING_SNAKE_CASE, estável — é nisto que o cliente ramifica
-    "message": "Credenciais inválidas", // para log/debug, NÃO para mostrar ao usuário
-    "details": [ { "field": "email", "code": "INVALID_FORMAT" } ], // só em erro de validação
+    "code": "INVALID_CREDENTIALS",   // SCREAMING_SNAKE_CASE, stable — this is what the client branches on
+    "message": "Invalid credentials", // for log/debug, NOT to show to the user
+    "details": [ { "field": "email", "code": "INVALID_FORMAT" } ], // only on a validation error
     "traceId": "01JXYZ..."
   }
 }
 ```
 
-`400` cobre payload malformado (inclui um campo desconhecido no `register`, que
-tem schema estrito). `429` vem do rate limit por IP — cada rota sensível tem o
-próprio teto. `503` (com `Retry-After`) só aparece em rotas que abrem transação,
-quando um conflito no banco sobrevive às retentativas.
+`400` covers a malformed payload (including an unknown field on `register`, which
+has a strict schema). `429` comes from the per-IP rate limit — each sensitive
+route has its own ceiling. `503` (with `Retry-After`) only appears on routes that
+open a transaction, when a database conflict survives the retries.
 
 ---
 
-## O que este módulo **não** faz (ainda)
+## What this module does **not** do (yet)
 
-- **Fluxo redirect / BFF do Google** (`/start` + `/callback`, com `state`+PKCE e
-  `client_secret`) — o `POST /auth/google` client-driven já cobre mobile e SPA;
-  o redirect é fatia futura que reusa o mesmo núcleo de vínculo.
-- **Desvincular um provedor** de uma conta.
-- **Definir a primeira senha** numa conta só-Google.
-- **Listar os provedores vinculados** no `GET /me`.
-- **Restrição de domínio** (`hd` / Google Workspace).
-- **Deleção de conta.**
+- **Google's redirect / BFF flow** (`/start` + `/callback`, with `state`+PKCE and
+  `client_secret`) — the client-driven `POST /auth/google` already covers mobile
+  and SPA; the redirect is a future slice that reuses the same linking core.
+- **Unlinking a provider** from an account.
+- **Setting the first password** on a Google-only account.
+- **Listing the linked providers** in `GET /me`.
+- **Domain restriction** (`hd` / Google Workspace).
 
 ---
 
-## Garantias que um consumidor pode assumir
+## Guarantees a consumer can assume
 
-- `register` e `resend` **sempre** respondem `202` — nunca é possível enumerar
-  contas por eles.
-- `confirm` tem **um erro só** (`422 EMAIL_VERIFICATION_FAILED`) para todos os
-  modos de falha de código.
-- `forgot` **sempre** responde `202` — endereço com ou sem conta, resposta
-  idêntica.
-- `reset` tem **um erro só** (`422 PASSWORD_RESET_FAILED`) para todos os modos
-  de falha de token.
-- A conta só existe **depois** da confirmação (ou do primeiro login com Google);
-  antes disso, `login` naquele e-mail responde `401` (a conta não existe).
-- `POST /auth/google` só emite sessão para um ID token com `email_verified:
+- `register` and `resend` **always** answer `202` — accounts can never be
+  enumerated through them.
+- `confirm` has a **single error** (`422 EMAIL_VERIFICATION_FAILED`) for every
+  code failure mode.
+- `forgot` **always** answers `202` — an address with or without an account, an
+  identical response.
+- `reset` has a **single error** (`422 PASSWORD_RESET_FAILED`) for every token
+  failure mode.
+- The account only exists **after** confirmation (or the first Google login);
+  before that, `login` on that e-mail answers `401` (the account does not exist).
+- `POST /auth/google` only issues a session for an ID token with `email_verified:
   true`.
-- A recusa `409 GOOGLE_LINK_REQUIRES_PASSWORD` é **específica de propósito** — o
-  Google já provou o e-mail, então dizer "este endereço já tem conta" não vaza
-  nada. É a única porta do módulo que abre essa exceção ao anti-enumeração.
-- O hash da senha nunca aparece em resposta nem em log.
-- `code` de erro é contrato estável; `message` não é.
+- The `409 GOOGLE_LINK_REQUIRES_PASSWORD` refusal is **specific on purpose** —
+  Google has already proven the e-mail, so saying "this address already has an
+  account" leaks nothing. It is the module's only door that opens that exception
+  to anti-enumeration.
+- The password hash never appears in a response or in a log.
+- An error `code` is a stable contract; `message` is not.

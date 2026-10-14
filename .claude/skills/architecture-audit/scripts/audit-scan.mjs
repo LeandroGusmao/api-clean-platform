@@ -13,27 +13,27 @@
 //   node audit-scan.mjs --all           # whole src/ + tests/ tree
 //   node audit-scan.mjs <path>...       # explicit files or directories
 //   --json      machine-readable output
-//   --strict    exit 2 on CRÍTICA, 1 on ALTA/MÉDIA (for CI gating)
+//   --strict    exit 2 on CRITICAL, 1 on HIGH/MEDIUM (for CI gating)
 
 import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 
-const SEVERITIES = ['CRÍTICA', 'ALTA', 'MÉDIA', 'BAIXA']
+const SEVERITIES = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']
 const [CRITICAL, HIGH, MEDIUM] = SEVERITIES
 
 const SOURCE_EXTENSIONS = ['.ts', '.mts', '.cts']
 const SCAN_ROOTS = ['src', 'tests']
 const ENV_READER = 'src/infra/config/env.ts'
 /**
- * Casado por padrão, não por caminho literal: o handler central já mudou de
- * `http/` para `http/errors/` uma vez, e uma isenção presa ao caminho antigo
- * volta a acusar o único arquivo que tem permissão de logar a falha.
+ * Matched by pattern, not by literal path: the central handler has already moved
+ * from `http/` to `http/errors/` once, and an exemption pinned to the old path
+ * flags again the only file that is allowed to log the failure.
  */
 const CENTRAL_ERROR_HANDLER = /^src\/infra\/http\/(?:[^/]+\/)?error-handler\.ts$/
 /** Boot paths that run before the pino logger exists. */
 const CONSOLE_ALLOWED = ['src/infra/config/env.ts', 'src/infra/database/client.ts']
-/** O arquivo que DEFINE a taxonomia: as seis irmãs estendem AppError ali. */
+/** The file that DEFINES the taxonomy: the seven siblings extend AppError there. */
 const ERROR_TAXONOMY = /^src\/shared\/errors\/app-error\.ts$/
 const MAX_IMPORT_STATEMENT_LINES = 12
 const SNIPPET_MAX_LENGTH = 110
@@ -150,15 +150,15 @@ function layerPath(file) {
 }
 
 /**
- * `ports/`, não `providers/`: contrato e implementação chamavam-se a mesma coisa
- * — `modules/<m>/providers/` contra `modules/<m>/infra/providers/` — e a árvore
- * não os distinguia sem expandir os dois. As pastas de IMPLEMENTAÇÃO seguem
- * `infra/providers/`; só o lado do contrato foi renomeado.
+ * `ports/`, not `providers/`: contract and implementation used to share a name
+ * — `modules/<m>/providers/` versus `modules/<m>/infra/providers/` — and the tree
+ * could not tell them apart without expanding both. The IMPLEMENTATION folders
+ * stay under `infra/providers/`; only the contract side was renamed.
  */
 const PURE_DIRECTORIES =
   /^(entities|value-objects|repositories|ports|use-cases|services|dtos|errors|notifications)\//
 
-// ARCHITECTURE §2: `fixtures/` e `in-memory/` entram em `test` pelo nome da pasta.
+// ARCHITECTURE §2: `fixtures/` and `in-memory/` are classified as `test` by folder name.
 const TEST_ELEMENT = /(\.spec\.ts$|^tests\/|\/fixtures\/|\/in-memory\/)/
 
 function classify(lp) {
@@ -306,7 +306,7 @@ function extractImports(lines) {
 
 // -------------------------------------------------------------------- checks
 
-const BOUNDARY_RULE = 'ARCHITECTURE §2 — regra de fronteira'
+const BOUNDARY_RULE = 'ARCHITECTURE §2 — boundary rule'
 
 function checkImports(file, lp, layer, imports) {
   const own = moduleOf(lp)
@@ -324,7 +324,7 @@ function checkImports(file, lp, layer, imports) {
           file,
           line,
           'ARCHITECTURE §3 — imports',
-          `Relativo subindo de pasta: '${spec}'. Entre galhos use subpath import (#modules/…, #shared/…, #infra/…).`,
+          `Relative import climbing out of the folder: '${spec}'. Across branches use a subpath import (#modules/…, #shared/…, #infra/…).`,
           statement,
         )
       }
@@ -335,7 +335,7 @@ function checkImports(file, lp, layer, imports) {
           file,
           line,
           'ARCHITECTURE §3 — ESM nodenext',
-          `Import relativo sem extensão .js: '${spec}'. O tsc falha com TS2835.`,
+          `Relative import without the .js extension: '${spec}'. tsc fails with TS2835.`,
           statement,
         )
       }
@@ -348,7 +348,7 @@ function checkImports(file, lp, layer, imports) {
         file,
         line,
         'ARCHITECTURE §3 — imports',
-        `Caminho apontando para a árvore de saída/origem: '${spec}'.`,
+        `Path pointing into the source/output tree: '${spec}'.`,
         statement,
       )
     }
@@ -360,8 +360,8 @@ function checkImports(file, lp, layer, imports) {
           'PURE-IO',
           file,
           line,
-          `${BOUNDARY_RULE} (pure só importa pure)`,
-          `Camada pura importando código que toca o mundo externo: '${spec}'. O contrato entra por interface; o adapter mora em infra/.`,
+          `${BOUNDARY_RULE} (pure only imports pure)`,
+          `Pure layer importing code that touches the outside world: '${spec}'. The contract comes in through an interface; the adapter lives in infra/.`,
           statement,
         )
       }
@@ -371,8 +371,8 @@ function checkImports(file, lp, layer, imports) {
           'PURE-IO',
           file,
           line,
-          `${BOUNDARY_RULE} (pure só importa pure)`,
-          `Camada pura importando ${spec.startsWith('#main/') ? 'composition' : 'infra'}: '${spec}'.`,
+          `${BOUNDARY_RULE} (pure only imports pure)`,
+          `Pure layer importing ${spec.startsWith('#main/') ? 'composition' : 'infra'}: '${spec}'.`,
           statement,
         )
       }
@@ -382,8 +382,8 @@ function checkImports(file, lp, layer, imports) {
           'PURE-CONTAINER',
           file,
           line,
-          `${BOUNDARY_RULE} (quem pode importar composition)`,
-          `Camada pura alcançando um container: '${spec}'. Só main/** (valor) e o infra/ do próprio módulo (import type).`,
+          `${BOUNDARY_RULE} (who may import composition)`,
+          `Pure layer reaching a container: '${spec}'. Only main/** (value) and the module's own infra/ (import type) may.`,
           statement,
         )
       }
@@ -394,7 +394,7 @@ function checkImports(file, lp, layer, imports) {
           file,
           line,
           BOUNDARY_RULE,
-          `src/shared/ é transversal e não pode conhecer módulo nenhum: '${spec}'.`,
+          `src/shared/ is cross-cutting and must not know any module: '${spec}'.`,
           statement,
         )
       }
@@ -405,7 +405,7 @@ function checkImports(file, lp, layer, imports) {
           file,
           line,
           BOUNDARY_RULE,
-          `Camada pura de '${own}' importando o módulo '${otherModule}': '${spec}'.`,
+          `Pure layer of '${own}' importing module '${otherModule}': '${spec}'.`,
           statement,
         )
       }
@@ -418,8 +418,8 @@ function checkImports(file, lp, layer, imports) {
           'XMOD-INFRA',
           file,
           line,
-          `${BOUNDARY_RULE} (module-infra só alcança o próprio infra)`,
-          `infra de '${own}' importando o infra de '${otherModule}': '${spec}'.`,
+          `${BOUNDARY_RULE} (module-infra only reaches its own infra)`,
+          `infra of '${own}' importing the infra of '${otherModule}': '${spec}'.`,
           statement,
         )
       } else if (crossModule && isContainer) {
@@ -428,8 +428,8 @@ function checkImports(file, lp, layer, imports) {
           'XMOD-CONTAINER',
           file,
           line,
-          `${BOUNDARY_RULE} (quem pode importar composition)`,
-          `infra de '${own}' importando o container de '${otherModule}': '${spec}'.`,
+          `${BOUNDARY_RULE} (who may import composition)`,
+          `infra of '${own}' importing the container of '${otherModule}': '${spec}'.`,
           statement,
         )
       } else if (crossModule) {
@@ -438,8 +438,8 @@ function checkImports(file, lp, layer, imports) {
           'XMOD-PURE',
           file,
           line,
-          `${BOUNDARY_RULE} (módulo não alcança módulo)`,
-          `infra de '${own}' alcançando a camada pura de '${otherModule}': '${spec}'. O cruzamento se faz por uma porta do consumidor, com o adaptador em src/main/.`,
+          `${BOUNDARY_RULE} (a module does not reach another module)`,
+          `infra of '${own}' reaching the pure layer of '${otherModule}': '${spec}'. The crossing goes through a port owned by the consumer, with the adapter in src/main/.`,
           statement,
         )
       }
@@ -449,8 +449,8 @@ function checkImports(file, lp, layer, imports) {
           'CONTAINER-VALUE',
           file,
           line,
-          `${BOUNDARY_RULE} (quem pode importar composition)`,
-          `O infra do módulo só pode importar o próprio container como TIPO: use 'import type'.`,
+          `${BOUNDARY_RULE} (who may import composition)`,
+          `A module's infra may import its own container only as a TYPE: use 'import type'.`,
           statement,
         )
       }
@@ -461,7 +461,7 @@ function checkImports(file, lp, layer, imports) {
           file,
           line,
           BOUNDARY_RULE,
-          `infra importando o composition root: '${spec}'.`,
+          `infra importing the composition root: '${spec}'.`,
           statement,
         )
       }
@@ -479,8 +479,8 @@ function checkImports(file, lp, layer, imports) {
           'GLOBAL-INFRA-XMOD',
           file,
           line,
-          `${BOUNDARY_RULE} (global-infra importa pure e global-infra)`,
-          `src/infra/ é infra SEM dono e alcançou o ${isContainer ? 'container' : 'infra'} de '${otherModule}': '${spec}'. Injete o contrato (ver auth-guard.ts).`,
+          `${BOUNDARY_RULE} (global-infra imports pure and global-infra)`,
+          `src/infra/ is infra with NO owner and reached the ${isContainer ? 'container' : 'infra'} of '${otherModule}': '${spec}'. Inject the contract instead (see auth-guard.ts).`,
           statement,
         )
       } else if (!isModuleConfig) {
@@ -490,7 +490,7 @@ function checkImports(file, lp, layer, imports) {
           file,
           line,
           BOUNDARY_RULE,
-          `src/infra/ conhecendo o domínio de '${otherModule}': '${spec}'. A tabela permite pure, mas infra sem dono acoplada a um módulo pede justificativa — o auth-guard existe exatamente para evitar isso.`,
+          `src/infra/ knowing the domain of '${otherModule}': '${spec}'. The table allows pure, but ownerless infra coupled to a module needs a justification — auth-guard exists precisely to avoid this.`,
           statement,
         )
       }
@@ -504,7 +504,7 @@ function checkImports(file, lp, layer, imports) {
           file,
           line,
           BOUNDARY_RULE,
-          `infra importando o composition root: '${spec}'.`,
+          `infra importing the composition root: '${spec}'.`,
           statement,
         )
       }
@@ -516,161 +516,160 @@ const LINE_RULES = [
   {
     check: 'ENV',
     severity: CRITICAL,
-    rule: 'R6 — só env.ts lê process.env',
+    rule: 'R6 — only env.ts reads process.env',
     pattern: /\bprocess\.env\b/,
     layers: ['pure', 'module-infra', 'global-infra', 'composition'],
     skipFiles: [ENV_READER],
     message:
-      'Leitura direta de process.env. A env entra validada por env.ts e chega injetada; o módulo declara seu schema Zod em config.ts.',
+      'Direct read of process.env. The env comes in validated by env.ts and arrives injected; the module declares its Zod schema in config.ts.',
   },
   {
     check: 'TEST-ENV',
     severity: HIGH,
-    rule: 'ARCHITECTURE §9 — nenhum teste lê process.env',
+    rule: 'ARCHITECTURE §9 — no test reads process.env',
     pattern: /\bprocess\.env\b/,
     layers: ['test'],
     message:
-      'Teste lendo process.env. A env da suíte é injetada em test.env no vitest.config.ts.',
+      'Test reading process.env. The suite env is injected through test.env in vitest.config.ts.',
   },
   {
     check: 'R7-CLOCK',
     severity: HIGH,
-    rule: 'R7 — camada pura não produz valor não determinístico',
+    rule: 'R7 — the pure layer produces no non-deterministic value',
     pattern: /new Date\(\s*\)|\bDate\.now\s*\(/,
     layers: ['pure'],
     message:
-      'Relógio lido direto na camada pura. O tempo entra por IClock (#shared/providers/clock).',
+      'Clock read directly in the pure layer. Time comes in through IClock (#shared/ports/clock).',
   },
   {
     check: 'R7-RANDOM',
     severity: HIGH,
-    rule: 'R7 — camada pura não produz valor não determinístico',
+    rule: 'R7 — the pure layer produces no non-deterministic value',
     pattern:
       /\bMath\.random\s*\(|\brandomUUID\s*\(|\brandomBytes\s*\(|\bperformance\.now\s*\(|\bprocess\.hrtime\b/,
     layers: ['pure'],
     message:
-      'Aleatoriedade gerada na camada pura. A identidade entra por IIdGenerator (#shared/providers/id-generator); segredo criptográfico é provider de infra.',
+      'Randomness generated in the pure layer. Identity comes in through IIdGenerator (#shared/ports/id-generator); a cryptographic secret is an infra provider.',
   },
   {
     check: 'DRIVER-LOG',
     severity: CRITICAL,
-    rule: 'ARCHITECTURE §6 — erro de driver não sai do infra/',
+    rule: 'ARCHITECTURE §6 — driver errors do not leave infra/',
     pattern: /\.log\.\w+\s*\(|\bconsole\.\w+\s*\(/,
     pathIncludes: '/infra/drizzle/',
     layers: ['module-infra'],
     message:
-      'Log dentro da camada Drizzle. O erro do driver carrega os parâmetros vinculados (o hash de senha entre eles) na message, na stack e em params. Traduza com toPersistenceError e deixe o log para o error-handler.',
+      'Log inside the Drizzle layer. The driver error carries the bound parameters (the password hash among them) in its message, its stack and its params. Translate with toPersistenceError and leave the logging to the error-handler.',
   },
   {
     check: 'DRIVER-RAW',
     severity: CRITICAL,
-    rule: 'ARCHITECTURE §6 — erro de driver não sai do infra/',
+    rule: 'ARCHITECTURE §6 — driver errors do not leave infra/',
     pattern:
       /\b(?:error|err)\.(?:message|stack|params|detail)\b|JSON\.stringify\s*\(\s*(?:error|err)\b/,
     pathIncludes: '/infra/drizzle/',
     layers: ['module-infra'],
     message:
-      'Propriedade do erro do driver sendo lida/propagada. message, stack e params são três carregadores do mesmo segredo.',
+      'Driver error property being read/propagated. message, stack and params are three carriers of the same secret.',
   },
   {
     check: 'DRIZZLE-QUERY-API',
     severity: MEDIUM,
-    rule: 'R1 — repositório usa só a API core do Drizzle',
+    rule: 'R1 — the repository uses only the Drizzle core API',
     pattern: /\bdb\.query\./,
     pathIncludes: '/infra/drizzle/',
     layers: ['module-infra'],
     message:
-      'Uso da relational query API (db.query.*). O repositório usa só a API core (select/insert/update/delete).',
+      'Use of the relational query API (db.query.*). The repository uses only the core API (select/insert/update/delete).',
   },
   {
     check: 'LOG-OBJECT',
     severity: HIGH,
-    rule: 'ARCHITECTURE §4/§5 — logar campo escolhido, nunca objeto inteiro',
+    rule: 'ARCHITECTURE §4/§5 — log a chosen field, never a whole object',
     pattern:
       /\.log\.\w+\s*\(\s*\{[^}]*\b(?:request|req|reply|res|body|payload|headers|user|entity|command|input|row|rows|credentials)\b/,
-    // `test` incluído: a tabela de fronteira isenta teste de IMPORT, não de
-    // segredo. Spec que loga objeto inteiro vaza igual.
+    // `test` is included: the boundary table exempts tests from IMPORT rules, not
+    // from secrets. A spec that logs a whole object leaks just the same.
     layers: ['pure', 'module-infra', 'global-infra', 'composition', 'test'],
     message:
-      'Objeto inteiro de request/entidade no log. O redact do pino não é recursivo e o serializer padrão não cobre isto — logue o campo escolhido.',
+      'Whole request/entity object in the log. pino redact is not recursive and the default serializer does not cover this — log the chosen field.',
   },
   {
     check: 'LOG-ERR-MODULE',
     severity: HIGH,
-    rule: 'ARCHITECTURE §8 — o error-handler central é quem loga a falha',
+    rule: 'ARCHITECTURE §8 — the central error-handler is what logs the failure',
     pattern: /\.log\.\w+\s*\(\s*\{?\s*(?:err|error)\b/,
     layers: ['module-infra'],
     skipFiles: [CENTRAL_ERROR_HANDLER],
     message:
-      'Erro logado fora do error-handler central. Ele já loga com traceId; um log local duplica a linha e escapa da sanitização quando o objeto é o do driver.',
+      'Error logged outside the central error-handler. It already logs with the traceId; a local log duplicates the line and escapes sanitization when the object is the driver one.',
   },
   {
     check: 'CONSOLE',
     severity: MEDIUM,
-    rule: 'ARCHITECTURE §5 — o logger é o pino do Fastify',
+    rule: "ARCHITECTURE §5 — the logger is Fastify's pino",
     pattern: /\bconsole\.\w+\s*\(/,
     layers: ['pure', 'module-infra', 'test'],
     skipFiles: CONSOLE_ALLOWED,
-    message:
-      'console.* no lugar do logger da request. Sem traceId, sem redact, sem nível.',
+    message: 'console.* in place of the request logger. No traceId, no redact, no level.',
   },
   {
     check: 'SECRET-HTTP',
     severity: CRITICAL,
-    rule: 'Segurança — segredo não atravessa a fronteira HTTP',
+    rule: 'Security — a secret does not cross the HTTP boundary',
     pattern:
       /\bJWT_SECRET\b|\bSECRET_KEY\b|\bPRIVATE_KEY\b|\bpasswordHash\b|\bpassword_hash\b/,
     pathIncludes: '/infra/http/',
     layers: ['module-infra', 'global-infra'],
     message:
-      'Hash/segredo referenciado na camada HTTP. O read model do use case já entrega a forma publicável — confirme que isto não entra em schema de resposta nem em send().',
+      'Hash/secret referenced in the HTTP layer. The use case read model already delivers the publishable shape — confirm this does not end up in a response schema or in send().',
   },
   {
     check: 'ZOD-DATE',
     severity: MEDIUM,
-    rule: 'ARCHITECTURE §7 — data em resposta é z.date()',
+    rule: 'ARCHITECTURE §7 — a date in a response is z.date()',
     pattern: /z\.iso\.datetime\s*\(/,
     pathIncludes: '/infra/http/',
     layers: ['module-infra', 'global-infra'],
     message:
-      'z.iso.datetime() em endpoint. Em schema de RESPOSTA use z.date(): o serializer emite ISO sozinho e o handler para de chamar .toISOString(). (Em schema de request, z.iso.datetime() é legítimo.)',
+      'z.iso.datetime() in an endpoint. In a RESPONSE schema use z.date(): the serializer emits ISO on its own and the handler stops calling .toISOString(). (In a request schema, z.iso.datetime() is legitimate.)',
   },
   {
     check: 'HANDLER-CATCH',
     severity: MEDIUM,
-    rule: 'ARCHITECTURE §8 — o endpoint não tem try/catch',
+    rule: 'ARCHITECTURE §8 — the endpoint has no try/catch',
     pattern: /\btry\s*\{/,
     pathIncludes: '/infra/http/endpoints/',
     layers: ['module-infra', 'global-infra'],
     message:
-      'try/catch no endpoint. O use case só faz throw e o error-handler traduz para status; capturar aqui é onde o envelope de erro começa a divergir.',
+      'try/catch in the endpoint. The use case only throws and the error-handler translates it into a status; catching here is where the error envelope starts to diverge.',
   },
   {
     check: 'HTTP-MAGIC',
     severity: MEDIUM,
-    rule: 'CLAUDE.md — sem magic number',
+    rule: 'CLAUDE.md — no magic number',
     pattern: /\.(?:status|code)\s*\(\s*\d{3}\s*\)|[{,(]\s*[1-5]\d\d\s*:/,
     pathIncludes: '/infra/http/',
     layers: ['module-infra', 'global-infra'],
-    message: 'Status HTTP inline. Use a constante do módulo (infra/http/constants.ts).',
+    message: 'Inline HTTP status. Use the module constant (infra/http/constants.ts).',
   },
   {
     check: 'ERROR-BASE',
     severity: HIGH,
-    rule: 'ARCHITECTURE §8 — as seis categorias são irmãs',
+    rule: 'ARCHITECTURE §8 — the seven categories are siblings',
     pattern: /class\s+\w+\s+extends\s+AppError\b/,
     layers: ['pure', 'module-infra', 'global-infra'],
     skipFiles: [ERROR_TAXONOMY],
     message:
-      'Erro estendendo AppError direto, fora das seis categorias. O error-handler casa por instanceof nas seis; o que fica fora cai no ramo genérico e responde 500 — não o status pretendido. Estenda NotFoundError, ConflictError, UnauthorizedError, ForbiddenError, ValidationError ou BusinessRuleError.',
+      'Error extending AppError directly, outside the seven categories. The error-handler matches by instanceof on the seven; anything outside falls into the generic branch and answers 500 — not the intended status. Extend NotFoundError, ConflictError, UnauthorizedError, ForbiddenError, ValidationError, BusinessRuleError or TransientError.',
   },
   {
     check: 'TEST-ONLY',
     severity: MEDIUM,
-    rule: 'Disciplina de suíte',
+    rule: 'Suite discipline',
     pattern: /\b(?:describe|it|test)\.only\s*\(/,
     layers: ['test'],
-    message: '.only commitado silencia o resto da suíte.',
+    message: 'A committed .only silences the rest of the suite.',
   },
 ]
 
@@ -720,8 +719,8 @@ function checkRepositoryCatch(file, lp, layer, stripped) {
         'DRIVER-RETHROW',
         file,
         line,
-        'ARCHITECTURE §6 — erro de driver não sai do infra/',
-        `Repositório relança o erro cru do driver ('throw ${binding}'). Ele gruda todo parâmetro vinculado — incluindo o hash de senha — na própria message. Traduza: 'throw toPersistenceError(${binding})'.`,
+        'ARCHITECTURE §6 — driver errors do not leave infra/',
+        `Repository rethrows the raw driver error ('throw ${binding}'). It attaches every bound parameter — including the password hash — to its own message. Translate it: 'throw toPersistenceError(${binding})'.`,
         body.split('\n').find((l) => l.includes(`throw ${binding}`)) ?? '',
       )
     } else if (!body.includes('toPersistenceError')) {
@@ -730,8 +729,8 @@ function checkRepositoryCatch(file, lp, layer, stripped) {
         'CATCH-UNSANITIZED',
         file,
         line,
-        'ARCHITECTURE §6 — erro de driver não sai do infra/',
-        'catch na camada Drizzle sem toPersistenceError: ou o erro do driver escapa por outro caminho, ou a falha está sendo engolida.',
+        'ARCHITECTURE §6 — driver errors do not leave infra/',
+        'catch in the Drizzle layer without toPersistenceError: either the driver error escapes some other way, or the failure is being swallowed.',
         body.split('\n')[0] ?? '',
       )
     }
@@ -751,14 +750,14 @@ function braceBody(source, openIndex) {
   return source.slice(openIndex + 1)
 }
 
-/** Nomes de parâmetro que carregam "de quem é este recurso". */
+/** Parameter names that carry "whose resource this is". */
 const OWNERSHIP_PARAMS = /^(?:userId|ownerId|tenantId|accountId|principalId|actorId)$/
 
 /**
- * Um use case que RECEBE o dono e nunca o usa não filtra por dono: a busca é
- * por id global, e quem descobrir o id de outro usuário lê o recurso dele.
- * O parâmetro aparecendo uma única vez no arquivo — a própria declaração — é
- * exatamente essa assinatura.
+ * A use case that RECEIVES the owner and never uses it does not filter by owner:
+ * the lookup is by global id, and whoever discovers another user's id reads that
+ * user's resource. The parameter appearing only once in the file — its own
+ * declaration — is exactly that signature.
  */
 function checkOwnershipParams(file, lp, layer, stripped) {
   if (layer !== 'pure' || !lp.includes('/use-cases/')) return
@@ -778,8 +777,8 @@ function checkOwnershipParams(file, lp, layer, stripped) {
         'OWNERSHIP-UNUSED',
         file,
         line,
-        'Segurança — autorização por posse (IDOR)',
-        `'${name}' é recebido por execute() e nunca usado: a consulta não filtra por dono. Quem obtiver o id de outro usuário alcança o recurso dele.`,
+        'Security — ownership authorization (IDOR)',
+        `'${name}' is received by execute() and never used: the query does not filter by owner. Whoever obtains another user's id reaches that user's resource.`,
         match[0],
       )
     }
@@ -791,10 +790,10 @@ const FENCE_DELIMITER = /^\s*(?:```|~~~)/
 const ABSOLUTE_SPECIFIER = /^(?:[a-z][a-z0-9+.-]*:|\/\/|\/)/i
 
 /**
- * Link relativo quebrado em `.md` versionado. Nasceu de dois casos reais: um
- * move de pasta deixou quatro links apontando para o nada, e a documentação
- * seguiu descrevendo um caminho que já não existia. É a única forma de
- * "documento que mente" que uma máquina consegue provar.
+ * Broken relative link in a tracked `.md`. It exists because of two real cases:
+ * a folder move left four links pointing at nothing, and the documentation kept
+ * describing a path that no longer existed. It is the only form of "document
+ * that lies" a machine can prove.
  */
 function checkMarkdownLinks(file) {
   const directory = path.dirname(file)
@@ -810,8 +809,8 @@ function checkMarkdownLinks(file) {
       if (insideFence) return
 
       for (const match of text.matchAll(MARKDOWN_LINK)) {
-        // Âncora pura (`#secao`) e destino absoluto ficam fora: o primeiro não é
-        // caminho, e o segundo depende de uma raiz que este script não conhece.
+        // A bare anchor (`#section`) and an absolute target are skipped: the first
+        // is not a path, and the second depends on a root this script does not know.
         const [target] = match[1].split('#')
         if (target === '' || ABSOLUTE_SPECIFIER.test(target)) continue
         if (existsSync(path.resolve(directory, target))) continue
@@ -821,8 +820,8 @@ function checkMarkdownLinks(file) {
           'MD-LINK',
           file,
           index + 1,
-          'Documentação versionada aponta para arquivo que existe',
-          `Link relativo quebrado: '${target}'. Depois de mover um arquivo, o link fica verde no diff e morto na leitura.`,
+          'Tracked documentation points at a file that exists',
+          `Broken relative link: '${target}'. After a file is moved, the link stays green in the diff and dead on reading.`,
           text,
         )
       }
@@ -838,8 +837,8 @@ function checkPackageJson(file) {
         'DEP-RANGE',
         file,
         index + 1,
-        'ARCHITECTURE §11 — toda dependência em versão exata',
-        'Faixa de versão (^ ou ~). Dois apps gerados do mesmo commit resolveriam árvores diferentes.',
+        'ARCHITECTURE §11 — every dependency at an exact version',
+        'Version range (^ or ~). Two apps generated from the same commit would resolve different trees.',
         text,
       )
     }
@@ -879,8 +878,8 @@ for (const file of scope) {
       'LAYER-UNKNOWN',
       file,
       1,
-      'ARCHITECTURE §2 — regra de fronteira',
-      'Arquivo em src/ que não cai em nenhuma linha da tabela de fronteira. Ou ele pertence a uma das pastas nomeadas, ou a tabela precisa ganhar uma linha (decisão consciente, documentada).',
+      'ARCHITECTURE §2 — boundary rule',
+      'File in src/ that falls into no row of the boundary table. Either it belongs in one of the named folders, or the table needs a new row (a conscious, documented decision).',
       lp,
     )
   }
@@ -920,7 +919,7 @@ if (asJson) {
   const summary = SEVERITIES.map((severity) => `${severity} ${counts[severity]}`).join(
     '  ',
   )
-  console.log(`${scanned.length} arquivo(s) varrido(s) — ${summary}`)
+  console.log(`${scanned.length} file(s) scanned — ${summary}`)
 }
 
 if (strict) {

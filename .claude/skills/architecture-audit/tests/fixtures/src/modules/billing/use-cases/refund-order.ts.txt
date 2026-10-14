@@ -1,5 +1,5 @@
-import type { IClock } from '#shared/providers/clock'
-import type { IIdGenerator } from '#shared/providers/id-generator'
+import type { IClock } from '#shared/ports/clock'
+import type { IIdGenerator } from '#shared/ports/id-generator'
 import { RefundNotAllowedError } from '#modules/billing/errors/refund-not-allowed-error'
 import type { IOrdersRepository } from '#modules/billing/repositories/orders-repository'
 
